@@ -34,6 +34,77 @@ pub enum SshWorkerCommand {
     Close,
 }
 
+/// Folder for the rare Windows fallback in [`ssh_connect_raw`] (per-user, not shared %TEMP%).
+fn key_tmp_dir() -> std::path::PathBuf {
+    dirs::data_local_dir()
+        .unwrap_or_else(std::env::temp_dir)
+        .join("RemoteFlow")
+        .join("ssh-tmp")
+}
+
+/// Overwrites a file with zeros before deleting it (best effort – SSD wear levelling may keep
+/// old blocks, which is why this path is only a last-resort fallback).
+fn wipe_file(path: &std::path::Path) {
+    if let Ok(meta) = std::fs::metadata(path) {
+        if let Ok(mut f) = std::fs::OpenOptions::new().write(true).open(path) {
+            let zeros = vec![0u8; meta.len() as usize];
+            let _ = f.write_all(&zeros);
+            let _ = f.sync_all();
+        }
+    }
+    let _ = std::fs::remove_file(path);
+}
+
+/// Removes key files left behind by a crash or a killed process (called at startup).
+pub fn sweep_stale_key_files() {
+    // Files from versions before 1.1.2 were written to %TEMP%
+    let legacy = std::fs::read_dir(std::env::temp_dir()).into_iter().flatten().flatten();
+    let current = std::fs::read_dir(key_tmp_dir()).into_iter().flatten().flatten();
+    for entry in legacy.chain(current) {
+        let name = entry.file_name().to_string_lossy().to_string();
+        if name.starts_with("rf_ssh_") && name.ends_with(".tmp") {
+            wipe_file(&entry.path());
+        }
+    }
+}
+
+/// Private key written to disk only for the duration of one authentication; wiped on drop.
+#[cfg_attr(not(windows), allow(dead_code))]
+struct TempKeyFile {
+    path: std::path::PathBuf,
+}
+
+#[cfg_attr(not(windows), allow(dead_code))]
+impl TempKeyFile {
+    fn create(content: &[u8]) -> std::io::Result<Self> {
+        let dir = key_tmp_dir();
+        std::fs::create_dir_all(&dir)?;
+        let path = dir.join(format!("rf_ssh_{}.tmp", uuid::Uuid::new_v4()));
+        let mut opts = std::fs::OpenOptions::new();
+        opts.write(true).create_new(true); // never follow / reuse an existing file
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::OpenOptionsExt;
+            opts.mode(0o600);
+        }
+        let mut f = opts.open(&path)?;
+        let guard = TempKeyFile { path };
+        f.write_all(content)?;
+        f.sync_all()?;
+        Ok(guard)
+    }
+
+    fn path(&self) -> &std::path::Path {
+        &self.path
+    }
+}
+
+impl Drop for TempKeyFile {
+    fn drop(&mut self) {
+        wipe_file(&self.path);
+    }
+}
+
 pub fn ssh_connect_raw(config: &SshConnectionConfig) -> Result<ssh2::Session, String> {
     let addr_str = format!("{}:{}", config.host, config.port);
     let mut tcp_stream = None;
@@ -77,42 +148,25 @@ pub fn ssh_connect_raw(config: &SshConnectionConfig) -> Result<ssh2::Session, St
     if let Some(key_content) = &config.private_key {
         let trimmed = key_content.trim();
         if !trimmed.is_empty() {
-            let resolved_key = if std::path::Path::new(trimmed).is_file() {
-                std::fs::read_to_string(trimmed).unwrap_or_else(|_| key_content.clone())
+            let passphrase = config.passphrase.as_deref().filter(|p| !p.is_empty());
+            let key_path = std::path::Path::new(trimmed);
+            if !trimmed.contains('\n') && key_path.is_file() {
+                // The user's own key file: libssh2 reads it directly – no copy is ever written.
+                authed = sess.userauth_pubkey_file(&config.username, None, key_path, passphrase).is_ok();
             } else {
-                key_content.clone()
-            };
+                // Key stored in the vault: authenticate from memory on every platform
+                // (OpenSSL backend on Unix, WinCNG + crypt32 on Windows).
+                authed = sess.userauth_pubkey_memory(&config.username, None, key_content, passphrase).is_ok();
 
-            #[cfg(unix)]
-            {
-                if sess
-                    .userauth_pubkey_memory(
-                        &config.username,
-                        None,
-                        &resolved_key,
-                        config.passphrase.as_deref(),
-                    )
-                    .is_ok()
+                // WinCNG cannot decrypt passphrase-protected PEM keys held in memory, only from a
+                // file. Only in that case a short-lived, owner-only file is used and wiped right away.
+                #[cfg(windows)]
                 {
-                    authed = true;
-                }
-            }
-            #[cfg(not(unix))]
-            {
-                let tmp_path = std::env::temp_dir().join(format!("rf_ssh_{}.tmp", uuid::Uuid::new_v4()));
-                if std::fs::write(&tmp_path, &resolved_key).is_ok() {
-                    if sess
-                        .userauth_pubkey_file(
-                            &config.username,
-                            None,
-                            &tmp_path,
-                            config.passphrase.as_deref(),
-                        )
-                        .is_ok()
-                    {
-                        authed = true;
+                    if !authed && passphrase.is_some() {
+                        if let Ok(tmp) = TempKeyFile::create(key_content.as_bytes()) {
+                            authed = sess.userauth_pubkey_file(&config.username, None, tmp.path(), passphrase).is_ok();
+                        }
                     }
-                    let _ = std::fs::remove_file(&tmp_path);
                 }
             }
         }
@@ -301,4 +355,60 @@ pub fn spawn_ssh_session(
             }
         }
     });
+}
+
+#[cfg(test)]
+mod key_file_tests {
+    use super::*;
+
+    #[test]
+    fn temp_key_file_is_wiped_and_swept() {
+        let tmp = TempKeyFile::create(b"-----BEGIN KEY-----secret").unwrap();
+        let path = tmp.path().to_path_buf();
+        assert!(path.exists());
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            assert_eq!(std::fs::metadata(&path).unwrap().permissions().mode() & 0o777, 0o600);
+        }
+        drop(tmp);
+        assert!(!path.exists());
+
+        // A file left behind by a crash is removed at the next start
+        let stale = key_tmp_dir().join("rf_ssh_stale-test.tmp");
+        std::fs::write(&stale, b"secret").unwrap();
+        sweep_stale_key_files();
+        assert!(!stale.exists());
+    }
+}
+
+/// Needs a local sshd on 127.0.0.1:2222 with user `rftest` whose authorized_keys contains
+/// /tmp/k/id_rsa.pub (PEM, no passphrase) and /tmp/k/id_ed.pub (OpenSSH, passphrase `kp-123`).
+#[cfg(test)]
+mod key_auth_e2e {
+    use super::*;
+
+    fn cfg(key: String, passphrase: Option<&str>) -> SshConnectionConfig {
+        SshConnectionConfig {
+            host: "127.0.0.1".into(),
+            port: 2222,
+            username: "rftest".into(),
+            password: None,
+            private_key: Some(key),
+            passphrase: passphrase.map(|s| s.to_string()),
+            host_key_verifier: HostKeyVerifier(Arc::new(|_| Ok(HostTrust::Known))),
+        }
+    }
+
+    #[test]
+    #[ignore]
+    fn key_from_memory_and_from_path() {
+        let pem = std::fs::read_to_string("/tmp/k/id_rsa").unwrap();
+        assert!(ssh_connect_raw(&cfg(pem, None)).unwrap().authenticated());
+        assert!(ssh_connect_raw(&cfg("/tmp/k/id_rsa".into(), None)).unwrap().authenticated());
+        let ed = std::fs::read_to_string("/tmp/k/id_ed").unwrap();
+        assert!(ssh_connect_raw(&cfg(ed, Some("kp-123"))).unwrap().authenticated());
+        assert!(ssh_connect_raw(&cfg("/tmp/k/id_ed".into(), Some("kp-123"))).unwrap().authenticated());
+        assert!(ssh_connect_raw(&cfg("/tmp/k/id_ed".into(), Some("wrong"))).is_err());
+    }
 }

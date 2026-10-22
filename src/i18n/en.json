@@ -594,7 +594,6 @@
   "Wybierz pliki lub cały katalog poniżej (albo przeciągnij je na ekran RDP). Po wybraniu przejdź do okna Windows (np. na Pulpit lub do Eksploratora plików) i naciśnij Ctrl+V (prawy przycisk myszy → „Wklej”).": "Choose files or a whole folder below (or drag them onto the RDP screen). Then go to a Windows window (e.g. the desktop or File Explorer) and press Ctrl+V (right-click → “Paste”).",
   "Wybierz pliki...": "Choose files...",
   "Wybierz przynajmniej jeden klawisz": "Choose at least one key",
-  "Wybrano plik: {filePath}": "Selected file: {filePath}",
   "Wycinanie": "Snipping",
   "Wyczyszczono schowek RDP i listę plików": "RDP clipboard and file list cleared",
   "Wyczyść": "Clear",

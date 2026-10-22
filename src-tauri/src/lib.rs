@@ -17,8 +17,8 @@ use auth::{
 };
 use session::{
     app_exit, app_maximize_window, clipboard_read_files, clipboard_read_text, clipboard_write_text,
-    local_list_dir, open_shared_folder, pick_local_file, pick_local_folder,
-    read_local_paths_for_rdp_clipboard, read_local_text_file, save_dropped_file_to_shared, session_close,
+    local_list_dir, open_shared_folder, pick_local_folder, pick_private_key_file,
+    read_local_paths_for_rdp_clipboard, save_dropped_file_to_shared, session_close,
     session_connect, session_launch_external_rdp, session_list, session_resize,
     session_send_input, sftp_list, sftp_upload_file, sftp_upload_paths, SessionManager,
 };
@@ -38,6 +38,8 @@ pub fn run() {
         .manage(session_state)
         .setup(|app| {
             vault::backup::start_scheduler();
+            // Private-key files left by a crash in the Windows fallback are wiped
+            std::thread::spawn(session::ssh::sweep_stale_key_files);
             oslock::start_monitor(app.handle().clone());
             Ok(())
         })
@@ -95,8 +97,7 @@ pub fn run() {
             clipboard_read_files,
             local_list_dir,
             pick_local_folder,
-            pick_local_file,
-            read_local_text_file,
+            pick_private_key_file,
             read_local_paths_for_rdp_clipboard,
             app_exit,
             i18n::app_set_language,
