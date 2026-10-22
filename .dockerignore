@@ -1,0 +1,11 @@
+node_modules
+dist
+dist-linux
+dist-windows
+.git
+src-tauri/target
+src-tauri/gen
+*.exe
+vault.json
+vault.json.*
+backups

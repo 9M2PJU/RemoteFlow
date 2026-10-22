@@ -1,0 +1,1348 @@
+import React, { useState, useEffect, useRef } from 'react';
+import {
+  X,
+  Terminal,
+  Monitor,
+  Eye,
+  EyeOff,
+  ArrowRightLeft,
+  Plus,
+  Trash2,
+  Shield,
+  Loader2,
+  KeyRound,
+  FolderDown,
+  Check,
+  FolderOpen,
+  FileKey,
+} from 'lucide-react';
+import { api, isTauri } from '../../services/api';
+import {
+  Connection,
+  Credential,
+  Group,
+  PortForwardRule,
+  ProtocolType,
+  SshAuthType,
+  ForwardType,
+} from '../../types';
+
+interface Props {
+  isOpen: boolean;
+  onClose: () => void;
+  onSave: (connection: Connection, rawPassword?: string, rawKey?: string, rawPassphrase?: string) => Promise<void>;
+  editingConnection: Connection | null;
+  groups: Group[];
+  credentials: Credential[];
+  defaultGroupId: string | null;
+  /** Creates a new folder/group directly from the connection form. */
+  onCreateGroup?: (group: Group) => Promise<Group>;
+}
+
+export const ConnectionModal: React.FC<Props> = ({
+  isOpen,
+  onClose,
+  onSave,
+  editingConnection,
+  groups,
+  credentials,
+  defaultGroupId,
+  onCreateGroup,
+}) => {
+  const [activeTab, setActiveTab] = useState<'general' | 'auth' | 'tunnels' | 'rdp' | 'notes'>('general');
+
+  // Form states
+  const [name, setName] = useState('');
+  const [groupId, setGroupId] = useState<string | null>(null);
+  // Inline "new group" form
+  const [isAddingGroup, setIsAddingGroup] = useState(false);
+  const [newGroupName, setNewGroupName] = useState('');
+  const [newGroupParentId, setNewGroupParentId] = useState<string | null>(null);
+  const [creatingGroup, setCreatingGroup] = useState(false);
+  const [groupError, setGroupError] = useState<string | null>(null);
+  const [credentialId, setCredentialId] = useState<string | null>(null);
+  const [protocol, setProtocol] = useState<ProtocolType>('ssh');
+  const [host, setHost] = useState('');
+  const [port, setPort] = useState<number>(22);
+  const [username, setUsername] = useState('');
+
+  // Password & credentials
+  const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [revealingPassword, setRevealingPassword] = useState(false);
+
+  const [sshAuthType, setSshAuthType] = useState<SshAuthType>('password');
+  const [privateKey, setPrivateKey] = useState('');
+  const [passphrase, setPassphrase] = useState('');
+  const [showPassphrase, setShowPassphrase] = useState(false);
+  const [certificateContent, setCertificateContent] = useState('');
+  const [keyInputMode, setKeyInputMode] = useState<'file' | 'text'>('file');
+  const [keyFilePath, setKeyFilePath] = useState('');
+  const [promptKeyPassphrase, setPromptKeyPassphrase] = useState(false);
+  const [keyFileLoading, setKeyFileLoading] = useState(false);
+  const [keyFileSuccess, setKeyFileSuccess] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Port forwarding
+  const [portForwarding, setPortForwarding] = useState<PortForwardRule[]>([]);
+
+  // RDP settings
+  const [rdpWidth, setRdpWidth] = useState(1920);
+  const [rdpHeight, setRdpHeight] = useState(1080);
+  const [rdpDomain, setRdpDomain] = useState('');
+  const [rdpSound, setRdpSound] = useState(false);
+  const [rdpClipboard, setRdpClipboard] = useState(true);
+
+  // Tags & notes
+  const [tagsInput, setTagsInput] = useState('');
+  const [notes, setNotes] = useState('');
+  const [defaultDownloadDir, setDefaultDownloadDir] = useState('');
+  const [setAsGlobalDownloadDir, setSetAsGlobalDownloadDir] = useState(false);
+
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (editingConnection) {
+      setName(editingConnection.name);
+      setGroupId(editingConnection.groupId);
+      setCredentialId(editingConnection.credentialId || null);
+      setProtocol(editingConnection.protocol);
+      setHost(editingConnection.host);
+      setPort(editingConnection.port);
+      setUsername(editingConnection.username);
+      setSshAuthType(editingConnection.sshAuthType);
+      setPassword(''); // keep blank unless user types new one or reveals
+      setShowPassword(false);
+      setPrivateKey('');
+      setPassphrase('');
+      setKeyFilePath(editingConnection.keyFilePath || '');
+      setPromptKeyPassphrase(Boolean(editingConnection.promptKeyPassphrase));
+      setKeyInputMode(editingConnection.keyFilePath ? 'file' : 'text');
+      setKeyFileSuccess(null);
+      setCertificateContent(editingConnection.certificateContent || '');
+      setPortForwarding(editingConnection.portForwarding || []);
+      if (editingConnection.rdpSettings) {
+        setRdpWidth(editingConnection.rdpSettings.width);
+        setRdpHeight(editingConnection.rdpSettings.height);
+        setRdpDomain(editingConnection.rdpSettings.domain || '');
+        setRdpSound(editingConnection.rdpSettings.sound);
+        setRdpClipboard(editingConnection.rdpSettings.clipboard);
+      }
+      setTagsInput(editingConnection.tags.join(', '));
+      setNotes(editingConnection.notes || '');
+      setDefaultDownloadDir(editingConnection.defaultDownloadDir || '');
+      setSetAsGlobalDownloadDir(false);
+    } else {
+      // New connection defaults
+      setName('');
+      setGroupId(defaultGroupId);
+      setCredentialId(null);
+      setProtocol('ssh');
+      setHost('');
+      setPort(22);
+      setUsername('root');
+      setPassword('');
+      setShowPassword(false);
+      setSshAuthType('password');
+      setPrivateKey('');
+      setPassphrase('');
+      setKeyFilePath('');
+      setPromptKeyPassphrase(false);
+      setKeyInputMode('file');
+      setKeyFileSuccess(null);
+      setCertificateContent('');
+      setPortForwarding([]);
+      setRdpWidth(1920);
+      setRdpHeight(1080);
+      setRdpDomain('');
+      setRdpSound(false);
+      setRdpClipboard(true);
+      setTagsInput('');
+      setNotes('');
+      setDefaultDownloadDir('');
+      setSetAsGlobalDownloadDir(false);
+    }
+    setActiveTab('general');
+    setError(null);
+    setIsAddingGroup(false);
+    setGroupError(null);
+  }, [editingConnection, defaultGroupId, isOpen]);
+
+  const handleCreateGroup = async () => {
+    if (!onCreateGroup) return;
+    const trimmed = newGroupName.trim();
+    if (!trimmed) {
+      setGroupError('Podaj nazwę grupy');
+      return;
+    }
+    const duplicate = groups.some(
+      (g) => g.name.trim().toLowerCase() === trimmed.toLowerCase() && (g.parentId || null) === newGroupParentId
+    );
+    if (duplicate) {
+      setGroupError('Grupa o tej nazwie już istnieje w wybranym miejscu');
+      return;
+    }
+    setCreatingGroup(true);
+    setGroupError(null);
+    try {
+      const created = await onCreateGroup({
+        id: 'group-' + Math.random().toString(36).substring(2, 9),
+        name: trimmed,
+        parentId: newGroupParentId,
+        icon: 'folder',
+        color: '#3b82f6',
+      });
+      setGroupId(created.id);
+      setIsAddingGroup(false);
+      setNewGroupName('');
+    } catch (err: unknown) {
+      setGroupError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setCreatingGroup(false);
+    }
+  };
+
+  const handlePickKeyFile = async () => {
+    if (!isTauri()) {
+      fileInputRef.current?.click();
+      return;
+    }
+    try {
+      setKeyFileLoading(true);
+      setError(null);
+      const filePath = await api.pickLocalFile('Wybierz plik klucza prywatnego SSH');
+      if (filePath) {
+        setKeyFilePath(filePath);
+        try {
+          const content = await api.readLocalTextFile(filePath);
+          if (content && content.trim()) {
+            setPrivateKey(content);
+            const fileName = filePath.split('/').pop()?.split('\\').pop() || filePath;
+            setKeyFileSuccess(`Wczytano klucz (${content.length} bajtów) z pliku: ${fileName}`);
+          }
+        } catch {
+          setKeyFileSuccess(`Wybrano plik: ${filePath}`);
+        }
+      }
+    } catch (err: unknown) {
+      setError(`Błąd wyboru pliku klucza: ${err instanceof Error ? err.message : String(err)}`);
+    } finally {
+      setKeyFileLoading(false);
+    }
+  };
+
+  const handleFileInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setKeyFilePath(file.name);
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const text = event.target?.result as string;
+      if (text) {
+        setPrivateKey(text);
+        setKeyFileSuccess(`Wczytano klucz (${text.length} bajtów) z pliku: ${file.name}`);
+      }
+    };
+    reader.readAsText(file);
+  };
+
+  // Update default port when changing protocol
+  const handleProtocolChange = (p: ProtocolType) => {
+    setProtocol(p);
+    if (!editingConnection) {
+      setPort(p === 'ssh' ? 22 : 3389);
+    }
+  };
+
+  // Reveal password via Master Password (Założenie 7)
+  const handleRevealPassword = async () => {
+    if (!editingConnection) {
+      setShowPassword(!showPassword);
+      return;
+    }
+
+    if (showPassword) {
+      setShowPassword(false);
+      return;
+    }
+
+    setRevealingPassword(true);
+    try {
+      const plaintext = await api.revealPassword(editingConnection.id);
+      setPassword(plaintext);
+      setShowPassword(true);
+    } catch (err: unknown) {
+      setError('Nie udało się odszyfrować hasła: ' + (err instanceof Error ? err.message : String(err)));
+    } finally {
+      setRevealingPassword(false);
+    }
+  };
+
+  // Port forwarding rule management (Założenie 4)
+  const addPortForwardRule = (forwardType: ForwardType) => {
+    const newRule: PortForwardRule = {
+      id: 'pf-' + Math.random().toString(36).substring(2, 9),
+      forwardType,
+      localPort: forwardType === 'dynamic' ? 1080 : 8080,
+      remoteHost: forwardType === 'dynamic' ? undefined : '127.0.0.1',
+      remotePort: forwardType === 'dynamic' ? undefined : 80,
+      enabled: true,
+    };
+    setPortForwarding([...portForwarding, newRule]);
+  };
+
+  const removePortForwardRule = (id: string) => {
+    setPortForwarding(portForwarding.filter(r => r.id !== id));
+  };
+
+  const updatePortForwardRule = (id: string, updates: Partial<PortForwardRule>) => {
+    setPortForwarding(portForwarding.map(r => r.id === id ? { ...r, ...updates } : r));
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!name.trim()) {
+      setError('Podaj nazwę połączenia');
+      setActiveTab('general');
+      return;
+    }
+    if (!host.trim()) {
+      setError('Podaj adres hosta');
+      setActiveTab('general');
+      return;
+    }
+
+    setSaving(true);
+    setError(null);
+    try {
+      const conn: Connection = {
+        id: editingConnection ? editingConnection.id : 'conn-' + Math.random().toString(36).substring(2, 9),
+        name: name.trim(),
+        groupId,
+        credentialId: credentialId || undefined,
+        protocol,
+        host: host.trim(),
+        port: Number(port) || (protocol === 'ssh' ? 22 : 3389),
+        username: username.trim(),
+        passwordEncrypted: editingConnection ? editingConnection.passwordEncrypted : undefined,
+        sshAuthType,
+        privateKeyEncrypted: editingConnection ? editingConnection.privateKeyEncrypted : undefined,
+        privateKeyPassphraseEncrypted: promptKeyPassphrase ? undefined : (editingConnection ? editingConnection.privateKeyPassphraseEncrypted : undefined),
+        certificateContent: certificateContent.trim() || undefined,
+        keyFilePath: keyFilePath.trim() || undefined,
+        promptKeyPassphrase: Boolean(promptKeyPassphrase),
+        portForwarding,
+        rdpSettings: protocol === 'rdp' ? {
+          width: rdpWidth,
+          height: rdpHeight,
+          colorDepth: 32,
+          domain: rdpDomain.trim() || undefined,
+          sound: rdpSound,
+          clipboard: rdpClipboard,
+        } : undefined,
+        tags: tagsInput.split(',').map(t => t.trim()).filter(Boolean),
+        notes: notes.trim() || undefined,
+        defaultDownloadDir: defaultDownloadDir.trim() || undefined,
+        createdAt: editingConnection ? editingConnection.createdAt : new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      };
+
+      await onSave(
+        conn,
+        password ? password : undefined,
+        privateKey ? privateKey : undefined,
+        promptKeyPassphrase ? '' : (passphrase ? passphrase : undefined)
+      );
+
+      if (setAsGlobalDownloadDir && defaultDownloadDir.trim()) {
+        try {
+          await api.setGlobalDownloadDir(defaultDownloadDir.trim());
+        } catch (e) {
+          console.warn('Błąd zapisu globalnego katalogu pobierania:', e);
+        }
+      }
+
+      onClose();
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (!isOpen) return null;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 backdrop-blur-sm p-4">
+      <div className="flex h-[88vh] w-full max-w-3xl flex-col rounded-2xl border border-slate-800 bg-slate-900 shadow-2xl overflow-hidden">
+        {/* Modal Header */}
+        <div className="flex h-14 items-center justify-between border-b border-slate-800 px-6 bg-slate-900/80">
+          <div className="flex items-center gap-2.5">
+            <div
+              className={`flex h-8 w-8 items-center justify-center rounded-lg ${
+                protocol === 'ssh'
+                  ? 'bg-emerald-500/10 text-emerald-400'
+                  : 'bg-blue-500/10 text-blue-400'
+              }`}
+            >
+              {protocol === 'ssh' ? <Terminal className="h-4 w-4" /> : <Monitor className="h-4 w-4" />}
+            </div>
+            <div>
+              <h2 className="text-sm font-bold text-white">
+                {editingConnection ? 'Edytuj połączenie' : 'Nowe połączenie'}
+              </h2>
+              <p className="text-[11px] text-slate-400">
+                Konfiguracja hosta, poświadczeń i tuneli
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={onClose}
+            className="flex h-7 w-7 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-800 hover:text-white"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+
+        {/* Modal Tabs */}
+        <div className="flex border-b border-slate-800 bg-slate-950/60 px-6 gap-2 text-xs font-medium">
+          <button
+            onClick={() => setActiveTab('general')}
+            className={`border-b-2 py-2.5 px-3 transition-colors ${
+              activeTab === 'general'
+                ? 'border-cyan-400 text-white font-semibold'
+                : 'border-transparent text-slate-400 hover:text-slate-200'
+            }`}
+          >
+            Ogólne
+          </button>
+          <button
+            onClick={() => setActiveTab('auth')}
+            className={`border-b-2 py-2.5 px-3 transition-colors ${
+              activeTab === 'auth'
+                ? 'border-cyan-400 text-white font-semibold'
+                : 'border-transparent text-slate-400 hover:text-slate-200'
+            }`}
+          >
+            Uwierzytelnianie & Klucze
+          </button>
+          {protocol === 'ssh' && (
+            <button
+              onClick={() => setActiveTab('tunnels')}
+              className={`border-b-2 py-2.5 px-3 transition-colors ${
+                activeTab === 'tunnels'
+                  ? 'border-cyan-400 text-white font-semibold'
+                  : 'border-transparent text-slate-400 hover:text-slate-200'
+              }`}
+            >
+              Tunele SSH ({portForwarding.length})
+            </button>
+          )}
+          {protocol === 'rdp' && (
+            <button
+              onClick={() => setActiveTab('rdp')}
+              className={`border-b-2 py-2.5 px-3 transition-colors ${
+                activeTab === 'rdp'
+                  ? 'border-cyan-400 text-white font-semibold'
+                  : 'border-transparent text-slate-400 hover:text-slate-200'
+              }`}
+            >
+              Ustawienia RDP
+            </button>
+          )}
+          <button
+            onClick={() => setActiveTab('notes')}
+            className={`border-b-2 py-2.5 px-3 transition-colors ${
+              activeTab === 'notes'
+                ? 'border-cyan-400 text-white font-semibold'
+                : 'border-transparent text-slate-400 hover:text-slate-200'
+            }`}
+          >
+            Tagi & Notatki
+          </button>
+        </div>
+
+        {/* Tab Content */}
+        <form onSubmit={handleSubmit} className="flex flex-1 flex-col justify-between overflow-hidden">
+          <div className="flex-1 overflow-y-auto p-6 space-y-4">
+            {error && (
+              <div className="rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-xs text-red-400">
+                {error}
+              </div>
+            )}
+
+            {/* TAB: GENERAL */}
+            {activeTab === 'general' && (
+              <div className="space-y-4">
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-300">
+                      Nazwa wyświetlana
+                    </label>
+                    <input
+                      type="text"
+                      value={name}
+                      onChange={(e) => setName(e.target.value)}
+                      placeholder="np. web-prod-01 (Nginx)"
+                      required
+                      className="mt-1.5 w-full rounded-lg border border-slate-700 bg-slate-800/80 px-3 py-2 text-xs text-white placeholder-slate-500 focus:border-cyan-500 focus:outline-none"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-300">
+                      Folder / Grupa
+                    </label>
+                    <div className="mt-1.5 flex items-center gap-1.5">
+                      <select
+                        value={groupId || ''}
+                        onChange={(e) => setGroupId(e.target.value || null)}
+                        className="min-w-0 flex-1 rounded-lg border border-slate-700 bg-slate-800/80 px-3 py-2 text-xs text-white focus:border-cyan-500 focus:outline-none"
+                      >
+                        <option value="">(Brak - poziom główny)</option>
+                        {groups.map((g) => (
+                          <option key={g.id} value={g.id}>
+                            {g.name}
+                          </option>
+                        ))}
+                      </select>
+                      {onCreateGroup && (
+                        <button
+                          type="button"
+                          title="Dodaj nową grupę"
+                          onClick={() => {
+                            setIsAddingGroup((v) => !v);
+                            setNewGroupName('');
+                            setNewGroupParentId(groupId);
+                            setGroupError(null);
+                          }}
+                          className={`shrink-0 rounded-lg border px-2 py-2 text-xs transition-colors ${
+                            isAddingGroup
+                              ? 'border-cyan-500 bg-cyan-500/10 text-cyan-300'
+                              : 'border-slate-700 bg-slate-800 text-slate-300 hover:bg-slate-700 hover:text-white'
+                          }`}
+                        >
+                          <Plus className="h-3.5 w-3.5" />
+                        </button>
+                      )}
+                    </div>
+                    {isAddingGroup && onCreateGroup && (
+                      <div className="mt-2 space-y-2 rounded-lg border border-cyan-800/40 bg-slate-950/60 p-2.5">
+                        <input
+                          type="text"
+                          autoFocus
+                          value={newGroupName}
+                          onChange={(e) => setNewGroupName(e.target.value)}
+                          onKeyDown={(e) => {
+                            // Do not submit the whole connection form with Enter
+                            if (e.key === 'Enter') {
+                              e.preventDefault();
+                              handleCreateGroup();
+                            } else if (e.key === 'Escape') {
+                              e.stopPropagation();
+                              setIsAddingGroup(false);
+                            }
+                          }}
+                          placeholder="Nazwa nowej grupy..."
+                          className="w-full rounded-md border border-slate-700 bg-slate-800 px-2.5 py-1.5 text-xs text-white placeholder-slate-500 focus:border-cyan-500 focus:outline-none"
+                        />
+                        <select
+                          value={newGroupParentId || ''}
+                          onChange={(e) => setNewGroupParentId(e.target.value || null)}
+                          className="w-full rounded-md border border-slate-700 bg-slate-800 px-2.5 py-1.5 text-[11px] text-slate-300 focus:border-cyan-500 focus:outline-none"
+                        >
+                          <option value="">Grupa nadrzędna: (brak - poziom główny)</option>
+                          {groups.map((g) => (
+                            <option key={g.id} value={g.id}>
+                              Grupa nadrzędna: {g.name}
+                            </option>
+                          ))}
+                        </select>
+                        {groupError && <div className="text-[11px] text-red-400">{groupError}</div>}
+                        <div className="flex justify-end gap-1.5">
+                          <button
+                            type="button"
+                            onClick={() => setIsAddingGroup(false)}
+                            className="rounded-md border border-slate-700 px-2.5 py-1 text-[11px] text-slate-300 hover:bg-slate-800"
+                          >
+                            Anuluj
+                          </button>
+                          <button
+                            type="button"
+                            disabled={creatingGroup || !newGroupName.trim()}
+                            onClick={handleCreateGroup}
+                            className="flex items-center gap-1 rounded-md bg-cyan-600 px-2.5 py-1 text-[11px] font-semibold text-white hover:bg-cyan-500 disabled:opacity-50"
+                          >
+                            {creatingGroup ? <Loader2 className="h-3 w-3 animate-spin" /> : <Check className="h-3 w-3" />}
+                            Utwórz i wybierz
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Protocol selector */}
+                <div>
+                  <label className="block text-xs font-semibold text-slate-300 mb-1.5">
+                    Protokół połączenia
+                  </label>
+                  <div className="grid grid-cols-2 gap-3">
+                    <button
+                      type="button"
+                      onClick={() => handleProtocolChange('ssh')}
+                      className={`flex items-center gap-3 rounded-xl border p-3 text-left transition-all ${
+                        protocol === 'ssh'
+                          ? 'border-emerald-500 bg-emerald-500/10 text-white shadow-sm'
+                          : 'border-slate-800 bg-slate-800/40 text-slate-400 hover:border-slate-700'
+                      }`}
+                    >
+                      <Terminal className="h-5 w-5 text-emerald-400" />
+                      <div>
+                        <div className="text-xs font-semibold">SSH (Terminal & Tunele)</div>
+                        <div className="text-[10px] text-slate-400">
+                          Port 22, klucze, certyfikaty, SOCKS5
+                        </div>
+                      </div>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => handleProtocolChange('rdp')}
+                      className={`flex items-center gap-3 rounded-xl border p-3 text-left transition-all ${
+                        protocol === 'rdp'
+                          ? 'border-blue-500 bg-blue-500/10 text-white shadow-sm'
+                          : 'border-slate-800 bg-slate-800/40 text-slate-400 hover:border-slate-700'
+                      }`}
+                    >
+                      <Monitor className="h-5 w-5 text-blue-400" />
+                      <div>
+                        <div className="text-xs font-semibold">RDP (Pulpit Zdalny Windows)</div>
+                        <div className="text-[10px] text-slate-400">
+                          Port 3389, graficzny interfejs, schowek
+                        </div>
+                      </div>
+                    </button>
+                  </div>
+                </div>
+
+                {/* Host & Port */}
+                <div className="grid grid-cols-3 gap-4">
+                  <div className="col-span-2">
+                    <label className="block text-xs font-semibold text-slate-300">
+                      Adres Hosta (IP lub domena)
+                    </label>
+                    <input
+                      type="text"
+                      value={host}
+                      onChange={(e) => setHost(e.target.value)}
+                      placeholder="192.168.1.100 lub server.domain.com"
+                      required
+                      className="mt-1.5 w-full rounded-lg border border-slate-700 bg-slate-800/80 px-3 py-2 text-xs text-white placeholder-slate-500 focus:border-cyan-500 focus:outline-none"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-300">
+                      Port
+                    </label>
+                    <input
+                      type="number"
+                      value={port}
+                      onChange={(e) => setPort(Number(e.target.value))}
+                      className="mt-1.5 w-full rounded-lg border border-slate-700 bg-slate-800/80 px-3 py-2 text-xs text-white focus:border-cyan-500 focus:outline-none"
+                    />
+                  </div>
+                </div>
+
+                {/* Default Download Directory for SFTP */}
+                <div className="rounded-xl border border-slate-800 bg-slate-950/60 p-3.5 space-y-2.5">
+                  <div className="flex items-center justify-between">
+                    <label className="text-xs font-semibold text-slate-200 flex items-center gap-1.5">
+                      <FolderDown className="h-4 w-4 text-emerald-400" />
+                      <span>Domyślny katalog pobierania plików (SFTP)</span>
+                    </label>
+                    {defaultDownloadDir && (
+                      <button
+                        type="button"
+                        onClick={() => setDefaultDownloadDir('')}
+                        className="text-[10px] text-slate-400 hover:text-rose-300 transition-colors"
+                      >
+                        Wyczyść (użyj systemowego ~/Downloads)
+                      </button>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="text"
+                      value={defaultDownloadDir}
+                      onChange={(e) => setDefaultDownloadDir(e.target.value)}
+                      placeholder="Domyślnie: ~/Downloads (pozostaw puste lub wybierz folder)"
+                      className="flex-1 rounded-lg border border-slate-700 bg-slate-800/80 px-3 py-1.5 font-mono text-xs text-white placeholder-slate-500 focus:border-cyan-500 focus:outline-none"
+                    />
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        const folder = await api.pickLocalFolder();
+                        if (folder) {
+                          setDefaultDownloadDir(folder);
+                        }
+                      }}
+                      className="rounded-lg border border-slate-700 bg-slate-800 px-3 py-1.5 text-xs font-medium text-slate-200 hover:bg-slate-700 hover:text-white transition-colors shrink-0"
+                    >
+                      Wybierz folder...
+                    </button>
+                  </div>
+                  <label className="flex items-center gap-2 text-[11px] text-slate-400 cursor-pointer pt-0.5">
+                    <input
+                      type="checkbox"
+                      checked={setAsGlobalDownloadDir}
+                      onChange={(e) => setSetAsGlobalDownloadDir(e.target.checked)}
+                      className="rounded border-slate-700 bg-slate-900 text-cyan-500 focus:ring-0"
+                    />
+                    <span>Zapisz ten katalog również jako domyślny globalnie (dla wszystkich połączeń)</span>
+                  </label>
+                </div>
+              </div>
+            )}
+
+            {/* TAB: AUTH & CREDENTIALS (Założenie 7: Podgląd hasła) */}
+            {activeTab === 'auth' && (
+              <div className="space-y-4">
+                {/* Reusable Credentials Selector */}
+                <div className="rounded-xl border border-slate-800 bg-slate-950/60 p-4">
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="flex items-center gap-2 text-xs font-semibold text-slate-200">
+                      <KeyRound className="h-4 w-4 text-cyan-400" />
+                      <span>Współdzielone poświadczenia</span>
+                    </div>
+                    {credentialId && (
+                      <button
+                        type="button"
+                        onClick={() => setCredentialId(null)}
+                        className="text-[11px] text-slate-400 hover:text-red-400 transition-colors"
+                      >
+                        Odłącz poświadczenie
+                      </button>
+                    )}
+                  </div>
+
+                  <p className="text-[11px] text-slate-400 mb-3">
+                    Możesz wybrać zdefiniowane poświadczenie i współdzielić je pomiędzy połączeniami lub wprowadzić dane jednorazowo poniżej.
+                  </p>
+
+                  <select
+                    value={credentialId || ''}
+                    onChange={(e) => {
+                      const id = e.target.value || null;
+                      setCredentialId(id);
+                      if (id) {
+                        const cred = credentials.find((c) => c.id === id);
+                        if (cred) {
+                          if (cred.username && (!username || username === 'root')) {
+                            setUsername(cred.username);
+                          }
+                          setSshAuthType(cred.authType);
+                        }
+                      }
+                    }}
+                    className="w-full rounded-lg border border-slate-700 bg-slate-800/80 px-3 py-2 text-xs text-white focus:border-cyan-500 focus:outline-none"
+                  >
+                    <option value="">(Brak - wprowadź dane jednorazowo poniżej)</option>
+                    {credentials.map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {c.name} — {c.username} ({c.authType === 'password' ? 'Hasło' : c.authType === 'key' ? 'Klucz prywatny' : 'Certyfikat'})
+                      </option>
+                    ))}
+                  </select>
+
+                  {credentialId && (() => {
+                    const selected = credentials.find((c) => c.id === credentialId);
+                    if (!selected) return null;
+                    return (
+                      <div className="mt-3 flex items-center gap-2 rounded-lg border border-cyan-500/30 bg-cyan-500/10 p-2.5 text-xs text-cyan-300">
+                        <KeyRound className="h-4 w-4 shrink-0 text-cyan-400" />
+                        <div className="min-w-0 flex-1">
+                          <span className="font-semibold text-white">{selected.name}</span>
+                          <span className="text-slate-300"> ({selected.username})</span>
+                          <span className="ml-2 rounded bg-cyan-900/50 px-1.5 py-0.5 text-[10px] text-cyan-200 uppercase font-mono">
+                            {selected.authType}
+                          </span>
+                        </div>
+                      </div>
+                    );
+                  })()}
+                </div>
+
+                <div className="rounded-xl border border-slate-800 bg-slate-950/40 p-4">
+                  <div className="flex items-center gap-2 text-xs font-semibold text-cyan-400 mb-3">
+                    <Shield className="h-4 w-4" />
+                    Wszystkie dane uwierzytelniające są szyfrowane AES-256-GCM
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-300">
+                        Nazwa użytkownika
+                      </label>
+                      <input
+                        type="text"
+                        value={username}
+                        onChange={(e) => setUsername(e.target.value)}
+                        placeholder="np. root, admin, administrator"
+                        className="mt-1.5 w-full rounded-lg border border-slate-700 bg-slate-800/80 px-3 py-2 text-xs text-white focus:border-cyan-500 focus:outline-none"
+                      />
+                    </div>
+
+                    {/* Password with Reveal Button (Założenie 7) */}
+                    <div>
+                      <div className="flex items-center justify-between">
+                        <label className="block text-xs font-semibold text-slate-300">
+                          Hasło
+                        </label>
+                        {editingConnection && (
+                          <button
+                            type="button"
+                            onClick={handleRevealPassword}
+                            disabled={revealingPassword}
+                            className="inline-flex items-center gap-1 text-[11px] text-cyan-400 hover:text-cyan-300"
+                          >
+                            {revealingPassword ? (
+                              <Loader2 className="h-3 w-3 animate-spin" />
+                            ) : showPassword ? (
+                              <EyeOff className="h-3 w-3" />
+                            ) : (
+                              <Eye className="h-3 w-3" />
+                            )}
+                            {showPassword ? 'Ukryj hasło' : 'Pokaż hasło'}
+                          </button>
+                        )}
+                      </div>
+                      <div className="relative mt-1.5">
+                        <input
+                          type={showPassword ? 'text' : 'password'}
+                          value={password}
+                          onChange={(e) => setPassword(e.target.value)}
+                          placeholder={
+                            editingConnection?.passwordEncrypted
+                              ? showPassword ? password : '•••••••••••• (Zapisane w sejfie)'
+                              : 'Wprowadź hasło...'
+                          }
+                          className="w-full rounded-lg border border-slate-700 bg-slate-800/80 px-3 py-2 pr-10 text-xs text-white placeholder-slate-500 focus:border-cyan-500 focus:outline-none"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setShowPassword(!showPassword)}
+                          className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-200"
+                        >
+                          {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* SSH Specific Auth: Keys & Certs (Założenie 4) */}
+                {protocol === 'ssh' && (
+                  <div className="space-y-4">
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-300 mb-1.5">
+                        Metoda logowania SSH
+                      </label>
+                      <div className="grid grid-cols-3 gap-2">
+                        {(['password', 'key', 'certificate'] as SshAuthType[]).map((type) => (
+                          <button
+                            key={type}
+                            type="button"
+                            onClick={() => setSshAuthType(type)}
+                            className={`rounded-lg border py-2 text-center text-xs font-medium capitalize transition-all ${
+                              sshAuthType === type
+                                ? 'border-cyan-500 bg-cyan-500/10 text-white'
+                                : 'border-slate-800 bg-slate-800/40 text-slate-400 hover:border-slate-700'
+                            }`}
+                          >
+                            {type === 'password'
+                              ? 'Hasło'
+                              : type === 'key'
+                              ? 'Klucz prywatny'
+                              : 'Certyfikat SSH CA'}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    {sshAuthType !== 'password' && (
+                      <div className="space-y-4 rounded-xl border border-slate-800 bg-slate-950/40 p-4">
+                        {/* Hidden file input for web fallback */}
+                        <input
+                          ref={fileInputRef}
+                          type="file"
+                          onChange={handleFileInputChange}
+                          className="hidden"
+                        />
+
+                        {/* 1. Wybór źródła klucza */}
+                        <div>
+                          <div className="flex items-center justify-between mb-2">
+                            <label className="text-xs font-semibold text-slate-300 flex items-center gap-1.5">
+                              <FileKey className="h-3.5 w-3.5 text-cyan-400" />
+                              <span>Klucz prywatny SSH</span>
+                            </label>
+                            <div className="flex items-center rounded-lg bg-slate-900 border border-slate-800 p-0.5">
+                              <button
+                                type="button"
+                                onClick={() => setKeyInputMode('file')}
+                                className={`flex items-center gap-1.5 px-2.5 py-1 text-[11px] font-medium rounded-md transition-all ${
+                                  keyInputMode === 'file'
+                                    ? 'bg-cyan-600 text-white shadow-xs'
+                                    : 'text-slate-400 hover:text-slate-200'
+                                }`}
+                              >
+                                <FolderDown className="h-3 w-3" />
+                                <span>Wskaż plik z dysku</span>
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setKeyInputMode('text')}
+                                className={`flex items-center gap-1.5 px-2.5 py-1 text-[11px] font-medium rounded-md transition-all ${
+                                  keyInputMode === 'text'
+                                    ? 'bg-cyan-600 text-white shadow-xs'
+                                    : 'text-slate-400 hover:text-slate-200'
+                                }`}
+                              >
+                                <KeyRound className="h-3 w-3" />
+                                <span>Wklej treść klucza</span>
+                              </button>
+                            </div>
+                          </div>
+
+                          {keyInputMode === 'file' ? (
+                            <div className="space-y-2">
+                              <div className="flex gap-2">
+                                <input
+                                  type="text"
+                                  value={keyFilePath}
+                                  onChange={(e) => {
+                                    setKeyFilePath(e.target.value);
+                                    setKeyFileSuccess(null);
+                                  }}
+                                  placeholder="np. ~/.ssh/id_ed25519 lub C:\Users\user\.ssh\id_rsa"
+                                  className="flex-1 rounded-lg border border-slate-700 bg-slate-800/80 px-3 py-2 font-mono text-xs text-white placeholder-slate-500 focus:border-cyan-500 focus:outline-hidden"
+                                />
+                                <button
+                                  type="button"
+                                  onClick={handlePickKeyFile}
+                                  disabled={keyFileLoading}
+                                  className="inline-flex items-center gap-1.5 rounded-lg border border-cyan-500/50 bg-cyan-600/20 px-3.5 py-2 text-xs font-semibold text-cyan-300 hover:bg-cyan-600/30 hover:border-cyan-400 transition-all shrink-0 cursor-pointer"
+                                >
+                                  {keyFileLoading ? (
+                                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                  ) : (
+                                    <FolderOpen className="h-3.5 w-3.5" />
+                                  )}
+                                  <span>Przeglądaj...</span>
+                                </button>
+                              </div>
+
+                              {keyFileSuccess && (
+                                <div className="flex items-center gap-2 rounded-lg bg-emerald-500/10 border border-emerald-500/20 px-2.5 py-1.5 text-[11px] text-emerald-400">
+                                  <Check className="h-3.5 w-3.5 shrink-0" />
+                                  <span className="truncate">{keyFileSuccess}</span>
+                                </div>
+                              )}
+
+                              {privateKey && !keyFileSuccess && (
+                                <div className="flex items-center gap-2 rounded-lg bg-slate-800/60 border border-slate-700/60 px-2.5 py-1 text-[11px] text-slate-400">
+                                  <span>Zapisana treść klucza w sejfie: {privateKey.length} bajtów</span>
+                                </div>
+                              )}
+                            </div>
+                          ) : (
+                            <div className="space-y-1.5">
+                              <div className="flex items-center justify-between">
+                                <span className="text-[11px] text-slate-400">
+                                  Wklej treść klucza (OpenSSH / PEM / Ed25519)
+                                </span>
+                                <button
+                                  type="button"
+                                  onClick={handlePickKeyFile}
+                                  disabled={keyFileLoading}
+                                  className="inline-flex items-center gap-1 text-[11px] text-cyan-400 hover:text-cyan-300 cursor-pointer"
+                                >
+                                  <FolderDown className="h-3 w-3" />
+                                  <span>Załaduj z pliku...</span>
+                                </button>
+                              </div>
+                              <textarea
+                                rows={4}
+                                value={privateKey}
+                                onChange={(e) => {
+                                  setPrivateKey(e.target.value);
+                                  setKeyFileSuccess(null);
+                                }}
+                                placeholder="-----BEGIN OPENSSH PRIVATE KEY-----&#10;...&#10;-----END OPENSSH PRIVATE KEY-----"
+                                className="w-full rounded-lg border border-slate-700 bg-slate-800/80 px-3 py-2 font-mono text-[11px] text-white placeholder-slate-600 focus:border-cyan-500 focus:outline-hidden"
+                              />
+                            </div>
+                          )}
+                        </div>
+
+                        {/* 2. Hasło do klucza (Passphrase) */}
+                        <div className="pt-3 border-t border-slate-800/60 space-y-2.5">
+                          <div className="flex items-center justify-between">
+                            <label className="text-xs font-semibold text-slate-300">
+                              Hasło do klucza (Passphrase)
+                            </label>
+                            <span className="text-[11px] text-slate-500">
+                              Opcjonalne, jeśli klucz jest zabezpieczony hasłem
+                            </span>
+                          </div>
+
+                          {/* Wybór: Wprowadź od razu lub monituj przy łączeniu */}
+                          <div className="grid grid-cols-2 gap-2">
+                            <button
+                              type="button"
+                              onClick={() => setPromptKeyPassphrase(false)}
+                              className={`flex items-center gap-2.5 rounded-lg border p-2.5 text-left transition-all cursor-pointer ${
+                                !promptKeyPassphrase
+                                  ? 'border-cyan-500/60 bg-cyan-500/10 text-white shadow-xs'
+                                  : 'border-slate-800 bg-slate-900/40 text-slate-400 hover:border-slate-700'
+                              }`}
+                            >
+                              <KeyRound className="h-4 w-4 shrink-0 text-cyan-400" />
+                              <div>
+                                <div className="text-xs font-semibold">Wprowadź hasło od razu</div>
+                                <div className="text-[10px] text-slate-400">Zapisz zaszyfrowane w sejfie</div>
+                              </div>
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setPromptKeyPassphrase(true);
+                                setPassphrase('');
+                              }}
+                              className={`flex items-center gap-2.5 rounded-lg border p-2.5 text-left transition-all cursor-pointer ${
+                                promptKeyPassphrase
+                                  ? 'border-cyan-500/60 bg-cyan-500/10 text-white shadow-xs'
+                                  : 'border-slate-800 bg-slate-900/40 text-slate-400 hover:border-slate-700'
+                              }`}
+                            >
+                              <Shield className="h-4 w-4 shrink-0 text-amber-400" />
+                              <div>
+                                <div className="text-xs font-semibold">Monit przy połączeniu</div>
+                                <div className="text-[10px] text-slate-400">Pytaj o hasło przy próbie połączenia</div>
+                              </div>
+                            </button>
+                          </div>
+
+                          {!promptKeyPassphrase ? (
+                            <div className="relative mt-1">
+                              <input
+                                type={showPassphrase ? 'text' : 'password'}
+                                value={passphrase}
+                                onChange={(e) => setPassphrase(e.target.value)}
+                                placeholder={
+                                  editingConnection?.privateKeyPassphraseEncrypted
+                                    ? '•••••••••••• (Zapisane w sejfie — wpisz nowe aby zmienić)'
+                                    : 'Wprowadź passphrase do klucza...'
+                                }
+                                className="w-full rounded-lg border border-slate-700 bg-slate-800/80 px-3 py-2 pr-10 text-xs text-white placeholder-slate-500 focus:border-cyan-500 focus:outline-hidden"
+                              />
+                              <button
+                                type="button"
+                                onClick={() => setShowPassphrase(!showPassphrase)}
+                                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-200"
+                              >
+                                {showPassphrase ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                              </button>
+                            </div>
+                          ) : (
+                            <div className="rounded-lg bg-amber-500/10 border border-amber-500/20 p-2.5 text-xs text-amber-300 flex items-center gap-2">
+                              <Shield className="h-4 w-4 shrink-0 text-amber-400" />
+                              <span>
+                                Hasło nie będzie przechowywane w programie. Przed otwarciem sesji pojawi się okienko z prośbą o podanie passphrase.
+                              </span>
+                            </div>
+                          )}
+                        </div>
+
+                        {sshAuthType === 'certificate' && (
+                          <div className="pt-3 border-t border-slate-800/60">
+                            <label className="block text-xs font-semibold text-slate-300 mb-1">
+                              Certyfikat SSH (`id_ed25519-cert.pub`)
+                            </label>
+                            <textarea
+                              rows={2}
+                              value={certificateContent}
+                              onChange={(e) => setCertificateContent(e.target.value)}
+                              placeholder="ssh-ed25519-cert-v01@openssh.com AAAA..."
+                              className="w-full rounded-lg border border-slate-700 bg-slate-800/80 px-3 py-2 font-mono text-[11px] text-white placeholder-slate-600 focus:border-cyan-500 focus:outline-hidden"
+                            />
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* TAB: SSH TUNNELS / PORT FORWARDING (Założenie 4) */}
+            {activeTab === 'tunnels' && protocol === 'ssh' && (
+              <div className="space-y-4">
+                <div className="rounded-xl border border-slate-800 bg-slate-950/60 p-4 space-y-3">
+                  <div>
+                    <h3 className="text-xs font-bold text-white uppercase tracking-wider flex items-center gap-2">
+                      <ArrowRightLeft className="h-4 w-4 text-cyan-400" />
+                      Przekierowania Portów (Port Forwarding)
+                    </h3>
+                    <p className="mt-1 text-xs text-slate-400 leading-relaxed">
+                      Konfiguracja tuneli SSH: ruch lokalny do zdalnego (Local -L), ruch zdalny do lokalnego (Remote -R) oraz dynamiczny serwer proxy (Dynamic SOCKS5 -D).
+                    </p>
+                  </div>
+
+                  {/* Ergonomic button bar below description */}
+                  <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-slate-800/80">
+                    <button
+                      type="button"
+                      onClick={() => addPortForwardRule('local')}
+                      className="inline-flex items-center gap-1.5 rounded-lg border border-slate-700 bg-slate-800/90 px-3 py-1.5 text-xs font-medium text-slate-200 hover:border-cyan-500/50 hover:bg-slate-700 hover:text-white transition-all shadow-xs cursor-pointer"
+                    >
+                      <Plus className="h-3.5 w-3.5 text-emerald-400" />
+                      Dodaj Local (-L)
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => addPortForwardRule('remote')}
+                      className="inline-flex items-center gap-1.5 rounded-lg border border-slate-700 bg-slate-800/90 px-3 py-1.5 text-xs font-medium text-slate-200 hover:border-cyan-500/50 hover:bg-slate-700 hover:text-white transition-all shadow-xs cursor-pointer"
+                    >
+                      <Plus className="h-3.5 w-3.5 text-amber-400" />
+                      Dodaj Remote (-R)
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => addPortForwardRule('dynamic')}
+                      className="inline-flex items-center gap-1.5 rounded-lg border border-cyan-500/40 bg-cyan-600/20 px-3 py-1.5 text-xs font-medium text-cyan-300 hover:bg-cyan-600/30 hover:border-cyan-400 transition-all shadow-xs cursor-pointer"
+                    >
+                      <Plus className="h-3.5 w-3.5 text-cyan-400" />
+                      Dodaj Dynamic SOCKS5 (-D)
+                    </button>
+                  </div>
+                </div>
+
+                {portForwarding.length === 0 ? (
+                  <div className="rounded-xl border border-dashed border-slate-800 p-8 text-center text-xs text-slate-500">
+                    Brak skonfigurowanych przekierowań portów. Kliknij przycisk powyżej, aby dodać tunel.
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    {portForwarding.map((rule) => (
+                      <div
+                        key={rule.id}
+                        className="flex items-center gap-3 rounded-xl border border-slate-800 bg-slate-950/60 p-3"
+                      >
+                        {/* Enabled switch */}
+                        <input
+                          type="checkbox"
+                          checked={rule.enabled}
+                          onChange={(e) => updatePortForwardRule(rule.id, { enabled: e.target.checked })}
+                          className="h-4 w-4 rounded border-slate-700 bg-slate-800 text-cyan-500 focus:ring-0"
+                        />
+
+                        {/* Type badge */}
+                        <span
+                          className={`rounded px-2 py-0.5 text-[10px] font-bold font-mono uppercase ${
+                            rule.forwardType === 'local'
+                              ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
+                              : rule.forwardType === 'remote'
+                              ? 'bg-amber-500/10 text-amber-400 border border-amber-500/20'
+                              : 'bg-cyan-500/10 text-cyan-400 border border-cyan-500/20'
+                          }`}
+                        >
+                          {rule.forwardType === 'dynamic' ? 'Dynamic SOCKS5' : rule.forwardType}
+                        </span>
+
+                        {/* Local Port */}
+                        <div className="flex items-center gap-1">
+                          <span className="text-[11px] text-slate-400">Port lokalny:</span>
+                          <input
+                            type="number"
+                            value={rule.localPort}
+                            onChange={(e) => updatePortForwardRule(rule.id, { localPort: Number(e.target.value) })}
+                            className="w-20 rounded border border-slate-700 bg-slate-800 px-2 py-1 font-mono text-xs text-white"
+                          />
+                        </div>
+
+                        {/* Remote Destination (for local and remote) */}
+                        {rule.forwardType !== 'dynamic' && (
+                          <>
+                            <ArrowRightLeft className="h-3.5 w-3.5 text-slate-500" />
+                            <div className="flex items-center gap-1 flex-1">
+                              <span className="text-[11px] text-slate-400">Zdalny:</span>
+                              <input
+                                type="text"
+                                value={rule.remoteHost || '127.0.0.1'}
+                                onChange={(e) => updatePortForwardRule(rule.id, { remoteHost: e.target.value })}
+                                placeholder="127.0.0.1"
+                                className="flex-1 rounded border border-slate-700 bg-slate-800 px-2 py-1 font-mono text-xs text-white"
+                              />
+                              <span className="text-slate-500">:</span>
+                              <input
+                                type="number"
+                                value={rule.remotePort || 80}
+                                onChange={(e) => updatePortForwardRule(rule.id, { remotePort: Number(e.target.value) })}
+                                className="w-20 rounded border border-slate-700 bg-slate-800 px-2 py-1 font-mono text-xs text-white"
+                              />
+                            </div>
+                          </>
+                        )}
+
+                        {rule.forwardType === 'dynamic' && (
+                          <span className="flex-1 text-[11px] text-slate-500 italic">
+                            Lokalny serwer SOCKS5 proxy dla przeglądarki lub narzędzi
+                          </span>
+                        )}
+
+                        <button
+                          type="button"
+                          onClick={() => removePortForwardRule(rule.id)}
+                          className="flex h-7 w-7 items-center justify-center rounded text-slate-500 hover:bg-red-500/10 hover:text-red-400"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* TAB: RDP SETTINGS */}
+            {activeTab === 'rdp' && protocol === 'rdp' && (
+              <div className="space-y-4">
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-300">
+                      Szerokość (px)
+                    </label>
+                    <input
+                      type="number"
+                      value={rdpWidth}
+                      onChange={(e) => setRdpWidth(Number(e.target.value))}
+                      className="mt-1.5 w-full rounded-lg border border-slate-700 bg-slate-800/80 px-3 py-2 text-xs text-white focus:border-cyan-500 focus:outline-none"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-300">
+                      Wysokość (px)
+                    </label>
+                    <input
+                      type="number"
+                      value={rdpHeight}
+                      onChange={(e) => setRdpHeight(Number(e.target.value))}
+                      className="mt-1.5 w-full rounded-lg border border-slate-700 bg-slate-800/80 px-3 py-2 text-xs text-white focus:border-cyan-500 focus:outline-none"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-slate-300">
+                    Domena Windows (Active Directory / Workgroup)
+                  </label>
+                  <input
+                    type="text"
+                    value={rdpDomain}
+                    onChange={(e) => setRdpDomain(e.target.value)}
+                    placeholder="np. CORP lub DOMAIN"
+                    className="mt-1.5 w-full rounded-lg border border-slate-700 bg-slate-800/80 px-3 py-2 text-xs text-white placeholder-slate-500 focus:border-cyan-500 focus:outline-none"
+                  />
+                </div>
+
+                <div className="space-y-2 pt-2">
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={rdpClipboard}
+                      onChange={(e) => setRdpClipboard(e.target.checked)}
+                      className="h-4 w-4 rounded border-slate-700 bg-slate-800 text-cyan-500 focus:ring-0"
+                    />
+                    <span className="text-xs text-slate-300">
+                      Synchronizacja schowka (kopiuj / wklej)
+                    </span>
+                  </label>
+
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={rdpSound}
+                      onChange={(e) => setRdpSound(e.target.checked)}
+                      className="h-4 w-4 rounded border-slate-700 bg-slate-800 text-cyan-500 focus:ring-0"
+                    />
+                    <span className="text-xs text-slate-300">
+                      Przesyłanie dźwięku z pulpitu zdalnego
+                    </span>
+                  </label>
+                </div>
+              </div>
+            )}
+
+            {/* TAB: NOTES & TAGS */}
+            {activeTab === 'notes' && (
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-300">
+                    Tagi (rozdzielane przecinkami)
+                  </label>
+                  <input
+                    type="text"
+                    value={tagsInput}
+                    onChange={(e) => setTagsInput(e.target.value)}
+                    placeholder="web, staging, nginx, k8s, dmz"
+                    className="mt-1.5 w-full rounded-lg border border-slate-700 bg-slate-800/80 px-3 py-2 text-xs text-white placeholder-slate-500 focus:border-cyan-500 focus:outline-none"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-slate-300">
+                    Notatki administracyjne
+                  </label>
+                  <textarea
+                    rows={6}
+                    value={notes}
+                    onChange={(e) => setNotes(e.target.value)}
+                    placeholder="Wprowadź instrukcje, procedury serwisowe, dane kontaktowe..."
+                    className="mt-1.5 w-full rounded-lg border border-slate-700 bg-slate-800/80 px-3 py-2 text-xs text-white placeholder-slate-500 focus:border-cyan-500 focus:outline-none"
+                  />
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Modal Footer */}
+          <div className="flex items-center justify-between border-t border-slate-800 bg-slate-900 px-6 py-3">
+            <span className="text-[11px] text-slate-500">
+              {editingConnection ? `ID: ${editingConnection.id}` : 'Nowy wpis w bazie'}
+            </span>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={onClose}
+                className="rounded-lg border border-slate-700 px-4 py-2 text-xs font-medium text-slate-300 hover:bg-slate-800 transition-colors"
+              >
+                Anuluj
+              </button>
+              <button
+                type="submit"
+                disabled={saving}
+                className="flex items-center gap-1.5 rounded-lg bg-gradient-to-r from-cyan-600 to-blue-600 px-5 py-2 text-xs font-semibold text-white shadow-md shadow-cyan-600/25 hover:opacity-95 disabled:opacity-50 transition-all"
+              >
+                {saving && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+                Zapisz połączenie
+              </button>
+            </div>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+};

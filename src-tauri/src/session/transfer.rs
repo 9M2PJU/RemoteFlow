@@ -1,0 +1,674 @@
+//! Two-pane SFTP file manager backend (local ⇄ remote).
+//!
+//! * Browsing operations (list, mkdir, delete, search) reuse a cached SFTP session per
+//!   connection, so navigating directories does not open a new SSH connection every time.
+//!   Idle sessions are closed after a few minutes; a dead session is re-established once.
+//! * Transfers (upload / download of many files and folders) use their own SSH connection, so
+//!   browsing stays responsive during a long copy. Progress is reported to the UI with the
+//!   `sftp-transfer-progress` event.
+
+use crate::session::sftp::SftpFileEntry;
+use crate::session::ssh::SshConnectionConfig;
+use serde::Serialize;
+use std::collections::HashMap;
+use std::fs::File;
+use std::path::{Path, PathBuf};
+use std::sync::{Arc, LazyLock, Mutex};
+use std::time::{Duration, Instant};
+
+const POOL_IDLE_TIMEOUT: Duration = Duration::from_secs(5 * 60);
+const MAX_DEPTH: u32 = 32;
+const SEARCH_MAX_RESULTS: usize = 500;
+const SEARCH_MAX_DIRS: usize = 20_000;
+const SEARCH_MAX_DEPTH: u32 = 12;
+
+// ---------------------------------------------------------------------------------------------
+// Cached browsing sessions
+// ---------------------------------------------------------------------------------------------
+
+struct Pooled {
+    _sess: ssh2::Session,
+    sftp: ssh2::Sftp,
+    last_used: Instant,
+}
+
+type Slot = Arc<Mutex<Option<Pooled>>>;
+static POOL: LazyLock<Mutex<HashMap<String, Slot>>> = LazyLock::new(|| Mutex::new(HashMap::new()));
+
+fn slot_for(key: &str) -> Slot {
+    let mut pool = POOL.lock().unwrap_or_else(|p| p.into_inner());
+    // Close idle sessions of other connections (only if nobody is using them right now).
+    pool.retain(|k, slot| {
+        if k == key {
+            return true;
+        }
+        match slot.try_lock() {
+            Ok(mut guard) => {
+                if guard.as_ref().map(|p| p.last_used.elapsed() > POOL_IDLE_TIMEOUT).unwrap_or(true) {
+                    *guard = None;
+                    false
+                } else {
+                    true
+                }
+            }
+            Err(_) => true,
+        }
+    });
+    pool.entry(key.to_string()).or_default().clone()
+}
+
+/// Drops the cached session of a connection (e.g. when the SFTP window is closed).
+pub fn release_pooled(key: &str) {
+    let mut pool = POOL.lock().unwrap_or_else(|p| p.into_inner());
+    pool.remove(key);
+}
+
+/// Runs `op` on a cached SFTP session for `key`, reconnecting once if the session died.
+pub fn with_pooled_sftp<T>(
+    key: &str,
+    config: &SshConnectionConfig,
+    op: impl Fn(&ssh2::Sftp) -> Result<T, String>,
+) -> Result<T, String> {
+    let slot = slot_for(key);
+    let mut guard = slot.lock().unwrap_or_else(|p| p.into_inner());
+    for attempt in 0..2 {
+        if guard.as_ref().map(|p| p.last_used.elapsed() > POOL_IDLE_TIMEOUT).unwrap_or(false) {
+            *guard = None;
+        }
+        if guard.is_none() {
+            let (sess, sftp) = crate::session::sftp::sftp_connect(config)?;
+            *guard = Some(Pooled { _sess: sess, sftp, last_used: Instant::now() });
+        }
+        let pooled = guard.as_mut().expect("just set");
+        match op(&pooled.sftp) {
+            Ok(v) => {
+                pooled.last_used = Instant::now();
+                return Ok(v);
+            }
+            Err(e) => {
+                // Distinguish "operation failed" from "connection is gone".
+                let alive = pooled.sftp.realpath(Path::new(".")).is_ok();
+                if alive || attempt == 1 {
+                    pooled.last_used = Instant::now();
+                    return Err(e);
+                }
+                *guard = None;
+            }
+        }
+    }
+    unreachable!("loop returns on the second attempt")
+}
+
+// ---------------------------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------------------------
+
+fn remote_entry(path: &Path, stat: &ssh2::FileStat) -> Option<SftpFileEntry> {
+    let name = path.file_name()?.to_str()?.to_string();
+    if name == "." || name == ".." {
+        return None;
+    }
+    Some(SftpFileEntry {
+        name,
+        path: path.to_string_lossy().to_string(),
+        is_dir: stat.is_dir(),
+        size: stat.size.unwrap_or(0),
+        modified: stat.mtime.unwrap_or(0),
+        permissions: stat.perm.unwrap_or(0),
+    })
+}
+
+fn is_remote_symlink(stat: &ssh2::FileStat) -> bool {
+    stat.file_type() == ssh2::FileType::Symlink
+}
+
+fn local_entry(path: &Path) -> Option<SftpFileEntry> {
+    let meta = std::fs::symlink_metadata(path).ok()?;
+    if meta.file_type().is_symlink() {
+        return None;
+    }
+    let name = path.file_name()?.to_string_lossy().to_string();
+    Some(SftpFileEntry {
+        name,
+        path: display_path(path),
+        is_dir: meta.is_dir(),
+        size: if meta.is_dir() { 0 } else { meta.len() },
+        modified: meta
+            .modified()
+            .ok()
+            .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+            .map(|d| d.as_secs())
+            .unwrap_or(0),
+        permissions: 0,
+    })
+}
+
+/// Path for display / round-tripping to the UI: strips the Windows verbatim prefix (`\\?\`)
+/// that `canonicalize()` adds.
+pub fn display_path(p: &Path) -> String {
+    let s = p.to_string_lossy().to_string();
+    if let Some(rest) = s.strip_prefix(r"\\?\UNC\") {
+        format!(r"\\{}", rest)
+    } else if let Some(rest) = s.strip_prefix(r"\\?\") {
+        rest.to_string()
+    } else {
+        s
+    }
+}
+
+/// A single file/folder name coming from the UI or from the remote server must not contain
+/// path separators or be "." / "..".
+pub fn sanitize_name(name: &str) -> Result<String, String> {
+    let n = name.trim();
+    if n.is_empty()
+        || n == "."
+        || n == ".."
+        || n.contains('/')
+        || n.contains('\\')
+        || n.chars().any(|c| c.is_control())
+    {
+        return Err(format!("Niedozwolona nazwa: '{}'", name));
+    }
+    #[cfg(target_os = "windows")]
+    if n.chars().any(|c| matches!(c, '<' | '>' | ':' | '"' | '|' | '?' | '*')) {
+        return Err(format!("Nazwa zawiera znaki niedozwolone w Windows: '{}'", name));
+    }
+    Ok(n.to_string())
+}
+
+fn remote_join(dir: &str, name: &str) -> PathBuf {
+    let base = if dir.is_empty() { "." } else { dir };
+    Path::new(base).join(name)
+}
+
+// ---------------------------------------------------------------------------------------------
+// Browsing / searching
+// ---------------------------------------------------------------------------------------------
+
+pub fn remote_list(sftp: &ssh2::Sftp, remote_path: &str) -> Result<(String, Vec<SftpFileEntry>), String> {
+    let target = if remote_path.is_empty() || remote_path == "." || remote_path == "~" {
+        sftp.realpath(Path::new(".")).unwrap_or_else(|_| PathBuf::from("/"))
+    } else {
+        PathBuf::from(remote_path)
+    };
+    let current = target.to_string_lossy().to_string();
+    let entries = sftp
+        .readdir(&target)
+        .map_err(|e| format!("Błąd odczytu katalogu '{}': {}", current, e))?;
+    let mut result: Vec<SftpFileEntry> = entries.iter().filter_map(|(p, st)| remote_entry(p, st)).collect();
+    result.sort_by(|a, b| b.is_dir.cmp(&a.is_dir).then_with(|| a.name.to_lowercase().cmp(&b.name.to_lowercase())));
+    Ok((current, result))
+}
+
+pub fn remote_delete(sftp: &ssh2::Sftp, remote_path: &str) -> Result<(), String> {
+    let p = Path::new(remote_path);
+    let stat = sftp.lstat(p).map_err(|e| format!("Nie można odczytać '{}': {}", remote_path, e))?;
+    if stat.is_dir() && !is_remote_symlink(&stat) {
+        delete_remote_dir(sftp, p, 0)
+    } else {
+        sftp.unlink(p).map_err(|e| format!("Błąd usuwania '{}': {}", remote_path, e))
+    }
+}
+
+fn delete_remote_dir(sftp: &ssh2::Sftp, dir: &Path, depth: u32) -> Result<(), String> {
+    if depth > MAX_DEPTH {
+        return Err(format!("Zbyt głębokie zagnieżdżenie: {}", dir.display()));
+    }
+    let entries = sftp.readdir(dir).map_err(|e| format!("Błąd odczytu '{}': {}", dir.display(), e))?;
+    for (path, stat) in entries {
+        let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
+        if name == "." || name == ".." {
+            continue;
+        }
+        if stat.is_dir() && !is_remote_symlink(&stat) {
+            delete_remote_dir(sftp, &path, depth + 1)?;
+        } else {
+            sftp.unlink(&path).map_err(|e| format!("Błąd usuwania '{}': {}", path.display(), e))?;
+        }
+    }
+    sftp.rmdir(dir).map_err(|e| format!("Błąd usuwania katalogu '{}': {}", dir.display(), e))
+}
+
+pub fn remote_mkdir(sftp: &ssh2::Sftp, parent: &str, name: &str) -> Result<String, String> {
+    let name = sanitize_name(name)?;
+    let target = remote_join(parent, &name);
+    sftp.mkdir(&target, 0o755)
+        .map_err(|e| format!("Błąd tworzenia katalogu '{}': {}", target.display(), e))?;
+    Ok(target.to_string_lossy().to_string())
+}
+
+pub fn local_mkdir(parent: &str, name: &str) -> Result<String, String> {
+    let name = sanitize_name(name)?;
+    let base = if parent.trim().is_empty() {
+        dirs::home_dir().ok_or("Brak katalogu domowego")?
+    } else {
+        PathBuf::from(parent)
+    };
+    let target = base.join(name);
+    if target.exists() {
+        return Err(format!("'{}' już istnieje", display_path(&target)));
+    }
+    std::fs::create_dir(&target).map_err(|e| format!("Błąd tworzenia katalogu '{}': {}", display_path(&target), e))?;
+    Ok(display_path(&target))
+}
+
+pub fn remote_search(sftp: &ssh2::Sftp, root: &str, query: &str) -> Result<Vec<SftpFileEntry>, String> {
+    let q = query.trim().to_lowercase();
+    if q.is_empty() {
+        return Ok(Vec::new());
+    }
+    let root_path = if root.is_empty() {
+        sftp.realpath(Path::new(".")).unwrap_or_else(|_| PathBuf::from("/"))
+    } else {
+        PathBuf::from(root)
+    };
+    let mut results = Vec::new();
+    let mut queue = std::collections::VecDeque::from([(root_path, 0u32)]);
+    let mut visited = 0usize;
+    while let Some((dir, depth)) = queue.pop_front() {
+        visited += 1;
+        if visited > SEARCH_MAX_DIRS || results.len() >= SEARCH_MAX_RESULTS {
+            break;
+        }
+        let Ok(entries) = sftp.readdir(&dir) else { continue };
+        for (path, stat) in entries {
+            if is_remote_symlink(&stat) {
+                continue;
+            }
+            let Some(entry) = remote_entry(&path, &stat) else { continue };
+            if entry.is_dir && depth < SEARCH_MAX_DEPTH {
+                queue.push_back((path.clone(), depth + 1));
+            }
+            if entry.name.to_lowercase().contains(&q) {
+                results.push(entry);
+                if results.len() >= SEARCH_MAX_RESULTS {
+                    break;
+                }
+            }
+        }
+    }
+    Ok(results)
+}
+
+pub fn local_search(root: &str, query: &str) -> Result<Vec<SftpFileEntry>, String> {
+    let q = query.trim().to_lowercase();
+    if q.is_empty() {
+        return Ok(Vec::new());
+    }
+    let root_path = if root.trim().is_empty() {
+        dirs::home_dir().ok_or("Brak katalogu domowego")?
+    } else {
+        PathBuf::from(root)
+    };
+    let mut results = Vec::new();
+    let mut queue = std::collections::VecDeque::from([(root_path, 0u32)]);
+    let mut visited = 0usize;
+    while let Some((dir, depth)) = queue.pop_front() {
+        visited += 1;
+        if visited > SEARCH_MAX_DIRS || results.len() >= SEARCH_MAX_RESULTS {
+            break;
+        }
+        let Ok(rd) = std::fs::read_dir(&dir) else { continue };
+        for item in rd.flatten() {
+            let path = item.path();
+            let Some(entry) = local_entry(&path) else { continue };
+            if entry.is_dir && depth < SEARCH_MAX_DEPTH {
+                queue.push_back((path.clone(), depth + 1));
+            }
+            if entry.name.to_lowercase().contains(&q) {
+                results.push(entry);
+                if results.len() >= SEARCH_MAX_RESULTS {
+                    break;
+                }
+            }
+        }
+    }
+    Ok(results)
+}
+
+// ---------------------------------------------------------------------------------------------
+// Transfers
+// ---------------------------------------------------------------------------------------------
+
+#[derive(Debug, Default, Clone, Serialize)]
+pub struct TransferSummary {
+    pub files: u32,
+    pub folders: u32,
+    pub bytes: u64,
+    pub failed: u32,
+    /// First few error messages (for the UI).
+    pub errors: Vec<String>,
+}
+
+impl TransferSummary {
+    fn fail(&mut self, msg: String) {
+        self.failed += 1;
+        if self.errors.len() < 5 {
+            self.errors.push(msg);
+        }
+    }
+}
+
+/// Progress callback: (files done, name of the item being transferred).
+pub type Progress<'a> = &'a mut dyn FnMut(u32, &str);
+
+fn copy_with_progress(
+    reader: &mut dyn std::io::Read,
+    writer: &mut dyn std::io::Write,
+) -> std::io::Result<u64> {
+    let mut buf = vec![0u8; 256 * 1024];
+    let mut total = 0u64;
+    loop {
+        let n = reader.read(&mut buf)?;
+        if n == 0 {
+            break;
+        }
+        writer.write_all(&buf[..n])?;
+        total += n as u64;
+    }
+    writer.flush()?;
+    Ok(total)
+}
+
+fn upload_one(
+    sftp: &ssh2::Sftp,
+    local: &Path,
+    remote_dir: &Path,
+    depth: u32,
+    sum: &mut TransferSummary,
+    progress: Progress,
+) {
+    if depth > MAX_DEPTH {
+        sum.fail(format!("Zbyt głębokie zagnieżdżenie: {}", display_path(local)));
+        return;
+    }
+    let Ok(meta) = std::fs::symlink_metadata(local) else {
+        sum.fail(format!("Nie można odczytać: {}", display_path(local)));
+        return;
+    };
+    if meta.file_type().is_symlink() {
+        return; // links are skipped (could point outside the selection / create loops)
+    }
+    let name = match local.file_name() {
+        Some(n) => n.to_string_lossy().to_string(),
+        None => {
+            sum.fail(format!("Nieprawidłowa ścieżka: {}", display_path(local)));
+            return;
+        }
+    };
+    let target = remote_dir.join(&name);
+
+    if meta.is_dir() {
+        if sftp.stat(&target).map(|s| s.is_dir()).unwrap_or(false) || sftp.mkdir(&target, 0o755).is_ok() {
+            sum.folders += 1;
+        } else {
+            sum.fail(format!("Nie można utworzyć katalogu zdalnego {}", target.display()));
+            return;
+        }
+        match std::fs::read_dir(local) {
+            Ok(rd) => {
+                for item in rd.flatten() {
+                    upload_one(sftp, &item.path(), &target, depth + 1, sum, progress);
+                }
+            }
+            Err(e) => sum.fail(format!("Błąd odczytu katalogu {}: {}", display_path(local), e)),
+        }
+    } else if meta.is_file() {
+        progress(sum.files, &name);
+        let result = File::open(local)
+            .map_err(|e| format!("Błąd otwierania {}: {}", display_path(local), e))
+            .and_then(|mut src| {
+                let mut dst = sftp
+                    .create(&target)
+                    .map_err(|e| format!("Błąd tworzenia pliku zdalnego {}: {}", target.display(), e))?;
+                copy_with_progress(&mut src, &mut dst).map_err(|e| format!("Błąd przesyłania {}: {}", name, e))
+            });
+        match result {
+            Ok(n) => {
+                sum.files += 1;
+                sum.bytes += n;
+            }
+            Err(e) => sum.fail(e),
+        }
+    }
+}
+
+pub fn upload_paths(
+    config: &SshConnectionConfig,
+    local_paths: &[String],
+    remote_dir: &str,
+    progress: Progress,
+) -> Result<TransferSummary, String> {
+    let (_sess, sftp) = crate::session::sftp::sftp_connect(config)?;
+    let remote_dir = if remote_dir.is_empty() || remote_dir == "~" {
+        sftp.realpath(Path::new(".")).unwrap_or_else(|_| PathBuf::from("/"))
+    } else {
+        PathBuf::from(remote_dir)
+    };
+    let mut sum = TransferSummary::default();
+    for lp in local_paths {
+        upload_one(&sftp, Path::new(lp), &remote_dir, 0, &mut sum, progress);
+    }
+    Ok(sum)
+}
+
+fn download_one(
+    sftp: &ssh2::Sftp,
+    remote: &Path,
+    stat: &ssh2::FileStat,
+    local_dir: &Path,
+    depth: u32,
+    sum: &mut TransferSummary,
+    progress: Progress,
+) {
+    if depth > MAX_DEPTH {
+        sum.fail(format!("Zbyt głębokie zagnieżdżenie: {}", remote.display()));
+        return;
+    }
+    if is_remote_symlink(stat) {
+        return;
+    }
+    let raw_name = remote.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
+    // Names come from the server – never let them escape the target folder.
+    let name = match sanitize_name(&raw_name) {
+        Ok(n) => n,
+        Err(e) => {
+            sum.fail(e);
+            return;
+        }
+    };
+    let target = local_dir.join(&name);
+
+    if stat.is_dir() {
+        if let Err(e) = std::fs::create_dir_all(&target) {
+            sum.fail(format!("Nie można utworzyć katalogu {}: {}", display_path(&target), e));
+            return;
+        }
+        sum.folders += 1;
+        match sftp.readdir(remote) {
+            Ok(entries) => {
+                for (path, child_stat) in entries {
+                    let child_name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
+                    if child_name == "." || child_name == ".." {
+                        continue;
+                    }
+                    download_one(sftp, &path, &child_stat, &target, depth + 1, sum, progress);
+                }
+            }
+            Err(e) => sum.fail(format!("Błąd odczytu katalogu zdalnego {}: {}", remote.display(), e)),
+        }
+    } else {
+        progress(sum.files, &name);
+        let result = sftp
+            .open(remote)
+            .map_err(|e| format!("Nie można otworzyć {}: {}", remote.display(), e))
+            .and_then(|mut src| {
+                let mut dst = File::create(&target)
+                    .map_err(|e| format!("Błąd tworzenia pliku {}: {}", display_path(&target), e))?;
+                copy_with_progress(&mut src, &mut dst).map_err(|e| format!("Błąd pobierania {}: {}", name, e))
+            });
+        match result {
+            Ok(n) => {
+                sum.files += 1;
+                sum.bytes += n;
+            }
+            Err(e) => sum.fail(e),
+        }
+    }
+}
+
+pub fn download_paths(
+    config: &SshConnectionConfig,
+    remote_paths: &[String],
+    local_dir: &str,
+    progress: Progress,
+) -> Result<TransferSummary, String> {
+    let local_dir = if local_dir.trim().is_empty() {
+        dirs::download_dir().or_else(dirs::home_dir).ok_or("Brak katalogu docelowego")?
+    } else {
+        PathBuf::from(local_dir)
+    };
+    if !local_dir.is_dir() {
+        return Err(format!("Katalog docelowy nie istnieje: {}", display_path(&local_dir)));
+    }
+    let (_sess, sftp) = crate::session::sftp::sftp_connect(config)?;
+    let mut sum = TransferSummary::default();
+    for rp in remote_paths {
+        let p = Path::new(rp);
+        match sftp.lstat(p) {
+            Ok(stat) => download_one(&sftp, p, &stat, &local_dir, 0, &mut sum, progress),
+            Err(e) => sum.fail(format!("Nie można odczytać {}: {}", rp, e)),
+        }
+    }
+    Ok(sum)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn names_are_sanitised() {
+        assert!(sanitize_name("raport.pdf").is_ok());
+        assert!(sanitize_name("zażółć").is_ok());
+        assert!(sanitize_name("..").is_err());
+        assert!(sanitize_name("a/b").is_err());
+        assert!(sanitize_name("a\\b").is_err());
+        assert!(sanitize_name("").is_err());
+    }
+
+    #[test]
+    fn verbatim_prefix_is_removed() {
+        assert_eq!(display_path(Path::new(r"\\?\C:\Users\jan")), r"C:\Users\jan");
+        assert_eq!(display_path(Path::new(r"\\?\UNC\srv\share")), r"\\srv\share");
+        assert_eq!(display_path(Path::new("/home/jan")), "/home/jan");
+    }
+
+    #[test]
+    fn local_mkdir_and_search() {
+        let base = std::env::temp_dir().join(format!("rf-transfer-test-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&base);
+        std::fs::create_dir_all(base.join("a").join("b")).unwrap();
+        std::fs::write(base.join("a").join("b").join("Raport-2026.txt"), "x").unwrap();
+        let created = local_mkdir(base.to_str().unwrap(), "Nowy katalog").unwrap();
+        assert!(Path::new(&created).is_dir());
+        assert!(local_mkdir(base.to_str().unwrap(), "Nowy katalog").is_err());
+        assert!(local_mkdir(base.to_str().unwrap(), "../x").is_err());
+        let found = local_search(base.to_str().unwrap(), "raport").unwrap();
+        assert_eq!(found.len(), 1);
+        assert!(!found[0].is_dir);
+        let _ = std::fs::remove_dir_all(&base);
+    }
+}
+
+/// End-to-end test against a local sshd (127.0.0.1:2222, user rftest / Test-Pass-123).
+#[cfg(test)]
+mod sftp_e2e {
+    use super::*;
+    use crate::session::ssh::HostKeyVerifier;
+    use crate::vault::known_hosts::HostTrust;
+
+    fn config() -> SshConnectionConfig {
+        SshConnectionConfig {
+            host: "127.0.0.1".into(),
+            port: 2222,
+            username: "rftest".into(),
+            password: Some("Test-Pass-123".into()),
+            private_key: None,
+            passphrase: None,
+            host_key_verifier: HostKeyVerifier(Arc::new(|_| Ok(HostTrust::Known))),
+        }
+    }
+
+    #[test]
+    #[ignore]
+    fn upload_search_download_delete() {
+        let cfg = config();
+        let base = std::env::temp_dir().join(format!("rf-e2e-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&base);
+        let src = base.join("src");
+        std::fs::create_dir_all(src.join("projekt").join(".git")).unwrap();
+        std::fs::write(src.join("projekt").join(".git").join("HEAD"), "ref").unwrap();
+        std::fs::write(src.join("projekt").join("zażółć.txt"), vec![7u8; 700_000]).unwrap();
+        std::fs::write(src.join("pojedynczy.bin"), b"abc").unwrap();
+
+        // remote working folder
+        let remote_root = with_pooled_sftp("k", &cfg, |sftp| {
+            let home = sftp.realpath(Path::new(".")).unwrap();
+            let _ = remote_delete(sftp, &home.join("e2e").to_string_lossy());
+            remote_mkdir(sftp, &home.to_string_lossy(), "e2e")
+        })
+        .unwrap();
+
+        let mut events = 0;
+        let mut progress = |_: u32, _: &str| events += 1;
+        let up = upload_paths(
+            &cfg,
+            &[
+                src.join("projekt").to_string_lossy().to_string(),
+                src.join("pojedynczy.bin").to_string_lossy().to_string(),
+            ],
+            &remote_root,
+            &mut progress,
+        )
+        .unwrap();
+        assert_eq!(up.failed, 0, "{:?}", up.errors);
+        assert_eq!(up.files, 3, ".git content is no longer skipped");
+        assert_eq!(up.bytes, 700_000 + 3 + 3);
+        assert!(events >= 3);
+
+        let (_, listing) = with_pooled_sftp("k", &cfg, |sftp| remote_list(sftp, &remote_root)).unwrap();
+        let names: Vec<_> = listing.iter().map(|e| e.name.as_str()).collect();
+        assert_eq!(names, vec!["projekt", "pojedynczy.bin"], "dirs first");
+
+        let found = with_pooled_sftp("k", &cfg, |sftp| remote_search(sftp, &remote_root, "ZAŻÓŁĆ")).unwrap();
+        assert_eq!(found.len(), 1);
+
+        let dst = base.join("dst");
+        std::fs::create_dir_all(&dst).unwrap();
+        let down = download_paths(
+            &cfg,
+            &[format!("{}/projekt", remote_root), format!("{}/pojedynczy.bin", remote_root)],
+            dst.to_str().unwrap(),
+            &mut |_, _| {},
+        )
+        .unwrap();
+        assert_eq!(down.failed, 0, "{:?}", down.errors);
+        assert_eq!(down.files, 3);
+        assert_eq!(std::fs::read(dst.join("projekt").join("zażółć.txt")).unwrap().len(), 700_000);
+        assert_eq!(std::fs::read(dst.join("pojedynczy.bin")).unwrap(), b"abc");
+
+        // pooled session survives and is reused; delete recursively
+        let n = with_pooled_sftp("k", &cfg, |sftp| {
+            remote_delete(sftp, &format!("{}/projekt", remote_root))?;
+            Ok(remote_list(sftp, &remote_root)?.1.len())
+        })
+        .unwrap();
+        assert_eq!(n, 1);
+        assert!(with_pooled_sftp("k", &cfg, |sftp| remote_mkdir(sftp, &remote_root, "../evil")).is_err());
+
+        with_pooled_sftp("k", &cfg, |sftp| remote_delete(sftp, &remote_root)).unwrap();
+        release_pooled("k");
+        let _ = std::fs::remove_dir_all(&base);
+    }
+}

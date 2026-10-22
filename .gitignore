@@ -1,0 +1,47 @@
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+node_modules
+dist
+dist-ssr
+*.local
+
+# Editor directories and files
+.vscode/*
+!.vscode/extensions.json
+.idea
+.DS_Store
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# Rust & Tauri artifacts
+src-tauri/target/
+src-tauri/gen/schemas/
+
+# Binaries & distribution folders
+dist/
+dist-linux/
+dist-windows/
+remoteflow.exe
+remoteflow-linux
+*.exe
+
+# Sensitive local database & backups
+vault.json
+vault*.json
+*.bak
+*.bak*
+
+# Environment files
+.env
+.env.*
+!.env.example

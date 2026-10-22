@@ -1,0 +1,671 @@
+import React, { useEffect, useRef, useState, useCallback } from 'react';
+import { Terminal } from '@xterm/xterm';
+import { FitAddon } from '@xterm/addon-fit';
+import { listen } from '@tauri-apps/api/event';
+import {
+  FolderUp,
+  ClipboardPaste,
+  Copy,
+  Check,
+  Upload,
+  Eraser,
+  Loader2,
+  ArrowRightLeft,
+} from 'lucide-react';
+import { api, isTauri } from '../../services/api';
+import { SessionInfo } from '../../types';
+import { SftpManager } from './SftpManager';
+
+interface Props {
+  session: SessionInfo;
+  isActive: boolean;
+  /** True when the workspace is split into several panes: the SFTP manager then fills the whole pane. */
+  splitLayout?: boolean;
+}
+
+export const SshTerminal: React.FC<Props> = ({ session, isActive, splitLayout = false }) => {
+  const containerRef = useRef<HTMLDivElement>(null);
+  // xterm is mounted in a padding-free inner element: FitAddon measures the parent's CSS height
+  // (border-box with Tailwind) but only subtracts the terminal's own padding, so a padded parent
+  // made the terminal ~16 px taller/wider than the visible area (last line cut off).
+  const termHostRef = useRef<HTMLDivElement>(null);
+  const termRef = useRef<Terminal | null>(null);
+  const fitAddonRef = useRef<FitAddon | null>(null);
+
+  const [isSftpOpen, setIsSftpOpen] = useState(false);
+  const [feedback, setFeedback] = useState<string | null>(null);
+  const [isDragOver, setIsDragOver] = useState(false);
+  const [isUploading, setIsUploading] = useState(false);
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  const showNotification = useCallback((msg: string) => {
+    setFeedback(msg);
+    setTimeout(() => setFeedback(null), 2500);
+  }, []);
+
+  const triggerFitAndResize = useCallback(() => {
+    if (!fitAddonRef.current || !termRef.current || !containerRef.current) return;
+    const { offsetWidth, offsetHeight } = containerRef.current;
+    if (offsetWidth === 0 || offsetHeight === 0) return;
+    try {
+      const term = termRef.current;
+      fitAddonRef.current.fit();
+
+      // With fractional display scaling (e.g. 2K monitor at 125%/150% on Windows) the rows are
+      // rounded to whole device pixels and the real terminal height can exceed the space computed
+      // by FitAddon by a few pixels – the last line was cut off. Shrink until it really fits.
+      const host = termHostRef.current ?? containerRef.current;
+      const style = window.getComputedStyle(host);
+      const availH = host.clientHeight - parseFloat(style.paddingTop) - parseFloat(style.paddingBottom);
+      const availW = host.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight);
+      const screen = term.element?.querySelector('.xterm-screen') as HTMLElement | null;
+      for (let i = 0; screen && i < 3; i++) {
+        const rect = screen.getBoundingClientRect();
+        const tooTall = rect.height > availH + 0.5 && term.rows > 2;
+        const tooWide = rect.width > availW + 0.5 && term.cols > 10;
+        if (!tooTall && !tooWide) break;
+        term.resize(tooWide ? term.cols - 1 : term.cols, tooTall ? term.rows - 1 : term.rows);
+      }
+
+      const cols = term.cols;
+      const rows = term.rows;
+      if (cols > 0 && rows > 0) {
+        api.resizeSession(session.sessionId, cols, rows);
+      }
+    } catch {
+      // Ignore fit error when container is hidden
+    }
+  }, [session.sessionId]);
+
+  // Paste text or files/folders into active terminal session
+  const pasteInProgressRef = useRef(false);
+  const handlePasteClipboard = useCallback(async () => {
+    // Guard against overlapping pastes (e.g. shortcut + toolbar button in quick succession)
+    if (pasteInProgressRef.current) return;
+    pasteInProgressRef.current = true;
+    try {
+      // Check if files/directories were copied in the OS file manager
+      const clipFiles = await api.clipboardReadFiles();
+      if (clipFiles.length > 0) {
+        setIsUploading(true);
+        showNotification(`Przesyłanie ${clipFiles.length} elementów ze schowka przez SFTP...`);
+        try {
+          const count = await api.sftpUploadPaths(session.connectionId, '.', clipFiles);
+          showNotification(`Przesłano ze schowka ${count} plików do katalogu domowego`);
+        } catch (err: any) {
+          showNotification(`Błąd przesyłania: ${err?.message || err}`);
+        } finally {
+          setIsUploading(false);
+        }
+        return;
+      }
+
+      const text = await api.clipboardReadText();
+      if (text) {
+        api.sendInput(session.sessionId, text);
+        showNotification('Wklejono tekst ze schowka');
+      }
+    } catch (err) {
+      console.warn('Błąd odczytu schowka:', err);
+    } finally {
+      pasteInProgressRef.current = false;
+    }
+  }, [session.sessionId, session.connectionId, showNotification]);
+
+  // Copy selected text to clipboard
+  const handleCopySelection = useCallback(async () => {
+    const term = termRef.current;
+    if (!term) return;
+    const selection = term.getSelection();
+    if (selection) {
+      try {
+        await api.clipboardWriteText(selection);
+        showNotification('Skopiowano zaznaczenie do schowka');
+      } catch (err) {
+        console.warn('Błąd zapisu do schowka:', err);
+      }
+    }
+  }, [showNotification]);
+
+  const handlePasteClipboardRef = useRef(handlePasteClipboard);
+  handlePasteClipboardRef.current = handlePasteClipboard;
+
+  const showNotificationRef = useRef(showNotification);
+  showNotificationRef.current = showNotification;
+
+  // Refit whenever the terminal area changes size (split panes, side panels, tab switch) and once
+  // the web fonts are ready – cell metrics can change after the first fit, especially on Windows.
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+    let frame = 0;
+    const schedule = () => {
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(() => triggerFitAndResize());
+    };
+    const observer = new ResizeObserver(schedule);
+    observer.observe(container);
+    document.fonts?.ready.then(schedule).catch(() => {});
+    // Display scaling change (e.g. window moved to another monitor)
+    const mq = window.matchMedia(`(resolution: ${window.devicePixelRatio}dppx)`);
+    mq.addEventListener?.('change', schedule);
+    return () => {
+      cancelAnimationFrame(frame);
+      observer.disconnect();
+      mq.removeEventListener?.('change', schedule);
+    };
+  }, [triggerFitAndResize]);
+
+  useEffect(() => {
+    if (!containerRef.current) return;
+
+    const term = new Terminal({
+      cursorBlink: true,
+      fontFamily:
+        'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace',
+      fontSize: 13,
+      lineHeight: 1.2,
+      // Full 16-colour palette. Previously only the 8 base colours were set (and very light ones,
+      // e.g. sky-blue as "blue"), while the bright variants fell back to xterm.js defaults – full-
+      // screen apps such as Midnight Commander (blue panels, bright text) looked garish.
+      theme: {
+        background: '#090d16',
+        foreground: '#d4d8e0',
+        cursor: '#38bdf8',
+        cursorAccent: '#090d16',
+        selectionBackground: '#33415580',
+        black: '#151b26',
+        red: '#c94444',
+        green: '#4c9f53',
+        yellow: '#c6a02b',
+        blue: '#2f5ea8',
+        magenta: '#9b55c2',
+        cyan: '#2f97ad',
+        white: '#c5cad3',
+        brightBlack: '#5f6878',
+        brightRed: '#ef6b6b',
+        brightGreen: '#72d27a',
+        brightYellow: '#f0d566',
+        brightBlue: '#6593e3',
+        brightMagenta: '#c48ae3',
+        brightCyan: '#62cfe4',
+        brightWhite: '#f3f5f9',
+      },
+    });
+
+    const fitAddon = new FitAddon();
+    term.loadAddon(fitAddon);
+    term.open(termHostRef.current ?? containerRef.current);
+
+    termRef.current = term;
+    fitAddonRef.current = fitAddon;
+
+    // Advanced Keyboard Handling for Clipboard:
+    // Ctrl+C with active selection -> Copy to clipboard (instead of SIGINT)
+    // Ctrl+V or Ctrl+Shift+V -> Paste from clipboard (text or copied files/folders)
+    term.attachCustomKeyEventHandler((e: KeyboardEvent) => {
+      if (e.type !== 'keydown') return true;
+
+      const isCtrlOrMeta = e.ctrlKey || e.metaKey;
+      const key = e.key.toLowerCase();
+
+      // Copy: Ctrl+C or Ctrl+Shift+C when text is selected
+      if (isCtrlOrMeta && key === 'c' && (term.hasSelection() || e.shiftKey)) {
+        const text = term.getSelection();
+        if (text) {
+          api.clipboardWriteText(text).then(() => {
+            showNotificationRef.current('Skopiowano zaznaczenie');
+          });
+        }
+        return false; // Prevent sending ^C SIGINT to shell
+      }
+
+      // Paste: Ctrl+V or Ctrl+Shift+V
+      if (isCtrlOrMeta && key === 'v') {
+        // Returning false only stops xterm's own key handling. Without preventDefault() the
+        // webview (WebKitGTK on Linux) still fires a native "paste" event on xterm's textarea,
+        // which xterm forwards via onData – the text was pasted twice.
+        e.preventDefault();
+        e.stopPropagation();
+        if (!e.repeat) {
+          handlePasteClipboardRef.current();
+        }
+        return false;
+      }
+
+      return true;
+    });
+
+    setTimeout(() => {
+      triggerFitAndResize();
+    }, 100);
+
+    let unlisten: (() => void) | undefined;
+    let mockInputBuffer = '';
+    const prompt = `${session.username}@${session.host}:~$ `;
+
+    if (isTauri()) {
+      // Real Tauri SSH live stream
+      listen<string>(`ssh-data-${session.sessionId}`, (event) => {
+        term.write(event.payload);
+      }).then((unsub) => {
+        unlisten = unsub;
+      });
+
+      // Send input from xterm to Tauri backend PTY
+      const onDataDisposable = term.onData((data) => {
+        api.sendInput(session.sessionId, data);
+      });
+
+      const handleResize = () => {
+        triggerFitAndResize();
+      };
+      window.addEventListener('resize', handleResize);
+
+      // Event listener for screen unlock & focus restoration
+      const handleFocusEvent = () => {
+        triggerFitAndResize();
+        term.focus();
+      };
+      window.addEventListener('remoteflow-focus-terminal', handleFocusEvent);
+      window.addEventListener('focus', handleFocusEvent);
+
+      return () => {
+        window.removeEventListener('resize', handleResize);
+        window.removeEventListener('remoteflow-focus-terminal', handleFocusEvent);
+        window.removeEventListener('focus', handleFocusEvent);
+        onDataDisposable.dispose();
+        if (unlisten) unlisten();
+        term.dispose();
+      };
+    } else {
+      // Interactive Web Mock Shell (when testing outside Tauri runtime)
+      term.writeln('\x1b[1;36m=== RemoteFlow SSH Terminal (Web Mock Preview) ===\x1b[0m');
+      term.writeln(`\x1b[32m✔ Połączono:\x1b[0m ${session.username}@${session.host}:${session.port}`);
+      if (session.activePortForwards.length > 0) {
+        term.writeln(`\x1b[33m⚡ Aktywne tunele portów: ${session.activePortForwards.join(', ')}\x1b[0m`);
+      }
+      term.writeln('\x1b[90mTyp sesji: xterm-256color | Obsługa schowka: Aktywna | Przeciągnij pliki: SFTP\x1b[0m\r\n');
+      term.write(prompt);
+
+      const onDataDisposable = term.onData((data) => {
+        if (data === '\r') {
+          term.writeln('');
+          const cmd = mockInputBuffer.trim();
+          mockInputBuffer = '';
+
+          if (cmd === 'clear') {
+            term.clear();
+          } else if (cmd === 'ls' || cmd === 'ls -la' || cmd === 'ls -l') {
+            term.writeln('total 48');
+            term.writeln('drwxr-xr-x 5 ' + session.username + ' ' + session.username + ' 4096 Oct 17 09:00 .');
+            term.writeln('drwxr-xr-x 3 root root 4096 Oct 10 12:00 ..');
+            term.writeln('-rw------- 1 ' + session.username + ' ' + session.username + ' 1250 Oct 17 09:02 .bash_history');
+            term.writeln('drwxr-xr-x 4 ' + session.username + ' ' + session.username + ' 4096 Oct 17 08:30 app');
+            term.writeln('-rw-r--r-- 1 ' + session.username + ' ' + session.username + '  807 Oct 10 12:00 .profile');
+          } else if (cmd === 'pwd') {
+            term.writeln(`/home/${session.username}`);
+          } else if (cmd === 'whoami') {
+            term.writeln(session.username);
+          } else if (cmd === 'date') {
+            term.writeln(new Date().toUTCString());
+          } else if (cmd === 'exit') {
+            term.writeln('logout');
+            term.writeln('\x1b[33m[Sesja zakończona]\x1b[0m');
+            return;
+          } else if (cmd) {
+            term.writeln(`bash: ${cmd}: polecenie wykonane w symulacji`);
+          }
+
+          term.write(prompt);
+        } else if (data === '\u007f' || data === '\b') {
+          if (mockInputBuffer.length > 0) {
+            mockInputBuffer = mockInputBuffer.slice(0, -1);
+            term.write('\b \b');
+          }
+        } else if (data === '\u0003') {
+          term.writeln('^C');
+          mockInputBuffer = '';
+          term.write(prompt);
+        } else if (data.length === 1 && data.charCodeAt(0) >= 32) {
+          mockInputBuffer += data;
+          term.write(data);
+        }
+      });
+
+      const handleResize = () => {
+        triggerFitAndResize();
+      };
+      window.addEventListener('resize', handleResize);
+
+      const handleFocusEvent = () => {
+        triggerFitAndResize();
+        term.focus();
+      };
+      window.addEventListener('remoteflow-focus-terminal', handleFocusEvent);
+      window.addEventListener('focus', handleFocusEvent);
+
+      return () => {
+        window.removeEventListener('resize', handleResize);
+        window.removeEventListener('remoteflow-focus-terminal', handleFocusEvent);
+        window.removeEventListener('focus', handleFocusEvent);
+        onDataDisposable.dispose();
+        term.dispose();
+      };
+    }
+  }, [session.sessionId, triggerFitAndResize]);
+
+  // Middle mouse button: paste the text selected in this terminal (X11 "primary selection" style).
+  // The selection does not need to be copied first; the last selection is remembered even after
+  // it is cleared. When a full-screen app has enabled mouse reporting (mc, vim, htop...), the
+  // middle click goes to that app – hold Shift to paste instead (like other terminals).
+  useEffect(() => {
+    const term = termRef.current;
+    const host = termHostRef.current ?? containerRef.current;
+    if (!term || !host) return;
+
+    let lastSelection = '';
+    let suppressNativePasteUntil = 0;
+    const selectionDisposable = term.onSelectionChange(() => {
+      const sel = term.getSelection();
+      if (sel) lastSelection = sel;
+    });
+
+    const appWantsMouse = (e: MouseEvent) => term.modes.mouseTrackingMode !== 'none' && !e.shiftKey;
+
+    const onMouseDown = (e: MouseEvent) => {
+      if (e.button !== 1 || appWantsMouse(e)) return;
+      // Block the browser's own middle-click actions: Linux PRIMARY paste (would paste twice)
+      // and the Windows auto-scroll cursor.
+      e.preventDefault();
+      e.stopPropagation();
+      suppressNativePasteUntil = Date.now() + 600;
+      const text = term.getSelection() || lastSelection;
+      if (text) {
+        term.paste(text); // handles bracketed-paste mode and line endings, sends via onData
+        term.focus();
+      }
+    };
+    const swallowMiddle = (e: MouseEvent) => {
+      if (e.button !== 1 || appWantsMouse(e)) return;
+      e.preventDefault();
+      e.stopPropagation();
+    };
+    const onNativePaste = (e: ClipboardEvent) => {
+      if (Date.now() < suppressNativePasteUntil) {
+        e.preventDefault();
+        e.stopImmediatePropagation();
+      }
+    };
+
+    host.addEventListener('mousedown', onMouseDown, true);
+    host.addEventListener('mouseup', swallowMiddle, true);
+    host.addEventListener('auxclick', swallowMiddle, true);
+    host.addEventListener('paste', onNativePaste, true);
+    return () => {
+      selectionDisposable.dispose();
+      host.removeEventListener('mousedown', onMouseDown, true);
+      host.removeEventListener('mouseup', swallowMiddle, true);
+      host.removeEventListener('auxclick', swallowMiddle, true);
+      host.removeEventListener('paste', onNativePaste, true);
+    };
+  }, [session.sessionId]);
+
+  // When tab becomes active, re-fit terminal, refresh buffer lines and restore focus
+  useEffect(() => {
+    if (isActive && termRef.current) {
+      const timer = setTimeout(() => {
+        triggerFitAndResize();
+        try {
+          termRef.current?.refresh(0, termRef.current.rows - 1);
+        } catch {
+          // ignore
+        }
+        termRef.current?.focus();
+      }, 50);
+      return () => clearTimeout(timer);
+    }
+  }, [isActive, triggerFitAndResize]);
+
+  /** Closes the context menu and gives the keyboard focus back to the terminal. */
+  const closeMenu = useCallback(() => {
+    setContextMenu(null);
+    requestAnimationFrame(() => termRef.current?.focus());
+  }, []);
+
+  // Close context menu on outside click
+  useEffect(() => {
+    const handleOutside = (e: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+        setContextMenu(null);
+      }
+    };
+    window.addEventListener('mousedown', handleOutside);
+    return () => window.removeEventListener('mousedown', handleOutside);
+  }, []);
+
+  // Drag and Drop handling for file transfers into the SSH terminal
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragOver(true);
+  };
+
+  const handleDragLeave = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragOver(false);
+  };
+
+  const handleDrop = async (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragOver(false);
+
+    // 1. Prioritize local file/directory URIs dropped from file manager for recursive SFTP upload
+    const uriList = e.dataTransfer.getData('text/uri-list');
+    if (uriList) {
+      const paths = uriList
+        .split('\n')
+        .map((l) => l.trim())
+        .filter((l) => l.startsWith('file://'))
+        .map((l) => decodeURIComponent(l.replace('file://', '')));
+
+      if (paths.length > 0) {
+        setIsUploading(true);
+        showNotification(`Przesyłanie rekursywne ${paths.length} elementów przez SFTP...`);
+        try {
+          const count = await api.sftpUploadPaths(session.connectionId, '.', paths);
+          showNotification(`Przesłano pomyślnie ${count} plików do katalogu domowego`);
+        } catch (err: any) {
+          showNotification(`Błąd przesyłania: ${err?.message || err}`);
+        } finally {
+          setIsUploading(false);
+        }
+        return;
+      }
+    }
+
+    // 2. Files dropped directly
+    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+      const files = e.dataTransfer.files;
+      setIsUploading(true);
+      showNotification(`Przesyłanie ${files.length} plików przez SFTP...`);
+
+      let count = 0;
+      for (let i = 0; i < files.length; i++) {
+        const file = files[i];
+        const relPath = (file as any).webkitRelativePath || file.name;
+        try {
+          const buffer = await file.arrayBuffer();
+          const bytes = new Uint8Array(buffer);
+          let binary = '';
+          for (let j = 0; j < bytes.byteLength; j++) {
+            binary += String.fromCharCode(bytes[j]);
+          }
+          const b64 = btoa(binary);
+          await api.sftpUploadFile(session.connectionId, '.', relPath, b64);
+          count++;
+        } catch (err: any) {
+          console.error('Błąd uploadu SFTP:', err);
+        }
+      }
+      setIsUploading(false);
+      showNotification(`Przesłano pomyślnie ${count} z ${files.length} plików do katalogu domowego`);
+      return;
+    }
+
+    // 3. Fallback: plain text dropped -> send to terminal
+    const text = e.dataTransfer.getData('text/plain');
+    if (text) {
+      api.sendInput(session.sessionId, text);
+      showNotification('Wklejono tekst ze schowka');
+    }
+  };
+
+  return (
+    <div
+      onDragOver={handleDragOver}
+      onDragLeave={handleDragLeave}
+      onDrop={handleDrop}
+      onContextMenu={(e) => {
+        e.preventDefault();
+        setContextMenu({ x: e.clientX, y: e.clientY });
+      }}
+      className={`relative h-full w-full bg-[#090d16] select-none ${isActive ? 'block' : 'hidden'}`}
+    >
+      {/* Top Floating Action Toolbar */}
+      <div className="absolute top-2 right-3 flex items-center gap-1.5 z-20">
+        {/* Real-time Feedback Toast */}
+        {feedback && (
+          <div className="flex items-center gap-1 rounded-full bg-cyan-950/90 border border-cyan-500/50 px-2.5 py-0.5 text-[11px] text-cyan-300 shadow-md animate-fadeIn">
+            <Check className="h-3 w-3 text-cyan-400 shrink-0" />
+            <span>{feedback}</span>
+          </div>
+        )}
+
+        {/* Uploading Spinner Badge */}
+        {isUploading && (
+          <div className="flex items-center gap-1 rounded-full bg-amber-950/90 border border-amber-500/50 px-2.5 py-0.5 text-[11px] text-amber-300 shadow-md">
+            <Loader2 className="h-3 w-3 animate-spin text-amber-400 shrink-0" />
+            <span>Przesyłanie SFTP...</span>
+          </div>
+        )}
+
+        {/* Active Port Forwards Badge */}
+        {session.activePortForwards && session.activePortForwards.length > 0 && (
+          <div
+            title={`Aktywne tunele SSH:\n${session.activePortForwards.join('\n')}`}
+            className="flex items-center gap-1 rounded-lg border border-emerald-500/40 bg-emerald-950/70 px-2 py-1 text-[11px] font-mono text-emerald-300 shadow-sm"
+          >
+            <ArrowRightLeft className="h-3 w-3 text-emerald-400 shrink-0" />
+            <span>Tunele ({session.activePortForwards.length})</span>
+          </div>
+        )}
+
+        {/* Toggle SFTP File Explorer Drawer */}
+        <button
+          onClick={() => setIsSftpOpen((v) => !v)}
+          title="Menedżer transferu plików i katalogów (SFTP)"
+          className={`flex items-center gap-1 rounded-lg border px-2.5 py-1 text-[11px] font-medium transition-colors shadow-sm ${
+            isSftpOpen
+              ? 'border-cyan-500 bg-cyan-950/80 text-cyan-200 shadow-cyan-950/50'
+              : 'border-slate-700/80 bg-slate-850/90 text-slate-300 hover:bg-slate-700 hover:text-white'
+          }`}
+        >
+          <FolderUp className="h-3.5 w-3.5 text-amber-400" />
+          <span>Pliki (SFTP)</span>
+        </button>
+      </div>
+
+      {/* Terminal Mount Point */}
+      <div
+        ref={containerRef}
+        onMouseDown={() => termRef.current?.focus()}
+        onClick={() => termRef.current?.focus()}
+        className="h-full w-full p-2 cursor-text"
+      >
+        <div ref={termHostRef} className="h-full w-full overflow-hidden" />
+      </div>
+
+      {/* Drag & Drop Overlay */}
+      {isDragOver && (
+        <div className="absolute inset-0 bg-cyan-950/85 border-2 border-dashed border-cyan-400 backdrop-blur-xs flex flex-col items-center justify-center z-30 pointer-events-none p-6 text-center animate-fadeIn">
+          <Upload className="h-12 w-12 text-cyan-400 mb-3 animate-bounce" />
+          <h3 className="text-base font-bold text-white">Upuść pliki lub katalogi tutaj</h3>
+          <p className="text-xs text-cyan-200/90 mt-1 max-w-sm">
+            Zostaną automatycznie przesłane przez protokół SFTP do Twojego katalogu na serwerze{' '}
+            <span className="font-mono font-semibold">{session.host}</span>.
+          </p>
+        </div>
+      )}
+
+      {/* Right-click Context Menu */}
+      {contextMenu && (
+        <div
+          ref={menuRef}
+          // Keep the keyboard focus in the terminal while a menu item is clicked
+          onMouseDown={(e) => e.preventDefault()}
+          style={{ top: contextMenu.y, left: contextMenu.x }}
+          className="fixed z-50 w-48 rounded-lg border border-slate-700 bg-slate-900/95 py-1 text-xs text-slate-200 shadow-xl backdrop-blur-md font-sans"
+        >
+          <button
+            onClick={() => {
+              handleCopySelection();
+              closeMenu();
+            }}
+            className="flex w-full items-center gap-2 px-3 py-1.5 hover:bg-slate-800 text-left transition-colors"
+          >
+            <Copy className="h-3.5 w-3.5 text-slate-400" />
+            <span>Kopiuj zaznaczenie</span>
+          </button>
+          <button
+            onClick={() => {
+              closeMenu();
+              handlePasteClipboard().finally(() => termRef.current?.focus());
+            }}
+            className="flex w-full items-center gap-2 px-3 py-1.5 hover:bg-slate-800 text-left transition-colors"
+          >
+            <ClipboardPaste className="h-3.5 w-3.5 text-cyan-400" />
+            <span>Wklej ze schowka</span>
+          </button>
+          <div className="my-1 border-t border-slate-800" />
+          <button
+            onClick={() => {
+              setIsSftpOpen(true);
+              setContextMenu(null);
+            }}
+            className="flex w-full items-center gap-2 px-3 py-1.5 hover:bg-slate-800 text-left transition-colors"
+          >
+            <FolderUp className="h-3.5 w-3.5 text-amber-400" />
+            <span>Menedżer plików (SFTP)</span>
+          </button>
+          <button
+            onClick={() => {
+              termRef.current?.clear();
+              closeMenu();
+            }}
+            className="flex w-full items-center gap-2 px-3 py-1.5 hover:bg-slate-800 text-left transition-colors"
+          >
+            <Eraser className="h-3.5 w-3.5 text-slate-400" />
+            <span>Wyczyść ekran</span>
+          </button>
+        </div>
+      )}
+
+      {/* Two-pane SFTP manager (local | server) */}
+      <SftpManager
+        isOpen={isSftpOpen}
+        onClose={() => {
+          setIsSftpOpen(false);
+          termRef.current?.focus();
+        }}
+        connectionId={session.connectionId}
+        connectionTitle={session.title}
+        onNotify={showNotification}
+        fullWidth={splitLayout}
+      />
+    </div>
+  );
+};

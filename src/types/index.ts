@@ -1,0 +1,210 @@
+export type ProtocolType = 'ssh' | 'rdp';
+export type SshAuthType = 'password' | 'key' | 'certificate' | 'agent';
+export type ForwardType = 'local' | 'remote' | 'dynamic';
+
+export interface PortForwardRule {
+  id: string;
+  forwardType: ForwardType;
+  localPort: number;
+  remoteHost?: string;
+  remotePort?: number;
+  enabled: boolean;
+}
+
+export interface RdpSettings {
+  width: number;
+  height: number;
+  colorDepth: number;
+  domain?: string;
+  sound: boolean;
+  clipboard: boolean;
+}
+
+export interface Credential {
+  id: string;
+  name: string;
+  username: string;
+  passwordEncrypted?: string;
+  authType: SshAuthType;
+  privateKeyEncrypted?: string;
+  privateKeyPassphraseEncrypted?: string;
+  certificateContent?: string;
+  keyFilePath?: string | null;
+  promptKeyPassphrase?: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface Connection {
+  id: string;
+  name: string;
+  groupId: string | null;
+  credentialId?: string | null;
+  protocol: ProtocolType;
+  host: string;
+  port: number;
+  username: string;
+  passwordEncrypted?: string;
+  sshAuthType: SshAuthType;
+  privateKeyEncrypted?: string;
+  privateKeyPassphraseEncrypted?: string;
+  certificateContent?: string;
+  keyFilePath?: string | null;
+  promptKeyPassphrase?: boolean;
+  portForwarding: PortForwardRule[];
+  rdpSettings?: RdpSettings;
+  tags: string[];
+  notes?: string;
+  defaultDownloadDir?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface Group {
+  id: string;
+  name: string;
+  parentId: string | null;
+  icon?: string;
+  color?: string;
+}
+
+export interface VaultMetadata {
+  version: number;
+  salt_base64: string;
+  canary_nonce_base64: string;
+  canary_ciphertext_base64: string;
+  pin_enabled: boolean;
+  auto_lock_screen: boolean;
+  auto_lock_timeout_mins: number;
+  max_pin_attempts: number;
+  globalDownloadDir?: string | null;
+}
+
+export interface VaultData {
+  metadata: VaultMetadata;
+  groups: Group[];
+  connections: Connection[];
+  credentials?: Credential[];
+}
+
+export interface VaultStatus {
+  isInitialized: boolean;
+  isUnlocked: boolean;
+  isPinLocked: boolean;
+  pinEnabled: boolean;
+  autoLockScreen: boolean;
+  autoLockTimeoutMins: number;
+  failedPinAttempts: number;
+  connectionsCount: number;
+  groupsCount: number;
+  credentialsCount: number;
+  securityWarning?: string | null;
+}
+
+export interface SessionInfo {
+  sessionId: string;
+  connectionId: string;
+  title: string;
+  protocol: ProtocolType;
+  host: string;
+  port: number;
+  username: string;
+  status: 'connecting' | 'connected' | 'disconnected' | 'error';
+  statusMessage?: string;
+  bytesSent: number;
+  bytesReceived: number;
+  startedAt: string;
+  activePortForwards: string[];
+  rdpProxyPort?: number | null;
+  rdpProxyToken?: string | null;
+  rdpPassword?: string | null;
+  rdpDomain?: string | null;
+  rdpSettings?: RdpSettings | null;
+}
+
+export type WorkspaceLayout = 'single' | 'split-horizontal' | 'split-vertical' | 'grid-4' | 'columns-3';
+
+export interface ImportSummary {
+  groupsImported: number;
+  connectionsImported: number;
+  credentialsImported?: number;
+  passwordsFailed?: number;
+}
+
+export interface BackupSettings {
+  enabled: boolean;
+  intervalHours: number;
+  keep: number;
+  dir?: string | null;
+}
+
+/** Interface confirmations stored in the vault. */
+export interface UiSettings {
+  confirmCloseSessions: boolean;
+  confirmAppExit: boolean;
+}
+
+export interface BackupEntry {
+  name: string;
+  path: string;
+  size: number;
+  createdAt: string;
+}
+
+export interface KnownHostEntry {
+  /** "ssh:host:port" or "rdp:host:port" */
+  id: string;
+  fingerprint: string;
+}
+
+export interface ExportPayload {
+  format: string;
+  version: number;
+  isEncrypted: boolean;
+  saltBase64?: string;
+  nonceBase64?: string;
+  ciphertextBase64?: string;
+  groups?: Group[];
+  connections?: Connection[];
+  exportedAt: string;
+}
+
+export interface SftpFileEntry {
+  name: string;
+  path: string;
+  isDir: boolean;
+  size: number;
+  modified: number;
+  permissions: number;
+}
+
+export interface SftpListResponse {
+  currentPath: string;
+  entries: SftpFileEntry[];
+  /** Parent directory (local listings only); undefined at the file-system root. */
+  parentPath?: string | null;
+}
+
+export interface TransferSummary {
+  files: number;
+  folders: number;
+  bytes: number;
+  failed: number;
+  errors: string[];
+}
+
+export interface TransferProgress {
+  transferId: string;
+  files: number;
+  current: string;
+}
+
+export interface RdpClipboardFileEntry {
+  name: string;
+  path?: string;
+  isDirectory: boolean;
+  size: number;
+  lastModified: number;
+  contentBase64?: string | null;
+}
+

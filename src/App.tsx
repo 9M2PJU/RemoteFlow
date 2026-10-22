@@ -1,0 +1,979 @@
+import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { api, isTauri } from './services/api';
+import { listen } from '@tauri-apps/api/event';
+import { getCurrentWindow } from '@tauri-apps/api/window';
+import { Connection, Credential, Group, SessionInfo, UiSettings, VaultStatus, WorkspaceLayout } from './types';
+import { Header } from './components/layout/Header';
+import { Sidebar } from './components/sidebar/Sidebar';
+import { TabBar } from './components/workspace/TabBar';
+import { Workspace } from './components/workspace/Workspace';
+import { MasterPasswordScreen } from './components/lockscreen/MasterPasswordScreen';
+import { PinModal } from './components/lockscreen/PinModal';
+import { ConnectionModal } from './components/dialogs/ConnectionModal';
+import { GroupModal } from './components/dialogs/GroupModal';
+import { CredentialsModal } from './components/dialogs/CredentialsModal';
+import { SettingsModal } from './components/dialogs/SettingsModal';
+import { ImportExportModal } from './components/dialogs/ImportExportModal';
+import { PassphrasePromptModal } from './components/dialogs/PassphrasePromptModal';
+import { ConfirmDialog, DialogAnchor } from './components/dialogs/ConfirmDialog';
+import { Loader2 } from 'lucide-react';
+
+export const App: React.FC = () => {
+  const [loading, setLoading] = useState(true);
+  const [vaultStatus, setVaultStatus] = useState<VaultStatus | null>(null);
+  // One-off security notice from the backend (vault migration, accepted external modification, ...)
+  const [securityWarning, setSecurityWarning] = useState<string | null>(null);
+
+  // Data
+  const [groups, setGroups] = useState<Group[]>([]);
+  const [connections, setConnections] = useState<Connection[]>([]);
+  const [credentials, setCredentials] = useState<Credential[]>([]);
+  const [searchQuery, setSearchQuery] = useState('');
+
+  // Active Sessions, Split Layout & Panes
+  const [sessions, setSessions] = useState<SessionInfo[]>([]);
+  const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
+  const [layout, setLayout] = useState<WorkspaceLayout>('single');
+  const [paneSlots, setPaneSlots] = useState<string[]>([]);
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
+
+  // Modals
+  const [isConnModalOpen, setIsConnModalOpen] = useState(false);
+  const [editingConn, setEditingConn] = useState<Connection | null>(null);
+  const [defaultGroupId, setDefaultGroupId] = useState<string | null>(null);
+
+  const [isGroupModalOpen, setIsGroupModalOpen] = useState(false);
+  const [editingGroup, setEditingGroup] = useState<Group | null>(null);
+  const [defaultParentGroupId, setDefaultParentGroupId] = useState<string | null>(null);
+
+  const [isCredentialsModalOpen, setIsCredentialsModalOpen] = useState(false);
+  const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
+  const [isImportExportModalOpen, setIsImportExportModalOpen] = useState(false);
+  const [passphrasePrompt, setPassphrasePrompt] = useState<{ conn: Connection; allowDuplicate: boolean } | null>(null);
+
+  // Inactivity tracking
+  const lastActivityRef = useRef<number>(Date.now());
+
+  // Load vault status on mount
+  const checkStatus = useCallback(async () => {
+    try {
+      const status = await api.getStatus();
+      setVaultStatus(status);
+      if (status.isUnlocked) {
+        await api.maximizeWindow();
+        await loadData();
+      }
+    } catch (err) {
+      console.error('Error fetching vault status:', err);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  const loadData = async () => {
+    try {
+      const data = await api.getVaultData();
+      setGroups(data.groups);
+      setConnections(data.connections);
+      const creds = await api.getCredentials();
+      setCredentials(creds);
+    } catch (err) {
+      console.error('Error loading vault data:', err);
+    }
+  };
+
+  useEffect(() => {
+    checkStatus();
+  }, [checkStatus]);
+
+  // Lock handler (PIN if enabled, else Master Password)
+  const handleLock = useCallback(async () => {
+    if (!vaultStatus?.isUnlocked) return;
+    try {
+      const lockedToPin = await api.lockToPin();
+      const status = await api.getStatus();
+      setVaultStatus({
+        ...status,
+        isUnlocked: false,
+        isPinLocked: lockedToPin,
+      });
+    } catch (err) {
+      console.error('Lock error:', err);
+    }
+  }, [vaultStatus]);
+
+
+
+  // Vault locked by the backend because the operating-system session was locked
+  useEffect(() => {
+    if (!isTauri()) return;
+    let cancelled = false;
+    let unlisten: (() => void) | null = null;
+    listen<boolean>('vault-auto-locked', async () => {
+      try {
+        const status = await api.getStatus();
+        setVaultStatus(status);
+      } catch (err) {
+        console.error('Błąd odświeżania stanu sejfu po blokadzie systemu:', err);
+      }
+    }).then((fn) => {
+      if (cancelled) fn();
+      else unlisten = fn;
+    });
+    return () => {
+      cancelled = true;
+      if (unlisten) unlisten();
+    };
+  }, []);
+
+  // Inactivity auto-lock: the backend locks the vault after the configured idle time (it keeps
+  // working when the window is minimised and web-view timers are throttled). The UI only reports
+  // user activity – throttled to one call per 15 s.
+  useEffect(() => {
+    if (!vaultStatus?.isUnlocked) return;
+
+    let lastReport = 0;
+    const updateActivity = () => {
+      const now = Date.now();
+      lastActivityRef.current = now;
+      if (now - lastReport > 15000) {
+        lastReport = now;
+        api.touchActivity().catch(() => {});
+      }
+    };
+    updateActivity();
+
+    const events = ['mousemove', 'mousedown', 'keydown', 'wheel', 'touchstart'] as const;
+    events.forEach((ev) => window.addEventListener(ev, updateActivity, { capture: true, passive: true }));
+    return () => {
+      events.forEach((ev) => window.removeEventListener(ev, updateActivity, { capture: true }));
+    };
+  }, [vaultStatus?.isUnlocked]);
+
+  // Global prevention of accidental F5 / Ctrl+R page reloads in desktop app
+  useEffect(() => {
+    const handleGlobalKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'F5' || ((e.ctrlKey || e.metaKey) && (e.key === 'r' || e.key === 'R'))) {
+        e.preventDefault();
+      }
+    };
+    window.addEventListener('keydown', handleGlobalKeyDown, { capture: true });
+    return () => {
+      window.removeEventListener('keydown', handleGlobalKeyDown, { capture: true });
+    };
+  }, []);
+
+  // Connecting to a single session
+  const handleConnect = async (conn: Connection, allowDuplicate = false, customPassphrase?: string) => {
+    // Check if key passphrase prompt is needed
+    const cred = conn.credentialId ? credentials.find((c) => c.id === conn.credentialId) : undefined;
+    const isKeyAuth =
+      conn.protocol === 'ssh' &&
+      (conn.sshAuthType === 'key' ||
+        conn.sshAuthType === 'certificate' ||
+        Boolean(conn.credentialId && cred && (cred.authType === 'key' || cred.authType === 'certificate')));
+    const needsPassphrasePrompt =
+      isKeyAuth &&
+      (Boolean(conn.promptKeyPassphrase) || Boolean(conn.credentialId && cred?.promptKeyPassphrase));
+
+    if (needsPassphrasePrompt && customPassphrase === undefined) {
+      setPassphrasePrompt({ conn, allowDuplicate });
+      return;
+    }
+
+    // Check if session already open (unless duplicating)
+    if (!allowDuplicate) {
+      const existing = sessions.find((s) => s.connectionId === conn.id);
+      if (existing) {
+        setActiveSessionId(existing.sessionId);
+        return;
+      }
+    }
+
+    const sessionId = 'sess-' + Math.random().toString(36).substring(2, 9) + '-' + Date.now();
+
+    const tunnelsDesc = conn.portForwarding
+      .filter((p) => p.enabled)
+      .map((p) =>
+        p.forwardType === 'dynamic'
+          ? `:${p.localPort} (SOCKS5)`
+          : `${p.localPort} -> ${p.remoteHost}:${p.remotePort}`
+      );
+
+    const initialSession: SessionInfo = {
+      sessionId,
+      connectionId: conn.id,
+      title: conn.name,
+      protocol: conn.protocol,
+      host: conn.host,
+      port: conn.port,
+      username: conn.username,
+      status: 'connecting',
+      statusMessage: 'Nawiązywanie połączenia...',
+      bytesSent: 0,
+      bytesReceived: 0,
+      startedAt: new Date().toISOString(),
+      activePortForwards: tunnelsDesc,
+    };
+
+    // 1. Mount terminal & register listener immediately before connection starts!
+    setSessions((prev) => [...prev, initialSession]);
+    setActiveSessionId(sessionId);
+    setPaneSlots((prev) => [sessionId, ...prev.filter((id) => id !== sessionId)]);
+
+    // 2. Connect via Tauri backend
+    try {
+      const sess = await api.connectSession(
+        sessionId,
+        conn.id,
+        conn.name,
+        conn.protocol,
+        conn.host,
+        conn.port,
+        conn.username,
+        tunnelsDesc,
+        customPassphrase
+      );
+
+      setSessions((prev) =>
+        prev.map((s) => (s.sessionId === sessionId ? { ...s, ...sess, status: 'connected' } : s))
+      );
+    } catch (err: unknown) {
+      const errMsg = err instanceof Error ? err.message : String(err);
+      console.error('Connect error:', errMsg);
+      setSessions((prev) =>
+        prev.map((s) =>
+          s.sessionId === sessionId
+            ? { ...s, status: 'error', statusMessage: errMsg }
+            : s
+        )
+      );
+    }
+  };
+
+  // Connect to all connections in a group (Założenie 3)
+  const handleConnectAllInGroup = async (_group: Group, conns: Connection[]) => {
+    if (conns.length === 0) return;
+
+    for (const conn of conns) {
+      const alreadyOpen = sessions.some((s) => s.connectionId === conn.id);
+      if (alreadyOpen) continue;
+      await handleConnect(conn);
+    }
+  };
+
+  // Reconnect / Reload session (odświeżenie / ponowne nawiązanie połączenia)
+  const handleReconnectSession = async (sessionId: string) => {
+    const sess = sessions.find((s) => s.sessionId === sessionId);
+    if (!sess) return;
+    const conn = connections.find((c) => c.id === sess.connectionId);
+    if (!conn) return;
+
+    try {
+      await api.closeSession(sessionId);
+    } catch (e) {
+      console.warn('Error closing session on reconnect:', e);
+    }
+
+    setSessions((prev) => prev.filter((s) => s.sessionId !== sessionId));
+    await handleConnect(conn, true);
+  };
+
+  // Duplicate session in a new tab
+  const handleDuplicateSession = async (sessionId: string) => {
+    const sess = sessions.find((s) => s.sessionId === sessionId);
+    if (!sess) return;
+    const conn = connections.find((c) => c.id === sess.connectionId);
+    if (!conn) return;
+
+    await handleConnect(conn, true);
+  };
+
+  // Pending close request awaiting user confirmation
+  const [pendingClose, setPendingClose] = useState<
+    | { kind: 'one'; sessionId: string }
+    | { kind: 'others'; sessionId: string }
+    | { kind: 'all' }
+    | null
+  >(null);
+
+  // Confirmation preferences (stored in the vault, cached here so they also work while locked)
+  const [uiSettings, setUiSettings] = useState<UiSettings>({ confirmCloseSessions: true, confirmAppExit: true });
+  const uiSettingsRef = useRef(uiSettings);
+  uiSettingsRef.current = uiSettings;
+
+  useEffect(() => {
+    if (!vaultStatus?.isUnlocked) return;
+    api.getUiSettings().then(setUiSettings).catch(() => {});
+  }, [vaultStatus?.isUnlocked]);
+
+  useEffect(() => {
+    const onChanged = (e: Event) => {
+      const detail = (e as CustomEvent<UiSettings>).detail;
+      if (detail) setUiSettings(detail);
+    };
+    window.addEventListener('remoteflow-ui-settings', onChanged);
+    return () => window.removeEventListener('remoteflow-ui-settings', onChanged);
+  }, []);
+
+  const handleCloseSession = (sessionId: string) => {
+    if (!sessions.some((s) => s.sessionId === sessionId)) return;
+    if (!uiSettings.confirmCloseSessions) return closeSessionNow(sessionId);
+    setPendingClose({ kind: 'one', sessionId });
+  };
+
+  const handleCloseOtherSessions = (keepSessionId: string) => {
+    if (!sessions.some((s) => s.sessionId !== keepSessionId)) return;
+    if (!uiSettings.confirmCloseSessions) return closeOtherSessionsNow(keepSessionId);
+    setPendingClose({ kind: 'others', sessionId: keepSessionId });
+  };
+
+  const handleCloseAllSessions = () => {
+    if (sessions.length === 0) return;
+    if (!uiSettings.confirmCloseSessions) return closeAllSessionsNow();
+    setPendingClose({ kind: 'all' });
+  };
+
+  // Confirmation before exiting the application (window close button, Alt+F4, ...)
+  const [exitPrompt, setExitPrompt] = useState(false);
+  const exitStateRef = useRef({ sessions: 0, unlocked: false });
+  exitStateRef.current = { sessions: sessions.length, unlocked: !!vaultStatus?.isUnlocked };
+
+  useEffect(() => {
+    if (!isTauri()) return;
+    let un: (() => void) | null = null;
+    let cancelled = false;
+    getCurrentWindow()
+      .onCloseRequested((event) => {
+        // Always intercept; the application is closed by the backend (app_exit) so that a missing
+        // window permission can never leave the window impossible to close.
+        event.preventDefault();
+        const { sessions: open, unlocked } = exitStateRef.current;
+        // Locked with nothing open (start / lock screen) – nothing to lose, close immediately
+        if (!uiSettingsRef.current.confirmAppExit || (!unlocked && open === 0)) {
+          api.exitApp().catch(() => {});
+          return;
+        }
+        setExitPrompt(true);
+      })
+      .then((fn) => (cancelled ? fn() : (un = fn)))
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+      if (un) un();
+    };
+  }, []);
+
+  const confirmPendingClose = () => {
+    const req = pendingClose;
+    setPendingClose(null);
+    if (!req) return;
+    if (req.kind === 'one') closeSessionNow(req.sessionId);
+    else if (req.kind === 'others') closeOtherSessionsNow(req.sessionId);
+    else closeAllSessionsNow();
+  };
+
+  const describePendingClose = (): { title: string; message: string } => {
+    if (!pendingClose) return { title: '', message: '' };
+    if (pendingClose.kind === 'one') {
+      const s = sessions.find((x) => x.sessionId === pendingClose.sessionId);
+      const name = s ? `${s.title} (${s.protocol.toUpperCase()} ${s.host}:${s.port})` : 'tę sesję';
+      return {
+        title: 'Zamknąć połączenie?',
+        message: `Połączenie ${name} zostanie rozłączone. Niezapisana praca w sesji może zostać utracona.`,
+      };
+    }
+    if (pendingClose.kind === 'others') {
+      const count = sessions.filter((x) => x.sessionId !== pendingClose.sessionId).length;
+      return {
+        title: 'Zamknąć pozostałe połączenia?',
+        message: `Zostanie rozłączonych ${count} pozostałych sesji (bieżąca pozostanie otwarta).`,
+      };
+    }
+    return {
+      title: 'Zamknąć wszystkie połączenia?',
+      message: `Zostanie rozłączonych wszystkich ${sessions.length} aktywnych sesji.`,
+    };
+  };
+
+  // Close session tab (optimistic immediate UI update)
+  const closeSessionNow = async (sessionId: string) => {
+    setSessions((prev) => {
+      const remaining = prev.filter((s) => s.sessionId !== sessionId);
+      if (activeSessionId === sessionId) {
+        const nextActive = remaining.length > 0 ? remaining[remaining.length - 1].sessionId : null;
+        setActiveSessionId(nextActive);
+      }
+      return remaining;
+    });
+    setPaneSlots((prev) => prev.filter((id) => id !== sessionId));
+
+    try {
+      await api.closeSession(sessionId);
+    } catch (err) {
+      console.error('Close session error:', err);
+    }
+  };
+
+  // Close other tabs except keepSessionId
+  const closeOtherSessionsNow = async (keepSessionId: string) => {
+    const toClose = sessions.filter((s) => s.sessionId !== keepSessionId);
+    setSessions((prev) => prev.filter((s) => s.sessionId === keepSessionId));
+    setActiveSessionId(keepSessionId);
+
+    for (const s of toClose) {
+      try {
+        await api.closeSession(s.sessionId);
+      } catch (err) {
+        console.warn('Close other session error:', err);
+      }
+    }
+  };
+
+  const closeAllSessionsNow = async () => {
+    const toClose = [...sessions];
+    setSessions([]);
+    setActiveSessionId(null);
+
+    for (const s of toClose) {
+      try {
+        await api.closeSession(s.sessionId);
+      } catch (err) {
+        console.warn('Close session error:', err);
+      }
+    }
+  };
+
+  // Reorder tabs by drag-and-drop
+  const handleReorderSessions = (sourceId: string, targetId: string, position: 'left' | 'right') => {
+    setSessions((prev) => {
+      const sourceIndex = prev.findIndex((s) => s.sessionId === sourceId);
+      const targetIndex = prev.findIndex((s) => s.sessionId === targetId);
+      if (sourceIndex === -1 || targetIndex === -1 || sourceIndex === targetIndex) {
+        return prev;
+      }
+
+      const newSessions = [...prev];
+      const [movedSession] = newSessions.splice(sourceIndex, 1);
+
+      let newTargetIndex = newSessions.findIndex((s) => s.sessionId === targetId);
+      if (position === 'right') {
+        newTargetIndex += 1;
+      }
+
+      newSessions.splice(newTargetIndex, 0, movedSession);
+      return newSessions;
+    });
+  };
+
+  // Helper to keep paneSlots valid and synced with open sessions
+  useEffect(() => {
+    const openIds = sessions.map((s) => s.sessionId);
+    setPaneSlots((prev) => {
+      const valid = prev.filter((id) => openIds.includes(id));
+      const missing = openIds.filter((id) => !valid.includes(id));
+      return [...valid, ...missing];
+    });
+  }, [sessions]);
+
+  const handleUpdatePaneSlot = (paneIndex: number, sessionId: string) => {
+    setPaneSlots((prev) => {
+      const next = [...prev];
+      const existingIndex = next.indexOf(sessionId);
+      if (existingIndex !== -1 && existingIndex !== paneIndex) {
+        const temp = next[paneIndex];
+        next[paneIndex] = sessionId;
+        next[existingIndex] = temp;
+      } else {
+        next[paneIndex] = sessionId;
+      }
+      return next;
+    });
+    setActiveSessionId(sessionId);
+  };
+
+  const handleSwapPaneSlots = (sourceIndex: number, targetIndex: number) => {
+    setPaneSlots((prev) => {
+      const next = [...prev];
+      const temp = next[sourceIndex];
+      next[sourceIndex] = next[targetIndex];
+      next[targetIndex] = temp;
+      return next;
+    });
+  };
+
+  const handleSelectSession = (sessionId: string) => {
+    setActiveSessionId(sessionId);
+    if (layout === 'single') {
+      setPaneSlots((prev) => [sessionId, ...prev.filter((id) => id !== sessionId)]);
+    } else {
+      const slotCount = layout === 'columns-3' ? 3 : layout === 'grid-4' ? 4 : 2;
+      const visibleSlots = paneSlots.slice(0, slotCount);
+      if (!visibleSlots.includes(sessionId)) {
+        const activeIndex = paneSlots.indexOf(activeSessionId || '');
+        const targetPane = activeIndex >= 0 && activeIndex < slotCount ? activeIndex : 0;
+        handleUpdatePaneSlot(targetPane, sessionId);
+      }
+    }
+  };
+
+  const handleChangeLayout = (newLayout: WorkspaceLayout) => {
+    setLayout(newLayout);
+    const needed = newLayout === 'columns-3' ? 3 : newLayout === 'grid-4' ? 4 : newLayout === 'single' ? 1 : 2;
+    setPaneSlots(() => {
+      const available = sessions.map((s) => s.sessionId);
+      const activeId = activeSessionId;
+      const initial = activeId && available.includes(activeId) ? [activeId] : [];
+      const others = available.filter((id) => !initial.includes(id));
+      const result = [...initial, ...others].slice(0, needed);
+      return result;
+    });
+  };
+
+  // Toggle left connections sidebar (fullscreen terminal mode)
+  const toggleSidebar = useCallback(() => {
+    setIsSidebarCollapsed((prev) => {
+      const next = !prev;
+      setTimeout(() => {
+        window.dispatchEvent(new Event('resize'));
+        window.dispatchEvent(new CustomEvent('remoteflow-focus-terminal'));
+      }, 50);
+      return next;
+    });
+  }, []);
+
+  // Keyboard shortcuts: Ctrl+L (Lock), F5 / Ctrl+R (Reload active connection), Ctrl+B (Toggle Sidebar)
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'l') {
+        e.preventDefault();
+        handleLock();
+      } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'b') {
+        e.preventDefault();
+        toggleSidebar();
+      } else if (e.key === 'F5' || ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'r')) {
+        e.preventDefault();
+        if (activeSessionId) {
+          handleReconnectSession(activeSessionId);
+        }
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [handleLock, toggleSidebar, activeSessionId, handleReconnectSession]);
+
+  // CRUD connections & groups
+  const handleSaveConnection = async (
+    conn: Connection,
+    rawPassword?: string,
+    rawKey?: string,
+    rawPassphrase?: string
+  ) => {
+    const saved = await api.saveConnection(conn, rawPassword, rawKey, rawPassphrase);
+    setConnections((prev) => {
+      const idx = prev.findIndex((c) => c.id === saved.id);
+      return idx >= 0 ? prev.map((c) => (c.id === saved.id ? saved : c)) : [...prev, saved];
+    });
+  };
+
+  // Deleting a connection / folder asks for confirmation next to the clicked item
+  const [pendingDelete, setPendingDelete] = useState<{
+    kind: 'connection' | 'group';
+    id: string;
+    anchor: DialogAnchor | null;
+  } | null>(null);
+
+  const handleDeleteConnection = (id: string, anchor?: DialogAnchor | null) => {
+    setPendingDelete({ kind: 'connection', id, anchor: anchor ?? null });
+  };
+
+  const deleteConnectionNow = async (id: string) => {
+    await api.deleteConnection(id);
+    setConnections((prev) => prev.filter((c) => c.id !== id));
+  };
+
+  const describePendingDelete = (): { title: string; message: string } => {
+    if (!pendingDelete) return { title: '', message: '' };
+    if (pendingDelete.kind === 'connection') {
+      const c = connections.find((x) => x.id === pendingDelete.id);
+      return {
+        title: 'Usunąć połączenie?',
+        message: c
+          ? `Połączenie „${c.name}” (${c.protocol.toUpperCase()} ${c.host}:${c.port}) zostanie trwale usunięte z sejfu.`
+          : 'Połączenie zostanie trwale usunięte z sejfu.',
+      };
+    }
+    const g = groups.find((x) => x.id === pendingDelete.id);
+    return {
+      title: 'Usunąć folder?',
+      message: `Folder ${g ? `„${g.name}” ` : ''}zostanie usunięty. Połączenia w nim zostaną zachowane.`,
+    };
+  };
+
+  const confirmPendingDelete = () => {
+    const req = pendingDelete;
+    setPendingDelete(null);
+    if (!req) return;
+    const run = req.kind === 'connection' ? deleteConnectionNow(req.id) : deleteGroupNow(req.id);
+    run.catch((err: unknown) => console.error('Usuwanie nie powiodło się:', err));
+  };
+
+  const handleSaveGroup = async (group: Group): Promise<Group> => {
+    const saved = await api.saveGroup(group);
+    setGroups((prev) => {
+      const idx = prev.findIndex((g) => g.id === saved.id);
+      return idx >= 0 ? prev.map((g) => (g.id === saved.id ? saved : g)) : [...prev, saved];
+    });
+    return saved;
+  };
+
+  const handleDeleteGroup = (id: string, anchor?: DialogAnchor | null) => {
+    setPendingDelete({ kind: 'group', id, anchor: anchor ?? null });
+  };
+
+  const deleteGroupNow = async (id: string) => {
+    await api.deleteGroup(id);
+    setGroups((prev) => prev.filter((g) => g.id !== id));
+    setConnections((prev) =>
+      prev.map((c) => (c.groupId === id ? { ...c, groupId: null } : c))
+    );
+  };
+
+  // Move connection between folders via Drag & Drop
+  const handleMoveConnection = async (connectionId: string, targetGroupId: string | null) => {
+    const conn = connections.find((c) => c.id === connectionId);
+    if (!conn || conn.groupId === targetGroupId) return;
+
+    const updated: Connection = {
+      ...conn,
+      groupId: targetGroupId,
+      updatedAt: new Date().toISOString(),
+    };
+
+    setConnections((prev) => prev.map((c) => (c.id === connectionId ? updated : c)));
+    try {
+      await api.saveConnection(updated);
+    } catch (err) {
+      console.error('Failed to move connection:', err);
+      await loadData();
+    }
+  };
+
+  // Add nested child folder (subfolder)
+  const handleAddSubgroup = (parentId: string) => {
+    setEditingGroup(null);
+    setDefaultParentGroupId(parentId);
+    setIsGroupModalOpen(true);
+  };
+
+  if (loading) {
+    return (
+      <div className="flex h-screen w-screen items-center justify-center bg-slate-950 text-white">
+        <Loader2 className="h-8 w-8 animate-spin text-cyan-500" />
+      </div>
+    );
+  }
+
+  // If vault is not initialized or locked with Master Password
+  const needsMasterPassword =
+    !vaultStatus || !vaultStatus.isInitialized || (!vaultStatus.isUnlocked && !vaultStatus.isPinLocked);
+
+  const masterPasswordScreen = needsMasterPassword ? (
+    <MasterPasswordScreen
+      status={vaultStatus || {
+        isInitialized: false,
+        isUnlocked: false,
+        isPinLocked: false,
+        pinEnabled: false,
+        autoLockScreen: true,
+        autoLockTimeoutMins: 15,
+        failedPinAttempts: 0,
+        connectionsCount: 0,
+        groupsCount: 0,
+        credentialsCount: 0,
+      }}
+      onUnlocked={async (updated) => {
+        setVaultStatus(updated);
+        if (updated.securityWarning) {
+          setSecurityWarning(updated.securityWarning);
+        }
+        if (updated.isUnlocked) {
+          await api.maximizeWindow();
+          loadData();
+          // Open sessions were kept running under the lock screen – refit and refocus them
+          setTimeout(() => {
+            window.dispatchEvent(new Event('resize'));
+            window.dispatchEvent(new CustomEvent('remoteflow-focus-terminal'));
+          }, 100);
+        }
+      }}
+      onReset={() => {
+        // Resetting the vault ends every open session
+        sessions.forEach((s) => api.closeSession(s.sessionId).catch(() => {}));
+        setGroups([]);
+        setConnections([]);
+        setCredentials([]);
+        setSessions([]);
+        setActiveSessionId(null);
+      }}
+    />
+  ) : null;
+
+  // No open sessions: the lock screen replaces the whole UI (as before).
+  // With open sessions the workspace must NOT be unmounted – that destroyed the SSH terminals
+  // (black screen and lost scrollback after unlocking) and the RDP viewers. The lock screen is
+  // then an opaque overlay and the UI underneath is made inert (no focus, no keyboard input).
+  if (!vaultStatus || (needsMasterPassword && sessions.length === 0)) {
+    return masterPasswordScreen;
+  }
+
+  return (
+    <>
+    <div
+      inert={needsMasterPassword}
+      aria-hidden={needsMasterPassword}
+      className="flex h-screen w-screen flex-col bg-slate-950 text-slate-100 overflow-hidden font-sans"
+    >
+      {securityWarning && (
+        <div
+          role="alert"
+          className="fixed bottom-4 right-4 z-[60] max-w-md rounded-xl border border-amber-500/40 bg-slate-900/95 p-4 text-xs text-amber-200 shadow-2xl"
+        >
+          <div className="mb-1 font-bold text-amber-300">Komunikat bezpieczeństwa</div>
+          <div className="whitespace-pre-line leading-relaxed">{securityWarning}</div>
+          <div className="mt-3 text-right">
+            <button
+              type="button"
+              onClick={() => setSecurityWarning(null)}
+              className="rounded-lg border border-amber-500/40 px-3 py-1 font-semibold hover:bg-amber-500/10"
+            >
+              Rozumiem
+            </button>
+          </div>
+        </div>
+      )}
+      {/* Top Header Bar */}
+      <Header
+        isSidebarCollapsed={isSidebarCollapsed}
+        onToggleSidebar={toggleSidebar}
+        activeSessionsCount={sessions.length}
+        vaultStatus={vaultStatus}
+        onOpenCredentials={() => setIsCredentialsModalOpen(true)}
+        onLock={handleLock}
+        onOpenSettings={() => setIsSettingsModalOpen(true)}
+        onOpenImportExport={() => setIsImportExportModalOpen(true)}
+      />
+
+      {/* Main Split Layout: Left Menu (Sidebar) / Right Pane (Tabs + Workspace) */}
+      <div className="flex flex-1 overflow-hidden">
+        {/* Left Pane (Założenie 5) - Collapsible for full screen */}
+        {!isSidebarCollapsed && (
+          <Sidebar
+            groups={groups}
+            connections={connections}
+            searchQuery={searchQuery}
+            onSearchChange={setSearchQuery}
+            onConnect={handleConnect}
+            onConnectAllInGroup={handleConnectAllInGroup}
+            onEditConnection={(conn) => {
+              setEditingConn(conn);
+              setIsConnModalOpen(true);
+            }}
+            onDeleteConnection={handleDeleteConnection}
+            onEditGroup={(grp) => {
+              setEditingGroup(grp);
+              setDefaultParentGroupId(grp.parentId);
+              setIsGroupModalOpen(true);
+            }}
+            onDeleteGroup={handleDeleteGroup}
+            onAddConnectionToGroup={(grpId) => {
+              setEditingConn(null);
+              setDefaultGroupId(grpId);
+              setIsConnModalOpen(true);
+            }}
+            onAddSubgroup={handleAddSubgroup}
+            onMoveConnection={handleMoveConnection}
+            onNewConnection={() => {
+              setEditingConn(null);
+              setDefaultGroupId(null);
+              setIsConnModalOpen(true);
+            }}
+            onNewGroup={() => {
+              setEditingGroup(null);
+              setDefaultParentGroupId(null);
+              setIsGroupModalOpen(true);
+            }}
+          />
+        )}
+
+        {/* Right Pane (Założenie 5) */}
+        <main className="flex flex-1 flex-col overflow-hidden bg-slate-950">
+          {/* Active Tabs Bar */}
+          <TabBar
+            sessions={sessions}
+            activeSessionId={activeSessionId}
+            layout={layout}
+            paneSlots={paneSlots}
+            onChangeLayout={handleChangeLayout}
+            isSidebarCollapsed={isSidebarCollapsed}
+            onToggleSidebar={toggleSidebar}
+            onSelectSession={handleSelectSession}
+            onCloseSession={handleCloseSession}
+            onReconnectSession={handleReconnectSession}
+            onDuplicateSession={handleDuplicateSession}
+            onCloseOtherSessions={handleCloseOtherSessions}
+            onCloseAll={handleCloseAllSessions}
+            onReorderSessions={handleReorderSessions}
+          />
+
+          {/* Active Workspace / Terminal / RDP Frame */}
+          <div className="flex-1 overflow-hidden">
+            <Workspace
+              sessions={sessions}
+              activeSessionId={activeSessionId}
+              connections={connections}
+              layout={layout}
+              paneSlots={paneSlots}
+              onChangeLayout={handleChangeLayout}
+              onUpdatePaneSlot={handleUpdatePaneSlot}
+              onSwapPaneSlots={handleSwapPaneSlots}
+              onSelectSession={handleSelectSession}
+              onCloseSession={handleCloseSession}
+              onReconnectSession={handleReconnectSession}
+              onConnect={handleConnect}
+              onNewConnection={() => {
+                setEditingConn(null);
+                setDefaultGroupId(null);
+                setIsConnModalOpen(true);
+              }}
+            />
+          </div>
+        </main>
+      </div>
+
+      {/* PIN Lock Overlay (when screen lock or manual lock triggered) */}
+      {vaultStatus.isPinLocked && (
+        <PinModal
+          onUnlocked={async (updated) => {
+            setVaultStatus(updated);
+            if (updated.isUnlocked) {
+              await api.maximizeWindow();
+              loadData();
+            }
+            setTimeout(() => {
+              window.dispatchEvent(new CustomEvent('remoteflow-focus-terminal'));
+            }, 100);
+          }}
+          onUseMasterPassword={async () => {
+            await api.lockVault();
+            setVaultStatus((prev) => (prev ? { ...prev, isPinLocked: false, isUnlocked: false } : null));
+          }}
+        />
+      )}
+
+      {/* Confirmation before closing connections */}
+      <ConfirmDialog
+        isOpen={pendingClose !== null}
+        title={describePendingClose().title}
+        message={describePendingClose().message}
+        confirmLabel="Rozłącz"
+        onConfirm={confirmPendingClose}
+        onCancel={() => setPendingClose(null)}
+      />
+
+      {/* Confirmation before deleting a connection / folder (shown next to the clicked item) */}
+      <ConfirmDialog
+        isOpen={pendingDelete !== null}
+        title={describePendingDelete().title}
+        message={describePendingDelete().message}
+        confirmLabel="Usuń"
+        anchor={pendingDelete?.anchor}
+        onConfirm={confirmPendingDelete}
+        onCancel={() => setPendingDelete(null)}
+      />
+
+      {/* Connection Add/Edit Modal */}
+      <ConnectionModal
+        isOpen={isConnModalOpen}
+        onClose={() => setIsConnModalOpen(false)}
+        onSave={handleSaveConnection}
+        editingConnection={editingConn}
+        groups={groups}
+        credentials={credentials}
+        defaultGroupId={defaultGroupId}
+        onCreateGroup={handleSaveGroup}
+      />
+
+      {/* Group Add/Edit Modal */}
+      <GroupModal
+        isOpen={isGroupModalOpen}
+        onClose={() => {
+          setIsGroupModalOpen(false);
+          setDefaultParentGroupId(null);
+        }}
+        onSave={handleSaveGroup}
+        editingGroup={editingGroup}
+        groups={groups}
+        defaultParentId={defaultParentGroupId}
+      />
+
+      {/* Credentials Management Modal */}
+      <CredentialsModal
+        isOpen={isCredentialsModalOpen}
+        onClose={() => setIsCredentialsModalOpen(false)}
+        credentials={credentials}
+        onCredentialsChanged={loadData}
+      />
+
+      {/* Settings Modal */}
+      <SettingsModal
+        isOpen={isSettingsModalOpen}
+        onClose={() => setIsSettingsModalOpen(false)}
+        status={vaultStatus}
+        onStatusUpdated={setVaultStatus}
+      />
+
+      {/* Import & Export Modal */}
+      <ImportExportModal
+        isOpen={isImportExportModalOpen}
+        onClose={() => setIsImportExportModalOpen(false)}
+        onDataChanged={loadData}
+      />
+
+      {/* Passphrase Prompt Modal */}
+      <PassphrasePromptModal
+        isOpen={passphrasePrompt !== null}
+        connection={passphrasePrompt?.conn || null}
+        onConnect={(enteredPassphrase) => {
+          if (passphrasePrompt) {
+            const { conn, allowDuplicate } = passphrasePrompt;
+            setPassphrasePrompt(null);
+            handleConnect(conn, allowDuplicate, enteredPassphrase);
+          }
+        }}
+        onClose={() => setPassphrasePrompt(null)}
+      />
+    </div>
+    {masterPasswordScreen}
+
+    {/* Confirmation before exiting the application (rendered above the lock screen) */}
+    <ConfirmDialog
+      isOpen={exitPrompt}
+      title="Zamknąć RemoteFlow?"
+      message={
+        sessions.length > 0
+          ? `Program zostanie zamknięty, a aktywne połączenia (${sessions.length}) zostaną rozłączone.`
+          : 'Czy na pewno chcesz zamknąć program?'
+      }
+      confirmLabel="Zamknij program"
+      onConfirm={() => {
+        setExitPrompt(false);
+        api.exitApp().catch(() => {});
+      }}
+      onCancel={() => setExitPrompt(false)}
+    />
+    </>
+  );
+};
+
+export default App;

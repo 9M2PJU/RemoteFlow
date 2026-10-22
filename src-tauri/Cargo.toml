@@ -1,0 +1,73 @@
+[package]
+name = "remoteflow"
+version = "1.0.2"
+description = "Cross-platform SSH, SFTP and RDP connection manager with an encrypted vault"
+authors = ["Jacek Nikiel"]
+license = "MIT"
+repository = "https://github.com/jacek-nikiel/RemoteFlow"
+edition = "2024"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[lib]
+# The `_lib` suffix may seem redundant but it is necessary
+# to make the lib name unique and wouldn't conflict with the bin name.
+# This seems to be only an issue on Windows, see https://github.com/rust-lang/cargo/issues/8519
+name = "remoteflow_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+tauri-plugin-opener = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+argon2 = "0.5"
+aes-gcm = "0.10"
+rand = "0.8"
+zeroize = { version = "1.8", features = ["derive", "zeroize_derive"] }
+base64 = "0.22"
+uuid = { version = "1.10", features = ["v4", "serde"] }
+chrono = { version = "0.4", features = ["serde"] }
+tokio = { version = "1", features = ["full"] }
+dirs = "6"
+ssh2 = "0.9"
+tokio-tungstenite = "0.30.0"
+futures-util = "0.3.34"
+ironrdp-rdcleanpath = "0.2.2"
+tokio-rustls = { version = "0.26", default-features = false, features = ["ring", "tls12", "logging"] }
+rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }
+rustls-pki-types = "1"
+socket2 = "0.6"
+hmac = "0.12"
+# Fallback TLS stack (Schannel on Windows, OpenSSL on Linux) for older RDP servers,
+# e.g. Windows Server 2012 without ECDHE-RSA-AES-GCM cipher suites.
+native-tls = "0.2"
+tokio-native-tls = "0.3"
+sha2 = "0.10"
+# mRemoteNG import (decrypting confCons.xml passwords)
+aes = "0.8"
+cbc = { version = "0.1", features = ["alloc"] }
+md-5 = "0.10"
+sha1 = "0.10"
+pbkdf2 = { version = "0.12", default-features = false, features = ["hmac"] }
+
+[target.'cfg(target_os = "windows")'.dependencies]
+clipboard-win = "5"
+
+[target.'cfg(target_os = "linux")'.dependencies]
+# OS lock detection (logind / ScreenSaver over D-Bus); already used by Tauri plugins
+zbus = "5"
+gtk = "0.18"
+gdk = "0.18"
+
+
+# Read the optimization guideline for more details: https://tauri.app/concept/size/#cargo-configuration
+[profile.release]
+codegen-units = 1
+lto = true
+opt-level = 3
+panic = "abort"
+strip = true

@@ -1,0 +1,326 @@
+use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Group {
+    pub id: String,
+    pub name: String,
+    #[serde(rename = "parentId")]
+    pub parent_id: Option<String>,
+    pub icon: Option<String>,
+    pub color: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PortForwardRule {
+    pub id: String,
+    #[serde(rename = "forwardType")]
+    pub forward_type: String, // "local", "remote", "dynamic"
+    #[serde(rename = "localPort")]
+    pub local_port: u16,
+    #[serde(rename = "remoteHost")]
+    pub remote_host: Option<String>,
+    #[serde(rename = "remotePort")]
+    pub remote_port: Option<u16>,
+    pub enabled: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RdpSettings {
+    pub width: u32,
+    pub height: u32,
+    #[serde(rename = "colorDepth")]
+    pub color_depth: u32,
+    pub domain: Option<String>,
+    pub sound: bool,
+    pub clipboard: bool,
+}
+
+impl Default for RdpSettings {
+    fn default() -> Self {
+        Self {
+            width: 1920,
+            height: 1080,
+            color_depth: 32,
+            domain: None,
+            sound: false,
+            clipboard: true,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Credential {
+    pub id: String,
+    pub name: String,
+    pub username: String,
+    #[serde(rename = "passwordEncrypted")]
+    pub password_encrypted: Option<String>,
+    #[serde(rename = "authType")]
+    pub auth_type: String, // "password", "key", "certificate"
+    #[serde(rename = "privateKeyEncrypted")]
+    pub private_key_encrypted: Option<String>,
+    #[serde(rename = "privateKeyPassphraseEncrypted")]
+    pub private_key_passphrase_encrypted: Option<String>,
+    #[serde(rename = "certificateContent")]
+    pub certificate_content: Option<String>,
+    #[serde(rename = "keyFilePath", default, skip_serializing_if = "Option::is_none")]
+    pub key_file_path: Option<String>,
+    #[serde(rename = "promptKeyPassphrase", default, skip_serializing_if = "Option::is_none")]
+    pub prompt_key_passphrase: Option<bool>,
+    #[serde(rename = "createdAt")]
+    pub created_at: String,
+    #[serde(rename = "updatedAt")]
+    pub updated_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Connection {
+    pub id: String,
+    pub name: String,
+    #[serde(rename = "groupId")]
+    pub group_id: Option<String>,
+    #[serde(rename = "credentialId")]
+    pub credential_id: Option<String>,
+    pub protocol: String, // "ssh" or "rdp"
+    pub host: String,
+    pub port: u16,
+    pub username: String,
+    #[serde(rename = "passwordEncrypted")]
+    pub password_encrypted: Option<String>, // Base64 packed: nonce + ciphertext
+    #[serde(rename = "sshAuthType")]
+    pub ssh_auth_type: String, // "password", "key", "certificate", "agent"
+    #[serde(rename = "privateKeyEncrypted")]
+    pub private_key_encrypted: Option<String>,
+    #[serde(rename = "privateKeyPassphraseEncrypted")]
+    pub private_key_passphrase_encrypted: Option<String>,
+    #[serde(rename = "certificateContent")]
+    pub certificate_content: Option<String>,
+    #[serde(rename = "keyFilePath", default, skip_serializing_if = "Option::is_none")]
+    pub key_file_path: Option<String>,
+    #[serde(rename = "promptKeyPassphrase", default, skip_serializing_if = "Option::is_none")]
+    pub prompt_key_passphrase: Option<bool>,
+    #[serde(rename = "portForwarding")]
+    pub port_forwarding: Vec<PortForwardRule>,
+    #[serde(rename = "rdpSettings")]
+    pub rdp_settings: Option<RdpSettings>,
+    pub tags: Vec<String>,
+    pub notes: Option<String>,
+    #[serde(rename = "defaultDownloadDir", default, skip_serializing_if = "Option::is_none")]
+    pub default_download_dir: Option<String>,
+    #[serde(rename = "createdAt")]
+    pub created_at: String,
+    #[serde(rename = "updatedAt")]
+    pub updated_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct VaultMetadata {
+    pub version: u32,
+    pub salt_base64: String,
+    pub canary_nonce_base64: String,
+    pub canary_ciphertext_base64: String,
+    // PIN lock optional configuration
+    pub pin_enabled: bool,
+    /// The PIN itself, encrypted with the master key. It can only be recovered after a
+    /// successful Master Password unlock, so vault.json alone never allows a PIN brute-force.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pin_encrypted_base64: Option<String>,
+    /// Legacy (format v1) fields: master key wrapped by the PIN and stored on disk.
+    /// Removed during migration to v2 – kept only so old files can be parsed.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pin_salt_base64: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pin_wrapped_master_key_base64: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pin_nonce_base64: Option<String>,
+    pub auto_lock_screen: bool,
+    pub auto_lock_timeout_mins: u32, // 0 = disabled
+    pub max_pin_attempts: u32,
+    #[serde(rename = "globalDownloadDir", default, skip_serializing_if = "Option::is_none")]
+    pub global_download_dir: Option<String>,
+    /// Trusted server identities (TOFU): "ssh:host:port" / "rdp:host:port" -> "SHA256:..." fingerprint.
+    #[serde(rename = "knownHosts", default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub known_hosts: BTreeMap<String, String>,
+    /// Periodic backup configuration.
+    /// NOTE: every field added to the vault MUST be skipped when it has its default value,
+    /// otherwise the integrity MAC of vaults written by older versions would no longer match.
+    #[serde(default, skip_serializing_if = "BackupSettings::is_default")]
+    pub backup: BackupSettings,
+    /// Interface confirmations (closing sessions, exiting the application).
+    #[serde(default, skip_serializing_if = "UiSettings::is_default")]
+    pub ui: UiSettings,
+}
+
+fn default_true() -> bool {
+    true
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct UiSettings {
+    /// Ask before closing connection tabs.
+    #[serde(rename = "confirmCloseSessions", default = "default_true")]
+    pub confirm_close_sessions: bool,
+    /// Ask before exiting the application.
+    #[serde(rename = "confirmAppExit", default = "default_true")]
+    pub confirm_app_exit: bool,
+}
+
+impl Default for UiSettings {
+    fn default() -> Self {
+        Self {
+            confirm_close_sessions: true,
+            confirm_app_exit: true,
+        }
+    }
+}
+
+impl UiSettings {
+    pub fn is_default(&self) -> bool {
+        *self == Self::default()
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct BackupSettings {
+    pub enabled: bool,
+    #[serde(rename = "intervalHours")]
+    pub interval_hours: u32,
+    /// How many backup files to keep (older ones are deleted).
+    pub keep: u32,
+    /// Custom backup directory; `None` = "backups" folder next to vault.json.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub dir: Option<String>,
+}
+
+impl Default for BackupSettings {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            interval_hours: 24,
+            keep: 10,
+            dir: None,
+        }
+    }
+}
+
+impl BackupSettings {
+    pub fn is_default(&self) -> bool {
+        *self == Self::default()
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BackupEntry {
+    pub name: String,
+    pub path: String,
+    pub size: u64,
+    /// RFC 3339 modification time
+    #[serde(rename = "createdAt")]
+    pub created_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct VaultData {
+    pub metadata: VaultMetadata,
+    pub groups: Vec<Group>,
+    pub connections: Vec<Connection>,
+    #[serde(default)]
+    pub credentials: Vec<Credential>,
+    /// HMAC-SHA256 (key derived from the master key) over the whole vault with this field empty.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mac: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct VaultStatus {
+    #[serde(rename = "isInitialized")]
+    pub is_initialized: bool,
+    #[serde(rename = "isUnlocked")]
+    pub is_unlocked: bool,
+    #[serde(rename = "isPinLocked")]
+    pub is_pin_locked: bool,
+    #[serde(rename = "pinEnabled")]
+    pub pin_enabled: bool,
+    #[serde(rename = "autoLockScreen")]
+    pub auto_lock_screen: bool,
+    #[serde(rename = "autoLockTimeoutMins")]
+    pub auto_lock_timeout_mins: u32,
+    #[serde(rename = "failedPinAttempts")]
+    pub failed_pin_attempts: u32,
+    #[serde(rename = "connectionsCount")]
+    pub connections_count: usize,
+    #[serde(rename = "groupsCount")]
+    pub groups_count: usize,
+    #[serde(rename = "credentialsCount")]
+    pub credentials_count: usize,
+    /// One-off security notice for the UI (migration, integrity problems, ...).
+    #[serde(rename = "securityWarning", default, skip_serializing_if = "Option::is_none")]
+    pub security_warning: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ExportPayload {
+    pub format: String, // "remoteflow_export"
+    pub version: u32,
+    #[serde(rename = "isEncrypted")]
+    pub is_encrypted: bool,
+    #[serde(rename = "saltBase64")]
+    pub salt_base64: Option<String>,
+    #[serde(rename = "nonceBase64")]
+    pub nonce_base64: Option<String>,
+    #[serde(rename = "ciphertextBase64")]
+    pub ciphertext_base64: Option<String>,
+    pub groups: Option<Vec<Group>>,
+    pub connections: Option<Vec<Connection>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub credentials: Option<Vec<Credential>>,
+    #[serde(rename = "exportedAt")]
+    pub exported_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DecryptedExportData {
+    pub groups: Vec<Group>,
+    pub connections: Vec<Connection>,
+    #[serde(default)]
+    pub credentials: Vec<Credential>,
+    #[serde(rename = "exportedAt")]
+    pub exported_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ImportSummary {
+    #[serde(rename = "groupsImported")]
+    pub groups_imported: usize,
+    #[serde(rename = "connectionsImported")]
+    pub connections_imported: usize,
+    #[serde(rename = "credentialsImported", default)]
+    pub credentials_imported: usize,
+    /// mRemoteNG import: passwords that could not be decrypted (imported without password).
+    #[serde(rename = "passwordsFailed", default)]
+    pub passwords_failed: usize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct KnownHostEntry {
+    pub id: String,
+    pub fingerprint: String,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn ui_settings_default_is_not_serialized_and_old_files_parse() {
+        // Older vaults have no "ui" key: they must parse to the defaults and serialize back
+        // without the key, so their integrity MAC still matches.
+        let ui: UiSettings = serde_json::from_str("{}").unwrap();
+        assert!(ui.is_default());
+        assert!(ui.confirm_close_sessions && ui.confirm_app_exit);
+        let partial: UiSettings = serde_json::from_str(r#"{"confirmAppExit":false}"#).unwrap();
+        assert!(partial.confirm_close_sessions && !partial.confirm_app_exit);
+        assert!(!partial.is_default());
+    }
+}

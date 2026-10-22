@@ -1,0 +1,130 @@
+pub mod auth;
+pub mod oslock;
+pub mod session;
+pub mod vault;
+
+use auth::{
+    vault_batch_import, vault_change_master_password, vault_delete_connection,
+    vault_delete_credential, vault_delete_group, vault_export, vault_get_credentials,
+    vault_get_data, vault_get_global_download_dir, vault_get_path, vault_get_status, vault_import,
+    vault_backup_now, vault_forget_known_host, vault_touch_activity, vault_get_backup_settings, vault_get_ui_settings, vault_set_ui_settings, vault_init, vault_list_backups,
+    vault_restore_backup, vault_set_backup_settings, vault_list_known_hosts, vault_lock, vault_lock_to_pin, vault_reset, vault_reveal_credential_password,
+    vault_reveal_password, vault_save_connection, vault_save_credential, vault_save_group,
+    vault_set_connection_download_dir, vault_set_global_download_dir, vault_set_pin,
+    vault_unlock_master, vault_unlock_pin, vault_update_security_settings, AuthManager,
+};
+use session::{
+    app_exit, app_maximize_window, clipboard_read_files, clipboard_read_text, clipboard_write_text,
+    local_list_dir, open_shared_folder, pick_local_file, pick_local_folder,
+    read_local_paths_for_rdp_clipboard, read_local_text_file, save_dropped_file_to_shared, session_close,
+    session_connect, session_launch_external_rdp, session_list, session_resize,
+    session_send_input, sftp_list, sftp_upload_file, sftp_upload_paths, SessionManager,
+};
+use session::clipstage::{clipboard_sequence, rdp_clip_stage_begin, rdp_clip_stage_commit, rdp_clip_stage_dir, rdp_clip_stage_file};
+use vault::mremoteng::mremoteng_unlock;
+use session::{local_mkdir, local_search, sftp_delete_paths, sftp_mkdir, sftp_release, sftp_search, sftp_transfer_download, sftp_transfer_upload};
+use std::sync::Mutex;
+
+#[cfg_attr(mobile, tauri::mobile_entry_point)]
+pub fn run() {
+    let auth_state = Mutex::new(AuthManager::new());
+    let session_state = Mutex::new(SessionManager::new());
+
+    tauri::Builder::default()
+        .plugin(tauri_plugin_opener::init())
+        .manage(auth_state)
+        .manage(session_state)
+        .setup(|app| {
+            vault::backup::start_scheduler();
+            oslock::start_monitor(app.handle().clone());
+            Ok(())
+        })
+        .invoke_handler(tauri::generate_handler![
+            vault_get_status,
+            vault_get_path,
+            vault_init,
+            vault_unlock_master,
+            vault_lock,
+            vault_lock_to_pin,
+            vault_unlock_pin,
+            vault_set_pin,
+            vault_change_master_password,
+            vault_reset,
+            vault_update_security_settings,
+            vault_get_data,
+            vault_get_global_download_dir,
+            vault_set_global_download_dir,
+            vault_set_connection_download_dir,
+            vault_reveal_password,
+            vault_save_connection,
+            vault_delete_connection,
+            vault_save_group,
+            vault_delete_group,
+            vault_get_credentials,
+            vault_save_credential,
+            vault_delete_credential,
+            vault_reveal_credential_password,
+            vault_export,
+            vault_import,
+            vault_batch_import,
+            vault_list_known_hosts,
+            vault_forget_known_host,
+            vault_touch_activity,
+            vault_get_backup_settings,
+            vault_get_ui_settings,
+            vault_set_ui_settings,
+            vault_set_backup_settings,
+            vault_backup_now,
+            vault_list_backups,
+            vault_restore_backup,
+            session_list,
+            session_connect,
+            session_send_input,
+            session_resize,
+            session_close,
+            session_launch_external_rdp,
+            sftp_list,
+            sftp_upload_file,
+            sftp_upload_paths,
+            open_shared_folder,
+            save_dropped_file_to_shared,
+            clipboard_read_text,
+            clipboard_write_text,
+            clipboard_read_files,
+            local_list_dir,
+            pick_local_folder,
+            pick_local_file,
+            read_local_text_file,
+            read_local_paths_for_rdp_clipboard,
+            app_exit,
+            app_maximize_window,
+            rdp_clip_stage_begin,
+            rdp_clip_stage_dir,
+            rdp_clip_stage_file,
+            rdp_clip_stage_commit,
+            clipboard_sequence,
+            mremoteng_unlock,
+            sftp_mkdir,
+            sftp_delete_paths,
+            sftp_search,
+            sftp_transfer_upload,
+            sftp_transfer_download,
+            sftp_release,
+            local_mkdir,
+            local_search
+        ])
+        .run(tauri::generate_context!())
+        .expect("Błąd podczas uruchamiania aplikacji Tauri");
+}
+
+#[cfg(test)]
+mod version_tests {
+    /// package.json (shown in the UI), tauri.conf.json (installer) and Cargo.toml must carry the same version.
+    #[test]
+    fn versions_are_in_sync() {
+        let pkg: serde_json::Value = serde_json::from_str(include_str!("../../package.json")).unwrap();
+        let conf: serde_json::Value = serde_json::from_str(include_str!("../tauri.conf.json")).unwrap();
+        assert_eq!(pkg["version"], env!("CARGO_PKG_VERSION"), "package.json ≠ Cargo.toml");
+        assert_eq!(conf["version"], env!("CARGO_PKG_VERSION"), "tauri.conf.json ≠ Cargo.toml");
+    }
+}
