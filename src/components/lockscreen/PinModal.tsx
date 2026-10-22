@@ -3,6 +3,7 @@ import { Lock, ShieldAlert, KeyRound, Loader2, ArrowRight } from 'lucide-react';
 import { APP_VERSION } from '../../version';
 import { api } from '../../services/api';
 import { VaultStatus } from '../../types';
+import { useT } from '../../i18n';
 
 interface Props {
   onUnlocked: (status: VaultStatus) => void;
@@ -13,6 +14,7 @@ export const PinModal: React.FC<Props> = ({ onUnlocked, onUseMasterPassword }) =
   const [pin, setPin] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const t = useT();
 
   const handleSubmit = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
@@ -29,7 +31,7 @@ export const PinModal: React.FC<Props> = ({ onUnlocked, onUseMasterPassword }) =
       setPin('');
       // Too many attempts (or PIN no longer armed): the backend dropped the PIN-wrapped key,
       // only the Master Password can unlock now.
-      if (msg.includes('Przekroczono limit') || msg.includes('nie jest aktywna')) {
+      if (/Przekroczono limit|nie jest aktywna|Too many|not active/i.test(msg)) {
         setTimeout(() => onUseMasterPassword(), 1500);
       }
     } finally {
@@ -59,9 +61,9 @@ export const PinModal: React.FC<Props> = ({ onUnlocked, onUseMasterPassword }) =
           <Lock className="h-7 w-7" />
         </div>
 
-        <h2 className="text-xl font-bold text-white">Ekran zablokowany</h2>
+        <h2 className="text-xl font-bold text-white">{t('Ekran zablokowany')}</h2>
         <p className="mt-1 text-xs text-slate-400">
-          Wprowadź kod PIN, aby powrócić do aktywnych sesji
+          {t('Wprowadź kod PIN, aby powrócić do aktywnych sesji')}
         </p>
         <p className="mt-1 font-mono text-[10px] text-slate-500">RemoteFlow {APP_VERSION}</p>
 
@@ -116,7 +118,7 @@ export const PinModal: React.FC<Props> = ({ onUnlocked, onUseMasterPassword }) =
             onClick={handleBackspace}
             className="flex h-12 items-center justify-center rounded-xl bg-slate-800/50 text-sm font-medium text-slate-400 hover:bg-slate-800 active:scale-95"
           >
-            ← Cofnij
+            ← {t('Cofnij')}
           </button>
           <button
             type="button"
@@ -142,7 +144,7 @@ export const PinModal: React.FC<Props> = ({ onUnlocked, onUseMasterPassword }) =
           className="mt-2 inline-flex items-center gap-1.5 text-xs text-slate-400 hover:text-cyan-400 transition-colors"
         >
           <KeyRound className="h-3.5 w-3.5" />
-          Użyj Master Password zamiast PIN
+          {t('Użyj Master Password zamiast PIN')}
         </button>
       </div>
     </div>

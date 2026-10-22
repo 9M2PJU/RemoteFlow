@@ -1,3 +1,5 @@
+#[macro_use]
+pub mod i18n;
 pub mod auth;
 pub mod oslock;
 pub mod session;
@@ -97,6 +99,7 @@ pub fn run() {
             read_local_text_file,
             read_local_paths_for_rdp_clipboard,
             app_exit,
+            i18n::app_set_language,
             app_maximize_window,
             rdp_clip_stage_begin,
             rdp_clip_stage_dir,

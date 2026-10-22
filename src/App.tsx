@@ -17,8 +17,10 @@ import { ImportExportModal } from './components/dialogs/ImportExportModal';
 import { PassphrasePromptModal } from './components/dialogs/PassphrasePromptModal';
 import { ConfirmDialog, DialogAnchor } from './components/dialogs/ConfirmDialog';
 import { Loader2 } from 'lucide-react';
+import { useT } from './i18n';
 
 export const App: React.FC = () => {
+const t = useT();
   const [loading, setLoading] = useState(true);
   const [vaultStatus, setVaultStatus] = useState<VaultStatus | null>(null);
   // One-off security notice from the backend (vault migration, accepted external modification, ...)
@@ -209,7 +211,7 @@ export const App: React.FC = () => {
       port: conn.port,
       username: conn.username,
       status: 'connecting',
-      statusMessage: 'Nawiązywanie połączenia...',
+      statusMessage: t('Nawiązywanie połączenia...'),
       bytesSent: 0,
       bytesReceived: 0,
       startedAt: new Date().toISOString(),
@@ -377,22 +379,22 @@ export const App: React.FC = () => {
     if (!pendingClose) return { title: '', message: '' };
     if (pendingClose.kind === 'one') {
       const s = sessions.find((x) => x.sessionId === pendingClose.sessionId);
-      const name = s ? `${s.title} (${s.protocol.toUpperCase()} ${s.host}:${s.port})` : 'tę sesję';
+      const name = s ? `${s.title} (${s.protocol.toUpperCase()} ${s.host}:${s.port})` : t('tę sesję');
       return {
-        title: 'Zamknąć połączenie?',
-        message: `Połączenie ${name} zostanie rozłączone. Niezapisana praca w sesji może zostać utracona.`,
+        title: t('Zamknąć połączenie?'),
+        message: t('Połączenie {name} zostanie rozłączone. Niezapisana praca w sesji może zostać utracona.', { name }),
       };
     }
     if (pendingClose.kind === 'others') {
       const count = sessions.filter((x) => x.sessionId !== pendingClose.sessionId).length;
       return {
-        title: 'Zamknąć pozostałe połączenia?',
-        message: `Zostanie rozłączonych ${count} pozostałych sesji (bieżąca pozostanie otwarta).`,
+        title: t('Zamknąć pozostałe połączenia?'),
+        message: t('Zostanie rozłączonych {count} pozostałych sesji (bieżąca pozostanie otwarta).', { count }),
       };
     }
     return {
-      title: 'Zamknąć wszystkie połączenia?',
-      message: `Zostanie rozłączonych wszystkich ${sessions.length} aktywnych sesji.`,
+      title: t('Zamknąć wszystkie połączenia?'),
+      message: t('Zostanie rozłączonych wszystkich {length} aktywnych sesji.', { length: sessions.length }),
     };
   };
 
@@ -597,16 +599,18 @@ export const App: React.FC = () => {
     if (pendingDelete.kind === 'connection') {
       const c = connections.find((x) => x.id === pendingDelete.id);
       return {
-        title: 'Usunąć połączenie?',
+        title: t('Usunąć połączenie?'),
         message: c
-          ? `Połączenie „${c.name}” (${c.protocol.toUpperCase()} ${c.host}:${c.port}) zostanie trwale usunięte z sejfu.`
-          : 'Połączenie zostanie trwale usunięte z sejfu.',
+          ? t('Połączenie „{name}” ({p1} {host}:{port}) zostanie trwale usunięte z sejfu.', { name: c.name, p1: c.protocol.toUpperCase(), host: c.host, port: c.port })
+          : t('Połączenie zostanie trwale usunięte z sejfu.'),
       };
     }
     const g = groups.find((x) => x.id === pendingDelete.id);
     return {
-      title: 'Usunąć folder?',
-      message: `Folder ${g ? `„${g.name}” ` : ''}zostanie usunięty. Połączenia w nim zostaną zachowane.`,
+      title: t('Usunąć folder?'),
+      message: g
+        ? t('Folder „{name}” zostanie usunięty. Połączenia w nim zostaną zachowane.', { name: g.name })
+        : t('Folder zostanie usunięty. Połączenia w nim zostaną zachowane.'),
     };
   };
 
@@ -739,7 +743,7 @@ export const App: React.FC = () => {
           role="alert"
           className="fixed bottom-4 right-4 z-[60] max-w-md rounded-xl border border-amber-500/40 bg-slate-900/95 p-4 text-xs text-amber-200 shadow-2xl"
         >
-          <div className="mb-1 font-bold text-amber-300">Komunikat bezpieczeństwa</div>
+          <div className="mb-1 font-bold text-amber-300">{t('Komunikat bezpieczeństwa')}</div>
           <div className="whitespace-pre-line leading-relaxed">{securityWarning}</div>
           <div className="mt-3 text-right">
             <button
@@ -747,7 +751,7 @@ export const App: React.FC = () => {
               onClick={() => setSecurityWarning(null)}
               className="rounded-lg border border-amber-500/40 px-3 py-1 font-semibold hover:bg-amber-500/10"
             >
-              Rozumiem
+              {t('Rozumiem')}
             </button>
           </div>
         </div>
@@ -876,7 +880,7 @@ export const App: React.FC = () => {
         isOpen={pendingClose !== null}
         title={describePendingClose().title}
         message={describePendingClose().message}
-        confirmLabel="Rozłącz"
+        confirmLabel={t('Rozłącz')}
         onConfirm={confirmPendingClose}
         onCancel={() => setPendingClose(null)}
       />
@@ -886,7 +890,7 @@ export const App: React.FC = () => {
         isOpen={pendingDelete !== null}
         title={describePendingDelete().title}
         message={describePendingDelete().message}
-        confirmLabel="Usuń"
+        confirmLabel={t('Usuń')}
         anchor={pendingDelete?.anchor}
         onConfirm={confirmPendingDelete}
         onCancel={() => setPendingDelete(null)}
@@ -959,13 +963,13 @@ export const App: React.FC = () => {
     {/* Confirmation before exiting the application (rendered above the lock screen) */}
     <ConfirmDialog
       isOpen={exitPrompt}
-      title="Zamknąć RemoteFlow?"
+      title={t('Zamknąć RemoteFlow?')}
       message={
         sessions.length > 0
-          ? `Program zostanie zamknięty, a aktywne połączenia (${sessions.length}) zostaną rozłączone.`
-          : 'Czy na pewno chcesz zamknąć program?'
+          ? t('Program zostanie zamknięty, a aktywne połączenia ({length}) zostaną rozłączone.', { length: sessions.length })
+          : t('Czy na pewno chcesz zamknąć program?')
       }
-      confirmLabel="Zamknij program"
+      confirmLabel={t('Zamknij program')}
       onConfirm={() => {
         setExitPrompt(false);
         api.exitApp().catch(() => {});

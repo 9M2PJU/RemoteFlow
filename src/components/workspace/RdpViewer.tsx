@@ -46,6 +46,7 @@ import { SessionInfo, SftpFileEntry } from '../../types';
 import { api, isTauri, isWindowsHost } from '../../services/api';
 import { explainRdpError } from '../../utils/rdpErrors';
 import { listen } from '@tauri-apps/api/event';
+import { useT } from '../../i18n';
 
 let rdpWasmInitPromise: Promise<void> | null = null;
 function ensureRdpInitialized(): Promise<void> {
@@ -250,6 +251,7 @@ interface Props {
 }
 
 export const RdpViewer: React.FC<Props> = ({ session, isActive }) => {
+  const t = useT();
   const containerRef = useRef<HTMLDivElement>(null);
   const elementRef = useRef<HTMLElement | null>(null);
   const userInteractionRef = useRef<UserInteraction | null>(null);
@@ -275,7 +277,7 @@ export const RdpViewer: React.FC<Props> = ({ session, isActive }) => {
   }, []);
 
   const [status, setStatus] = useState<'connecting' | 'connected' | 'error' | 'disconnected'>('connecting');
-  const [statusMessage, setStatusMessage] = useState<string>('Nawiązywanie połączenia RDP...');
+  const [statusMessage, setStatusMessage] = useState<string>(t('Nawiązywanie połączenia RDP...'));
   const [errorCopied, setErrorCopied] = useState(false);
   // Login exactly as sent to the server (user name and domain are normalised by the backend)
   const rdpLogin = session.rdpDomain ? `${session.rdpDomain}\\${session.username}` : session.username;
@@ -368,7 +370,7 @@ export const RdpViewer: React.FC<Props> = ({ session, isActive }) => {
         stagedDroppedFilesRef.current = [];
         setStagedUploadNames([]);
         if (notify) {
-          showToast('Wysłano tekst do schowka Windows RDP');
+          showToast(t('Wysłano tekst do schowka Windows RDP'));
         }
         return true;
       }
@@ -406,7 +408,7 @@ export const RdpViewer: React.FC<Props> = ({ session, isActive }) => {
     } catch (err) {
       console.warn('[RemoteFlow RDP] Błąd czyszczenia schowka:', err);
     }
-    showToast('Wyczyszczono schowek RDP i listę plików');
+    showToast(t('Wyczyszczono schowek RDP i listę plików'));
   }, [showToast]);
 
   // Stage DroppedFile[] into Windows RDP Clipboard via RdpFileTransferProvider
@@ -414,7 +416,7 @@ export const RdpViewer: React.FC<Props> = ({ session, isActive }) => {
     if (!droppedFiles || droppedFiles.length === 0) return;
     const provider = fileTransferProviderRef.current;
     if (!provider) {
-      showToast('Sesja RDP nie jest jeszcze gotowa do transferu plików');
+      showToast(t('Sesja RDP nie jest jeszcze gotowa do transferu plików'));
       return;
     }
 
@@ -441,14 +443,14 @@ export const RdpViewer: React.FC<Props> = ({ session, isActive }) => {
       const { completion } = provider.uploadFiles(droppedFiles);
       focusRdpCanvas();
       showToast(
-        `Gotowe! Wciśnij Ctrl+V (lub prawy przycisk -> Wklej) w Windows, aby wkleić: ${rootNames.slice(0, 2).join(', ')}`,
+        t('Gotowe! Wciśnij Ctrl+V (lub prawy przycisk -> Wklej) w Windows, aby wkleić: {p0}', { p0: rootNames.slice(0, 2).join(', ') }),
         5500
       );
 
       completion
         .then(() => {
           setUploadProgressText(null);
-          showToast('Zakończono wklejanie plików w systemie Windows!', 3500);
+          showToast(t('Zakończono wklejanie plików w systemie Windows!'), 3500);
         })
         .catch((err) => {
           console.warn('[RemoteFlow RDP] Upload completion warning:', err);
@@ -456,7 +458,7 @@ export const RdpViewer: React.FC<Props> = ({ session, isActive }) => {
         });
     } catch (err: any) {
       console.error('[RemoteFlow RDP] Błąd przygotowania plików w schowku RDP:', err);
-      showToast(`Błąd transferu: ${err?.message || err}`);
+      showToast(t('Błąd transferu: {p0}', { p0: err?.message || err }));
     }
   }, [focusRdpCanvas, showToast]);
 
@@ -467,7 +469,7 @@ export const RdpViewer: React.FC<Props> = ({ session, isActive }) => {
     try {
       const entries = await api.readLocalPathsForRdpClipboard(localPaths);
       if (entries.length === 0) {
-        showToast('Nie znaleziono plików do przesłania');
+        showToast(t('Nie znaleziono plików do przesłania'));
         return;
       }
 
@@ -505,7 +507,7 @@ export const RdpViewer: React.FC<Props> = ({ session, isActive }) => {
       setIsLocalBrowserOpen(false);
     } catch (err: any) {
       console.error('[RemoteFlow RDP] Błąd odczytu ścieżek lokalnych:', err);
-      showToast(`Błąd odczytu plików: ${err?.message || err}`);
+      showToast(t('Błąd odczytu plików: {p0}', { p0: err?.message || err }));
     } finally {
       setIsSavingFiles(false);
     }
@@ -551,12 +553,12 @@ export const RdpViewer: React.FC<Props> = ({ session, isActive }) => {
         savedCount++;
       }
 
-      const destLabel = exchangeDir || 'katalogu pobierania';
-      showToast(`Pobrano ${savedCount} ${savedCount === 1 ? 'plik' : 'plików'} z Windows do: ${destLabel}!`, 4500);
+      const destLabel = exchangeDir || t('katalogu pobierania');
+      showToast(t('Pobrano z Windows plików: {n}, zapisano w: {dest}', { n: savedCount, dest: destLabel }), 4500);
       setRemoteAvailableFiles([]);
     } catch (err: any) {
       console.error('[RemoteFlow RDP] Błąd pobierania plików z Windows:', err);
-      showToast(`Błąd pobierania plików z Windows: ${err?.message || err}`);
+      showToast(t('Błąd pobierania plików z Windows: {p0}', { p0: err?.message || err }));
     } finally {
       setIsDownloadingRemoteFiles(false);
     }
@@ -572,7 +574,7 @@ export const RdpViewer: React.FC<Props> = ({ session, isActive }) => {
         exchangeDir = conn?.defaultDownloadDir || vault.metadata?.globalDownloadDir || undefined;
       } catch {}
       const path = await api.openSharedFolder(exchangeDir);
-      showToast(`Otwarto folder lokalny: ${path}`, 3500);
+      showToast(t('Otwarto folder lokalny: {path}', { path }), 3500);
     } catch (err: any) {
       console.error('Błąd otwierania folderu wymiany:', err);
     }
@@ -719,7 +721,7 @@ export const RdpViewer: React.FC<Props> = ({ session, isActive }) => {
       const totalBytes = files.reduce((sum, f) => sum + (f.isDirectory ? 0 : f.size || 0), 0);
       if (totalBytes > REMOTE_CLIP_AUTO_LIMIT) {
         showToast(
-          `Skopiowano w Windows ${formatBytes(totalBytes)} – to za dużo na schowek. Użyj „Pobierz na komputer”.`,
+          t('Skopiowano w Windows {p0} – to za dużo na schowek. Użyj „Pobierz na komputer”.', { p0: formatBytes(totalBytes) }),
           6000
         );
         return;
@@ -742,7 +744,7 @@ export const RdpViewer: React.FC<Props> = ({ session, isActive }) => {
             await api.rdpClipStageDir(stageDir, rel);
             continue;
           }
-          setUploadProgressText(`Kopiowanie z Windows do schowka: ${f.name} (${done + 1}/${fileCount})`);
+          setUploadProgressText(t('Kopiowanie z Windows do schowka: {name} ({p1}/{fileCount})', { name: f.name, p1: done + 1, fileCount }));
           const blob = await provider.downloadFile(f, i).completion;
           if (job !== remoteClipJobRef.current) return;
           await api.rdpClipStageFile(stageDir, rel, new Uint8Array(await blob.arrayBuffer()));
@@ -757,14 +759,14 @@ export const RdpViewer: React.FC<Props> = ({ session, isActive }) => {
         await markOwnLocalClipboardWrite();
         setUploadProgressText(null);
         showToast(
-          `Skopiowano z Windows ${done} ${done === 1 ? 'plik' : 'plików'} do schowka – wklej Ctrl+V w Eksploratorze`,
+          t('Skopiowano z Windows do schowka plików: {n} – wklej Ctrl+V w Eksploratorze', { n: done }),
           4500
         );
       } catch (err: any) {
         if (job !== remoteClipJobRef.current) return;
         console.warn('[RemoteFlow RDP] Błąd kopiowania plików z Windows do schowka:', err);
         setUploadProgressText(null);
-        showToast(`Nie udało się skopiować plików z Windows: ${err?.message || err}. Użyj „Pobierz na komputer”.`, 6000);
+        showToast(t('Nie udało się skopiować plików z Windows: {p0}. Użyj „Pobierz na komputer”.', { p0: err?.message || err }), 6000);
       }
     },
     [showToast, markOwnLocalClipboardWrite]
@@ -803,7 +805,7 @@ export const RdpViewer: React.FC<Props> = ({ session, isActive }) => {
     lastAppliedResRef.current = { width: target.width, height: target.height };
     try {
       ui.resize(target.width, target.height);
-      showToast(`Rozdzielczość: ${target.width} × ${target.height}`, 2000);
+      showToast(t('Rozdzielczość: {width} × {height}', { width: target.width, height: target.height }), 2000);
       setTimeout(() => {
         window.dispatchEvent(new Event('resize'));
       }, 100);
@@ -822,12 +824,12 @@ export const RdpViewer: React.FC<Props> = ({ session, isActive }) => {
 
     if (!session.rdpProxyPort) {
       setStatus('connecting');
-      setStatusMessage('Oczekiwanie na inicjalizację lokalnego proxy RDP...');
+      setStatusMessage(t('Oczekiwanie na inicjalizację lokalnego proxy RDP...'));
       return;
     }
 
     setStatus('connecting');
-    setStatusMessage('Uruchamianie silnika RDP WebAssembly...');
+    setStatusMessage(t('Uruchamianie silnika RDP WebAssembly...'));
     lastProxyErrorRef.current = null;
 
     (async () => {
@@ -837,7 +839,7 @@ export const RdpViewer: React.FC<Props> = ({ session, isActive }) => {
         console.error('Błąd inicjalizacji WebAssembly IronRDP:', err);
         if (isSubscribed) {
           setStatus('error');
-          setStatusMessage('Błąd inicjalizacji modułu WebAssembly RDP: ' + (err?.message || err));
+          setStatusMessage(t('Błąd inicjalizacji modułu WebAssembly RDP: ') + (err?.message || err));
         }
         return;
       }
@@ -916,7 +918,7 @@ export const RdpViewer: React.FC<Props> = ({ session, isActive }) => {
                         api.clipboardWriteText(textVal).then(markOwnLocalClipboardWriteRef.current);
                         setRemoteClipboardText(textVal);
                         setClipboardDraft(textVal);
-                        showToast('Skopiowano tekst z Windows do schowka', 2500);
+                        showToast(t('Skopiowano tekst z Windows do schowka'), 2500);
                         break;
                       }
                     }
@@ -1002,7 +1004,7 @@ export const RdpViewer: React.FC<Props> = ({ session, isActive }) => {
               stageRemoteFilesToLocalClipboardRef.current(ftProvider, files);
             } else {
               showToast(
-                `Wykryto skopiowane pliki w Windows (${files.length})! Kliknij „Pobierz na komputer”, aby je zapisać.`,
+                t('Wykryto skopiowane pliki w Windows ({length})! Kliknij „Pobierz na komputer”, aby je zapisać.', { length: files.length }),
                 5000
               );
             }
@@ -1010,12 +1012,12 @@ export const RdpViewer: React.FC<Props> = ({ session, isActive }) => {
 
           ftProvider.on('upload-progress', (prog) => {
             if (!isSubscribed) return;
-            setUploadProgressText(`Wklejanie do Windows: ${prog.fileName} (${Math.round(prog.percentage)}%)`);
+            setUploadProgressText(t('Wklejanie do Windows: {fileName} ({p1}%)', { fileName: prog.fileName, p1: Math.round(prog.percentage) }));
           });
 
           ftProvider.on('upload-complete', (file) => {
             if (!isSubscribed) return;
-            setUploadProgressText(`Przesłano do Windows: ${file.name}`);
+            setUploadProgressText(t('Przesłano do Windows: {name}', { name: file.name }));
             setTimeout(() => setUploadProgressText(null), 2500);
           });
 
@@ -1030,12 +1032,12 @@ export const RdpViewer: React.FC<Props> = ({ session, isActive }) => {
         }
 
         setStatus('connecting');
-        setStatusMessage('Negocjowanie parametrów NLA / TLS z serwerem...');
+        setStatusMessage(t('Negocjowanie parametrów NLA / TLS z serwerem...'));
 
         const proxyPort = session.rdpProxyPort;
         if (!proxyPort) {
           setStatus('error');
-          setStatusMessage('Brak aktywnego mostka WebSocket-to-TCP dla sesji RDP');
+          setStatusMessage(t('Brak aktywnego mostka WebSocket-to-TCP dla sesji RDP'));
           return;
         }
 
@@ -1065,7 +1067,7 @@ export const RdpViewer: React.FC<Props> = ({ session, isActive }) => {
           const config = configBuilder.build();
 
           setStatusMessage(
-            `Autoryzacja (CredSSP / NLA) i inicjalizacja pulpitu ${targetDimensions.width}x${targetDimensions.height}...`
+            t('Autoryzacja (CredSSP / NLA) i inicjalizacja pulpitu {width}x{height}...', { width: targetDimensions.width, height: targetDimensions.height })
           );
 
           const connectPromise = ui.connect(config);
@@ -1074,7 +1076,7 @@ export const RdpViewer: React.FC<Props> = ({ session, isActive }) => {
               () =>
                 reject(
                   new Error(
-                    'Przekroczono limit czasu odpowiedzi serwera RDP (15s). Sprawdź czy host jest osiągalny, czy poświadczenia są poprawne lub skorzystaj z przycisku FreeRDP poniżej.'
+                    t('Przekroczono limit czasu odpowiedzi serwera RDP (15s). Sprawdź czy host jest osiągalny, czy poświadczenia są poprawne lub skorzystaj z przycisku FreeRDP poniżej.')
                   )
                 ),
               15000
@@ -1087,7 +1089,7 @@ export const RdpViewer: React.FC<Props> = ({ session, isActive }) => {
           ui.setVisibility(true);
           setStatus('connected');
           lastAppliedResRef.current = { width: targetDimensions.width, height: targetDimensions.height };
-          setStatusMessage(`Sesja RDP aktywna (${targetDimensions.width} × ${targetDimensions.height})`);
+          setStatusMessage(t('Sesja RDP aktywna ({width} × {height})', { width: targetDimensions.width, height: targetDimensions.height }));
 
           setTimeout(() => {
             window.dispatchEvent(new Event('resize'));
@@ -1098,7 +1100,7 @@ export const RdpViewer: React.FC<Props> = ({ session, isActive }) => {
           if (!isSubscribed) return;
 
           setStatus('disconnected');
-          setStatusMessage(`Sesja RDP została zakończona: ${termInfo?.reason() || 'Rozłączono przez serwer'}`);
+          setStatusMessage(t('Sesja RDP została zakończona: {reason}', { reason: termInfo?.reason() || t('Rozłączono przez serwer') }));
         } catch (err: any) {
           if (!isSubscribed) return;
           console.error('[RemoteFlow RDP] Błąd nawiązywania połączenia:', err);
@@ -1110,11 +1112,11 @@ export const RdpViewer: React.FC<Props> = ({ session, isActive }) => {
           if (!msg && err) {
             msg = err.toString();
             if (msg === '[object Object]') {
-              msg = 'Błąd silnika RDP: odmowa autoryzacji (CredSSP / NLA) lub rozłączenie przez serwer';
+              msg = t('Błąd silnika RDP: odmowa autoryzacji (CredSSP / NLA) lub rozłączenie przez serwer');
             }
           }
           setStatusMessage(
-            lastProxyErrorRef.current || msg || 'Błąd połączenia RDP (sprawdź poświadczenia lub NLA)'
+            lastProxyErrorRef.current || msg || t('Błąd połączenia RDP (sprawdź poświadczenia lub NLA)')
           );
         }
       };
@@ -1230,14 +1232,14 @@ export const RdpViewer: React.FC<Props> = ({ session, isActive }) => {
       try {
         if (useSpecial === 'ctrlAltDel' && userInteractionRef.current?.ctrlAltDel) {
           userInteractionRef.current.ctrlAltDel();
-          if (label) showToast(`Wysłano: ${label}`, 2000);
+          if (label) showToast(t('Wysłano: {label}', { label }), 2000);
           focusRdpCanvas();
           return true;
         }
 
         if (useSpecial === 'metaKey' && userInteractionRef.current?.metaKey) {
           userInteractionRef.current.metaKey();
-          if (label) showToast(`Wysłano: ${label}`, 2000);
+          if (label) showToast(t('Wysłano: {label}', { label }), 2000);
           focusRdpCanvas();
           return true;
         }
@@ -1252,13 +1254,13 @@ export const RdpViewer: React.FC<Props> = ({ session, isActive }) => {
             tx.addEvent(Backend.DeviceEvent.keyReleased(scancodes[i]));
           }
           wasmSess.applyInputs(tx);
-          if (label) showToast(`Wysłano: ${label}`, 2000);
+          if (label) showToast(t('Wysłano: {label}', { label }), 2000);
           focusRdpCanvas();
           return true;
         }
       } catch (err: any) {
         console.error('[RemoteFlow RDP] Błąd przesyłania kombinacji klawiszy:', err);
-        showToast(`Błąd: ${err?.message || err}`, 3000);
+        showToast(t('Błąd: {p0}', { p0: err?.message || err }), 3000);
       }
       return false;
     },
@@ -1278,13 +1280,13 @@ export const RdpViewer: React.FC<Props> = ({ session, isActive }) => {
             tx.addEvent(Backend.DeviceEvent.unicodeReleased(char));
           }
           wasmSess.applyInputs(tx);
-          showToast(`Wysłano tekst do Windows (${text.length} zn.)`, 2000);
+          showToast(t('Wysłano tekst do Windows ({length} zn.)', { length: text.length }), 2000);
           focusRdpCanvas();
           return true;
         }
       } catch (err: any) {
         console.error('[RemoteFlow RDP] Błąd przesyłania tekstu:', err);
-        showToast(`Błąd tekstu: ${err?.message || err}`, 3000);
+        showToast(t('Błąd tekstu: {p0}', { p0: err?.message || err }), 3000);
       }
       return false;
     },
@@ -1301,7 +1303,7 @@ export const RdpViewer: React.FC<Props> = ({ session, isActive }) => {
     if (customKey) scancodes.push(customKey);
 
     if (scancodes.length === 0) {
-      showToast('Wybierz przynajmniej jeden klawisz', 2000);
+      showToast(t('Wybierz przynajmniej jeden klawisz'), 2000);
       return;
     }
 
@@ -1311,7 +1313,7 @@ export const RdpViewer: React.FC<Props> = ({ session, isActive }) => {
     if (customShift) labelParts.push('Shift');
     if (customWin) labelParts.push('Win');
     const keyOption = SCANCODE_OPTIONS.find((o) => o.code === customKey);
-    if (keyOption) labelParts.push(keyOption.label);
+    if (keyOption) labelParts.push(t(keyOption.label));
 
     const label = labelParts.join(' + ');
     sendKeyCombination(scancodes, label);
@@ -1326,14 +1328,14 @@ export const RdpViewer: React.FC<Props> = ({ session, isActive }) => {
         await api.clipboardWriteText(pwd);
         await handleSendCustomTextToRemote(pwd, false);
         setCopiedPassword(true);
-        showToast('Skopiowano hasło do schowka!', 2000);
+        showToast(t('Skopiowano hasło do schowka!'), 2000);
         setTimeout(() => setCopiedPassword(false), 2000);
       } else {
-        showToast('Brak zapisanego hasła dla tej sesji', 2500);
+        showToast(t('Brak zapisanego hasła dla tej sesji'), 2500);
       }
     } catch (err) {
       console.error('Błąd kopiowania hasła:', err);
-      showToast('Nie udało się skopiować hasła', 2500);
+      showToast(t('Nie udało się skopiować hasła'), 2500);
     }
   };
 
@@ -1342,10 +1344,10 @@ export const RdpViewer: React.FC<Props> = ({ session, isActive }) => {
     setIsLaunchingExternal(true);
     try {
       await api.launchExternalRdp(session);
-      showToast('Uruchomiono zewnętrzne okno FreeRDP (z dyskiem Ten komputer -> RemoteFlow)', 4000);
+      showToast(t('Uruchomiono zewnętrzne okno FreeRDP (z dyskiem Ten komputer -> RemoteFlow)'), 4000);
     } catch (err: any) {
       console.error('Błąd uruchamiania FreeRDP:', err);
-      showToast(`Błąd FreeRDP: ${err?.message || err}`);
+      showToast(t('Błąd FreeRDP: {p0}', { p0: err?.message || err }));
     } finally {
       setIsLaunchingExternal(false);
     }
@@ -1441,7 +1443,7 @@ export const RdpViewer: React.FC<Props> = ({ session, isActive }) => {
         tx.addEvent(Backend.DeviceEvent.keyPressed(f5Scancode));
         tx.addEvent(Backend.DeviceEvent.keyReleased(f5Scancode));
         wasmSess.applyInputs(tx);
-        showToast('Wysłano F5 (odświeżenie) do Windows', 1500);
+        showToast(t('Wysłano F5 (odświeżenie) do Windows'), 1500);
         return true;
       }
     } catch (err) {
@@ -1515,22 +1517,22 @@ export const RdpViewer: React.FC<Props> = ({ session, isActive }) => {
               }`}
             >
               {isConnected
-                ? 'Aktywny'
+                ? t('Aktywny')
                 : isConnecting
-                ? 'Łączenie...'
+                ? t('Łączenie...')
                 : isError
-                ? 'Błąd połączenia'
-                : 'Rozłączono'}
+                ? t('Błąd połączenia')
+                : t('Rozłączono')}
             </span>
           </div>
 
           <div className="hidden lg:flex items-center gap-1.5 ml-2 border-l border-slate-800 pl-2 text-[10px] text-slate-400 shrink-0">
-            <span className="flex items-center gap-1 text-emerald-400" title="Szyfrowanie TLS / NLA aktywne">
+            <span className="flex items-center gap-1 text-emerald-400" title={t('Szyfrowanie TLS / NLA aktywne')}>
               <ShieldCheck className="h-3.5 w-3.5" />
               <span>TLS</span>
             </span>
             {session.rdpSettings?.sound && (
-              <span className="flex items-center gap-1 text-purple-400" title="Dźwięk zdalny włączony">
+              <span className="flex items-center gap-1 text-purple-400" title={t('Dźwięk zdalny włączony')}>
                 <Volume2 className="h-3.5 w-3.5" />
               </span>
             )}
@@ -1548,7 +1550,7 @@ export const RdpViewer: React.FC<Props> = ({ session, isActive }) => {
                   focusRdpCanvas();
                   userInteractionRef.current?.ctrlV();
                 }}
-                title="Wklej w sesji Windows (Ctrl+V)"
+                title={t('Wklej w sesji Windows (Ctrl+V)')}
                 className="ml-1 rounded bg-emerald-600 hover:bg-emerald-500 px-1.5 py-0.5 text-[9px] font-bold text-white transition-colors"
               >
                 Ctrl+V
@@ -1559,7 +1561,7 @@ export const RdpViewer: React.FC<Props> = ({ session, isActive }) => {
                   stagedDroppedFilesRef.current = [];
                   setStagedUploadNames([]);
                 }}
-                title="Anuluj"
+                title={t('Anuluj')}
                 className="text-emerald-300 hover:text-white p-0.5"
               >
                 <X className="h-3 w-3" />
@@ -1575,7 +1577,7 @@ export const RdpViewer: React.FC<Props> = ({ session, isActive }) => {
                   handleDownloadRemoteFiles();
                 }
               }}
-              title="Skopiowano pliki w sesji Windows. Kliknij, aby pobrać je od razu na komputer (do wspólnego katalogu wymiany)."
+              title={t('Skopiowano pliki w sesji Windows. Kliknij, aby pobrać je od razu na komputer (do wspólnego katalogu wymiany).')}
               className="flex items-center gap-1.5 ml-2 rounded-full bg-cyan-950/90 border border-cyan-500/60 px-2.5 py-0.5 text-[10px] text-cyan-200 font-medium shadow-xs shrink-0 cursor-pointer hover:bg-cyan-900/90 hover:border-cyan-400 transition-all animate-in fade-in duration-150"
             >
               {isDownloadingRemoteFiles ? (
@@ -1585,10 +1587,10 @@ export const RdpViewer: React.FC<Props> = ({ session, isActive }) => {
               )}
               <span className="truncate max-w-[170px] sm:max-w-[260px]">
                 {isDownloadingRemoteFiles ? (
-                  <span>Pobieranie plików na komputer...</span>
+                  <span>{t('Pobieranie plików na komputer...')}</span>
                 ) : (
                   <>
-                    Pobierz z Windows ({remoteAvailableFiles.length}):{' '}
+                    {t('Pobierz z Windows ({n}):', { n: remoteAvailableFiles.length })}{' '}
                     <strong className="text-white">
                       {remoteAvailableFiles.slice(0, 2).map((f) => f.name).join(', ')}
                       {remoteAvailableFiles.length > 2 ? ` (+${remoteAvailableFiles.length - 2})` : ''}
@@ -1602,7 +1604,7 @@ export const RdpViewer: React.FC<Props> = ({ session, isActive }) => {
                     e.stopPropagation();
                     setRemoteAvailableFiles([]);
                   }}
-                  title="Odrzuć powiadomienie"
+                  title={t('Odrzuć powiadomienie')}
                   className="text-cyan-300 hover:text-white p-0.5 ml-0.5"
                 >
                   <X className="h-3 w-3" />
@@ -1623,7 +1625,7 @@ export const RdpViewer: React.FC<Props> = ({ session, isActive }) => {
           {isSavingFiles && (
             <div className="flex items-center gap-1 ml-2 rounded-full bg-amber-950/90 border border-amber-500/60 px-2 py-0.5 text-[10px] text-amber-300 font-medium shadow-xs shrink-0">
               <Loader2 className="h-3 w-3 animate-spin text-amber-400" />
-              <span>Przygotowywanie plików...</span>
+              <span>{t('Przygotowywanie plików...')}</span>
             </div>
           )}
         </div>
@@ -1637,12 +1639,12 @@ export const RdpViewer: React.FC<Props> = ({ session, isActive }) => {
               value={selectedResolution}
               onChange={(e) => applyResolution(e.target.value)}
               disabled={!isConnected}
-              title="Zmień rozdzielczość pulpitu zdalnego w czasie rzeczywistym"
+              title={t('Zmień rozdzielczość pulpitu zdalnego w czasie rzeczywistym')}
               className="bg-transparent text-[11px] font-medium text-slate-200 outline-hidden cursor-pointer disabled:opacity-50"
             >
               {RESOLUTION_PRESETS.map((p) => (
                 <option key={p.value} value={p.value} className="bg-slate-900 text-slate-200">
-                  {p.label}
+                  {t(p.label)}
                 </option>
               ))}
             </select>
@@ -1651,7 +1653,7 @@ export const RdpViewer: React.FC<Props> = ({ session, isActive }) => {
           {/* Scale Switcher: Fit vs Real (100% 1:1) */}
           <button
             onClick={handleToggleScale}
-            title={`Zmień skalowanie pulpitu (obecnie: ${scaleMode === 'fit' ? 'Dopasuj do okna' : '100% oryginał (1:1)'})`}
+            title={t('Zmień skalowanie pulpitu (obecnie: {mode})', { mode: scaleMode === 'fit' ? t('Dopasuj do okna') : t('100% oryginał (1:1)') })}
             className={`flex items-center gap-1 rounded-lg border px-2 py-1 text-xs transition-colors ${
               scaleMode === 'fit'
                 ? 'border-cyan-500/50 bg-cyan-950/40 text-cyan-200 hover:bg-cyan-900/50'
@@ -1659,13 +1661,13 @@ export const RdpViewer: React.FC<Props> = ({ session, isActive }) => {
             }`}
           >
             <ZoomIn className="h-3 w-3 text-amber-400" />
-            <span className="text-[11px]">{scaleMode === 'fit' ? 'Dopasuj' : '100%'}</span>
+            <span className="text-[11px]">{scaleMode === 'fit' ? t('Dopasuj') : '100%'}</span>
           </button>
 
           {/* Toggle Unified Files & Clipboard Drawer */}
           <button
             onClick={() => setIsClipboardDrawerOpen((v) => !v)}
-            title="Transfer plików, katalogów i menedżer schowka RDP"
+            title={t('Transfer plików, katalogów i menedżer schowka RDP')}
             className={`relative flex items-center gap-1 rounded-lg border px-2.5 py-1 text-xs transition-colors ${
               isClipboardDrawerOpen
                 ? 'border-emerald-500 bg-emerald-950/60 text-emerald-200 shadow-xs'
@@ -1675,7 +1677,7 @@ export const RdpViewer: React.FC<Props> = ({ session, isActive }) => {
             }`}
           >
             <FolderSync className="h-3.5 w-3.5 text-emerald-400" />
-            <span className="text-[11px] font-medium hidden sm:inline">Pliki i Schowek</span>
+            <span className="text-[11px] font-medium hidden sm:inline">{t('Pliki i Schowek')}</span>
             {(remoteAvailableFiles.length > 0 || stagedUploadNames.length > 0) && (
               <span className="ml-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-cyan-500 px-1 text-[9px] font-bold text-slate-950">
                 {remoteAvailableFiles.length || stagedUploadNames.length}
@@ -1688,7 +1690,7 @@ export const RdpViewer: React.FC<Props> = ({ session, isActive }) => {
             <button
               onClick={() => setIsKeyMenuOpen((v) => !v)}
               disabled={!isConnected}
-              title="Wyślij sekwencję lub kombinację klawiszy do systemu Windows (Ctrl+Alt+Del, Win+L, itp.)"
+              title={t('Wyślij sekwencję lub kombinację klawiszy do systemu Windows (Ctrl+Alt+Del, Win+L, itp.)')}
               className={`flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-xs transition-colors disabled:opacity-40 disabled:pointer-events-none ${
                 isKeyMenuOpen
                   ? 'border-amber-500 bg-amber-950/70 text-amber-200 shadow-xs'
@@ -1696,7 +1698,7 @@ export const RdpViewer: React.FC<Props> = ({ session, isActive }) => {
               }`}
             >
               <Keyboard className="h-3.5 w-3.5 text-amber-400 shrink-0" />
-              <span className="text-[11px] font-medium hidden sm:inline">Wyślij sekwencję klawiszy</span>
+              <span className="text-[11px] font-medium hidden sm:inline">{t('Wyślij sekwencję klawiszy')}</span>
               <ChevronDown
                 className={`h-3 w-3 text-slate-400 transition-transform ${isKeyMenuOpen ? 'rotate-180' : ''}`}
               />
@@ -1708,7 +1710,7 @@ export const RdpViewer: React.FC<Props> = ({ session, isActive }) => {
                 <div className="flex items-center justify-between border-b border-slate-800 pb-2 mb-2.5">
                   <div className="flex items-center gap-1.5">
                     <Keyboard className="h-4 w-4 text-amber-400" />
-                    <span className="text-xs font-bold text-white">Sekwencja klawiszy Windows</span>
+                    <span className="text-xs font-bold text-white">{t('Sekwencja klawiszy Windows')}</span>
                   </div>
                   <button
                     onClick={() => setIsKeyMenuOpen(false)}
@@ -1728,7 +1730,7 @@ export const RdpViewer: React.FC<Props> = ({ session, isActive }) => {
                         : 'text-slate-400 hover:text-slate-200'
                     }`}
                   >
-                    Szybkie skróty
+                    {t('Szybkie skróty')}
                   </button>
                   <button
                     onClick={() => setKeyMenuTab('custom')}
@@ -1738,7 +1740,7 @@ export const RdpViewer: React.FC<Props> = ({ session, isActive }) => {
                         : 'text-slate-400 hover:text-slate-200'
                     }`}
                   >
-                    Własna kombinacja
+                    {t('Własna kombinacja')}
                   </button>
                   <button
                     onClick={() => setKeyMenuTab('text')}
@@ -1748,7 +1750,7 @@ export const RdpViewer: React.FC<Props> = ({ session, isActive }) => {
                         : 'text-slate-400 hover:text-slate-200'
                     }`}
                   >
-                    Wpisz tekst
+                    {t('Wpisz tekst')}
                   </button>
                 </div>
 
@@ -1759,95 +1761,95 @@ export const RdpViewer: React.FC<Props> = ({ session, isActive }) => {
                     <div>
                       <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1.5 flex items-center gap-1.5">
                         <ShieldCheck className="h-3 w-3 text-cyan-400" />
-                        <span>System i Logowanie</span>
+                        <span>{t('System i Logowanie')}</span>
                       </div>
                       <div className="grid grid-cols-2 gap-1.5">
                         <button
                           onClick={() => {
-                            sendKeyCombination([0x001d, 0x0038, 0xe053], 'Ctrl + Alt + Del', 'ctrlAltDel');
+                            sendKeyCombination([0x001d, 0x0038, 0xe053], t('Ctrl + Alt + Del'), 'ctrlAltDel');
                             setIsKeyMenuOpen(false);
                           }}
                           className="flex items-center justify-between rounded-lg border border-amber-500/30 bg-amber-950/20 px-2.5 py-1.5 text-left hover:bg-amber-900/40 hover:border-amber-500/60 transition-colors group"
                         >
                           <span className="text-[11px] font-semibold text-amber-300">Ctrl+Alt+Del</span>
-                          <span className="text-[9px] text-slate-400 group-hover:text-slate-200">Logowanie</span>
+                          <span className="text-[9px] text-slate-400 group-hover:text-slate-200">{t('Logowanie')}</span>
                         </button>
 
                         <button
                           onClick={() => {
-                            sendKeyCombination([0x001d, 0x002a, 0x0001], 'Ctrl + Shift + Esc');
+                            sendKeyCombination([0x001d, 0x002a, 0x0001], t('Ctrl + Shift + Esc'));
                             setIsKeyMenuOpen(false);
                           }}
                           className="flex items-center justify-between rounded-lg border border-slate-700 bg-slate-800/80 px-2.5 py-1.5 text-left hover:bg-slate-700 transition-colors group"
                         >
                           <span className="text-[11px] font-semibold text-cyan-300">Ctrl+Shift+Esc</span>
-                          <span className="text-[9px] text-slate-400 group-hover:text-slate-200">Menedżer</span>
+                          <span className="text-[9px] text-slate-400 group-hover:text-slate-200">{t('Menedżer')}</span>
                         </button>
 
                         <button
                           onClick={() => {
-                            sendKeyCombination([0xe05b, 0x0026], 'Win + L');
+                            sendKeyCombination([0xe05b, 0x0026], t('Win + L'));
                             setIsKeyMenuOpen(false);
                           }}
                           className="flex items-center justify-between rounded-lg border border-slate-700 bg-slate-800/80 px-2.5 py-1.5 text-left hover:bg-slate-700 transition-colors group"
                         >
-                          <span className="text-[11px] font-semibold text-blue-300">Win + L</span>
-                          <span className="text-[9px] text-slate-400 group-hover:text-slate-200">Zablokuj</span>
+                          <span className="text-[11px] font-semibold text-blue-300">{t('Win + L')}</span>
+                          <span className="text-[9px] text-slate-400 group-hover:text-slate-200">{t('Zablokuj')}</span>
                         </button>
 
                         <button
                           onClick={() => {
-                            sendKeyCombination([0xe05b], 'Klawisz Windows', 'metaKey');
+                            sendKeyCombination([0xe05b], t('Klawisz Windows'), 'metaKey');
                             setIsKeyMenuOpen(false);
                           }}
                           className="flex items-center justify-between rounded-lg border border-slate-700 bg-slate-800/80 px-2.5 py-1.5 text-left hover:bg-slate-700 transition-colors group"
                         >
-                          <span className="text-[11px] font-semibold text-blue-400">Klawisz Win</span>
-                          <span className="text-[9px] text-slate-400 group-hover:text-slate-200">Menu Start</span>
+                          <span className="text-[11px] font-semibold text-blue-400">{t('Klawisz Win')}</span>
+                          <span className="text-[9px] text-slate-400 group-hover:text-slate-200">{t('Menu Start')}</span>
                         </button>
 
                         <button
                           onClick={() => {
-                            sendKeyCombination([0xe05b, 0x0013], 'Win + R');
+                            sendKeyCombination([0xe05b, 0x0013], t('Win + R'));
                             setIsKeyMenuOpen(false);
                           }}
                           className="flex items-center justify-between rounded-lg border border-slate-700 bg-slate-800/80 px-2.5 py-1.5 text-left hover:bg-slate-700 transition-colors group"
                         >
-                          <span className="text-[11px] font-semibold text-slate-200">Win + R</span>
-                          <span className="text-[9px] text-slate-400 group-hover:text-slate-200">Uruchom</span>
+                          <span className="text-[11px] font-semibold text-slate-200">{t('Win + R')}</span>
+                          <span className="text-[9px] text-slate-400 group-hover:text-slate-200">{t('Uruchom')}</span>
                         </button>
 
                         <button
                           onClick={() => {
-                            sendKeyCombination([0xe05b, 0x0012], 'Win + E');
+                            sendKeyCombination([0xe05b, 0x0012], t('Win + E'));
                             setIsKeyMenuOpen(false);
                           }}
                           className="flex items-center justify-between rounded-lg border border-slate-700 bg-slate-800/80 px-2.5 py-1.5 text-left hover:bg-slate-700 transition-colors group"
                         >
-                          <span className="text-[11px] font-semibold text-slate-200">Win + E</span>
-                          <span className="text-[9px] text-slate-400 group-hover:text-slate-200">Eksplorator</span>
+                          <span className="text-[11px] font-semibold text-slate-200">{t('Win + E')}</span>
+                          <span className="text-[9px] text-slate-400 group-hover:text-slate-200">{t('Eksplorator')}</span>
                         </button>
 
                         <button
                           onClick={() => {
-                            sendKeyCombination([0xe05b, 0x0020], 'Win + D');
+                            sendKeyCombination([0xe05b, 0x0020], t('Win + D'));
                             setIsKeyMenuOpen(false);
                           }}
                           className="flex items-center justify-between rounded-lg border border-slate-700 bg-slate-800/80 px-2.5 py-1.5 text-left hover:bg-slate-700 transition-colors group"
                         >
-                          <span className="text-[11px] font-semibold text-slate-200">Win + D</span>
-                          <span className="text-[9px] text-slate-400 group-hover:text-slate-200">Pulpit</span>
+                          <span className="text-[11px] font-semibold text-slate-200">{t('Win + D')}</span>
+                          <span className="text-[9px] text-slate-400 group-hover:text-slate-200">{t('Pulpit')}</span>
                         </button>
 
                         <button
                           onClick={() => {
-                            sendKeyCombination([0xe05b, 0x002d], 'Win + X');
+                            sendKeyCombination([0xe05b, 0x002d], t('Win + X'));
                             setIsKeyMenuOpen(false);
                           }}
                           className="flex items-center justify-between rounded-lg border border-slate-700 bg-slate-800/80 px-2.5 py-1.5 text-left hover:bg-slate-700 transition-colors group"
                         >
-                          <span className="text-[11px] font-semibold text-slate-200">Win + X</span>
-                          <span className="text-[9px] text-slate-400 group-hover:text-slate-200">Menu szybkie</span>
+                          <span className="text-[11px] font-semibold text-slate-200">{t('Win + X')}</span>
+                          <span className="text-[9px] text-slate-400 group-hover:text-slate-200">{t('Menu szybkie')}</span>
                         </button>
                       </div>
                     </div>
@@ -1856,73 +1858,73 @@ export const RdpViewer: React.FC<Props> = ({ session, isActive }) => {
                     <div>
                       <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1.5 flex items-center gap-1.5">
                         <Tv className="h-3 w-3 text-purple-400" />
-                        <span>Okna i Aplikacje</span>
+                        <span>{t('Okna i Aplikacje')}</span>
                       </div>
                       <div className="grid grid-cols-2 gap-1.5">
                         <button
                           onClick={() => {
-                            sendKeyCombination([0x0038, 0x000f], 'Alt + Tab');
+                            sendKeyCombination([0x0038, 0x000f], t('Alt + Tab'));
                             setIsKeyMenuOpen(false);
                           }}
                           className="flex items-center justify-between rounded-lg border border-slate-700 bg-slate-800/80 px-2.5 py-1.5 text-left hover:bg-slate-700 transition-colors group"
                         >
-                          <span className="text-[11px] font-semibold text-purple-300">Alt + Tab</span>
-                          <span className="text-[9px] text-slate-400 group-hover:text-slate-200">Przełącz okno</span>
+                          <span className="text-[11px] font-semibold text-purple-300">{t('Alt + Tab')}</span>
+                          <span className="text-[9px] text-slate-400 group-hover:text-slate-200">{t('Przełącz okno')}</span>
                         </button>
 
                         <button
                           onClick={() => {
-                            sendKeyCombination([0x0038, 0x003e], 'Alt + F4');
+                            sendKeyCombination([0x0038, 0x003e], t('Alt + F4'));
                             setIsKeyMenuOpen(false);
                           }}
                           className="flex items-center justify-between rounded-lg border border-red-500/30 bg-red-950/20 px-2.5 py-1.5 text-left hover:bg-red-900/40 hover:border-red-500/50 transition-colors group"
                         >
-                          <span className="text-[11px] font-semibold text-red-300">Alt + F4</span>
-                          <span className="text-[9px] text-slate-400 group-hover:text-slate-200">Zamknij okno</span>
+                          <span className="text-[11px] font-semibold text-red-300">{t('Alt + F4')}</span>
+                          <span className="text-[9px] text-slate-400 group-hover:text-slate-200">{t('Zamknij okno')}</span>
                         </button>
 
                         <button
                           onClick={() => {
-                            sendKeyCombination([0xe05b, 0xe048], 'Win + Góra');
+                            sendKeyCombination([0xe05b, 0xe048], t('Win + Góra'));
                             setIsKeyMenuOpen(false);
                           }}
                           className="flex items-center justify-between rounded-lg border border-slate-700 bg-slate-800/80 px-2.5 py-1.5 text-left hover:bg-slate-700 transition-colors group"
                         >
-                          <span className="text-[11px] font-semibold text-slate-200">Win + ↑</span>
-                          <span className="text-[9px] text-slate-400 group-hover:text-slate-200">Maksymalizuj</span>
+                          <span className="text-[11px] font-semibold text-slate-200">{t('Win + ↑')}</span>
+                          <span className="text-[9px] text-slate-400 group-hover:text-slate-200">{t('Maksymalizuj')}</span>
                         </button>
 
                         <button
                           onClick={() => {
-                            sendKeyCombination([0xe05b, 0xe050], 'Win + Dół');
+                            sendKeyCombination([0xe05b, 0xe050], t('Win + Dół'));
                             setIsKeyMenuOpen(false);
                           }}
                           className="flex items-center justify-between rounded-lg border border-slate-700 bg-slate-800/80 px-2.5 py-1.5 text-left hover:bg-slate-700 transition-colors group"
                         >
-                          <span className="text-[11px] font-semibold text-slate-200">Win + ↓</span>
-                          <span className="text-[9px] text-slate-400 group-hover:text-slate-200">Minimalizuj</span>
+                          <span className="text-[11px] font-semibold text-slate-200">{t('Win + ↓')}</span>
+                          <span className="text-[9px] text-slate-400 group-hover:text-slate-200">{t('Minimalizuj')}</span>
                         </button>
 
                         <button
                           onClick={() => {
-                            sendKeyCombination([0x0038, 0x0039], 'Alt + Spacja');
+                            sendKeyCombination([0x0038, 0x0039], t('Alt + Spacja'));
                             setIsKeyMenuOpen(false);
                           }}
                           className="flex items-center justify-between rounded-lg border border-slate-700 bg-slate-800/80 px-2.5 py-1.5 text-left hover:bg-slate-700 transition-colors group"
                         >
-                          <span className="text-[11px] font-semibold text-slate-200">Alt + Spacja</span>
-                          <span className="text-[9px] text-slate-400 group-hover:text-slate-200">Menu okna</span>
+                          <span className="text-[11px] font-semibold text-slate-200">{t('Alt + Spacja')}</span>
+                          <span className="text-[9px] text-slate-400 group-hover:text-slate-200">{t('Menu okna')}</span>
                         </button>
 
                         <button
                           onClick={() => {
-                            sendKeyCombination([0xe05b, 0x000f], 'Win + Tab');
+                            sendKeyCombination([0xe05b, 0x000f], t('Win + Tab'));
                             setIsKeyMenuOpen(false);
                           }}
                           className="flex items-center justify-between rounded-lg border border-slate-700 bg-slate-800/80 px-2.5 py-1.5 text-left hover:bg-slate-700 transition-colors group"
                         >
-                          <span className="text-[11px] font-semibold text-slate-200">Win + Tab</span>
-                          <span className="text-[9px] text-slate-400 group-hover:text-slate-200">Widok zadań</span>
+                          <span className="text-[11px] font-semibold text-slate-200">{t('Win + Tab')}</span>
+                          <span className="text-[9px] text-slate-400 group-hover:text-slate-200">{t('Widok zadań')}</span>
                         </button>
                       </div>
                     </div>
@@ -1931,40 +1933,40 @@ export const RdpViewer: React.FC<Props> = ({ session, isActive }) => {
                     <div>
                       <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1.5 flex items-center gap-1.5">
                         <Clipboard className="h-3 w-3 text-emerald-400" />
-                        <span>Narzędzia i Schowek</span>
+                        <span>{t('Narzędzia i Schowek')}</span>
                       </div>
                       <div className="grid grid-cols-2 gap-1.5">
                         <button
                           onClick={() => {
-                            sendKeyCombination([0xe05b, 0x002a, 0x001f], 'Win + Shift + S');
+                            sendKeyCombination([0xe05b, 0x002a, 0x001f], t('Win + Shift + S'));
                             setIsKeyMenuOpen(false);
                           }}
                           className="flex items-center justify-between rounded-lg border border-slate-700 bg-slate-800/80 px-2.5 py-1.5 text-left hover:bg-slate-700 transition-colors group"
                         >
                           <span className="text-[11px] font-semibold text-emerald-300">Win+Shift+S</span>
-                          <span className="text-[9px] text-slate-400 group-hover:text-slate-200">Wycinanie</span>
+                          <span className="text-[9px] text-slate-400 group-hover:text-slate-200">{t('Wycinanie')}</span>
                         </button>
 
                         <button
                           onClick={() => {
-                            sendKeyCombination([0xe037], 'Print Screen');
+                            sendKeyCombination([0xe037], t('Print Screen'));
                             setIsKeyMenuOpen(false);
                           }}
                           className="flex items-center justify-between rounded-lg border border-slate-700 bg-slate-800/80 px-2.5 py-1.5 text-left hover:bg-slate-700 transition-colors group"
                         >
-                          <span className="text-[11px] font-semibold text-slate-200">Print Screen</span>
-                          <span className="text-[9px] text-slate-400 group-hover:text-slate-200">Zrzut ekranu</span>
+                          <span className="text-[11px] font-semibold text-slate-200">{t('Print Screen')}</span>
+                          <span className="text-[9px] text-slate-400 group-hover:text-slate-200">{t('Zrzut ekranu')}</span>
                         </button>
 
                         <button
                           onClick={() => {
-                            sendKeyCombination([0xe05b, 0x002f], 'Win + V');
+                            sendKeyCombination([0xe05b, 0x002f], t('Win + V'));
                             setIsKeyMenuOpen(false);
                           }}
                           className="flex items-center justify-between rounded-lg border border-slate-700 bg-slate-800/80 px-2.5 py-1.5 text-left hover:bg-slate-700 transition-colors group"
                         >
-                          <span className="text-[11px] font-semibold text-slate-200">Win + V</span>
-                          <span className="text-[9px] text-slate-400 group-hover:text-slate-200">Schowek Win</span>
+                          <span className="text-[11px] font-semibold text-slate-200">{t('Win + V')}</span>
+                          <span className="text-[9px] text-slate-400 group-hover:text-slate-200">{t('Schowek Win')}</span>
                         </button>
 
                         <button
@@ -1975,7 +1977,7 @@ export const RdpViewer: React.FC<Props> = ({ session, isActive }) => {
                           className="flex items-center justify-between rounded-lg border border-slate-700 bg-slate-800/80 px-2.5 py-1.5 text-left hover:bg-slate-700 transition-colors group"
                         >
                           <span className="text-[11px] font-semibold text-amber-400">F5</span>
-                          <span className="text-[9px] text-slate-400 group-hover:text-slate-200">Odśwież</span>
+                          <span className="text-[9px] text-slate-400 group-hover:text-slate-200">{t('Odśwież')}</span>
                         </button>
                       </div>
                     </div>
@@ -1987,7 +1989,7 @@ export const RdpViewer: React.FC<Props> = ({ session, isActive }) => {
                   <div className="space-y-3">
                     <div>
                       <span className="text-[11px] font-medium text-slate-300 block mb-1.5">
-                        Klawisze modyfikujące:
+                        {t('Klawisze modyfikujące:')}
                       </span>
                       <div className="grid grid-cols-4 gap-1.5">
                         {[
@@ -2014,7 +2016,7 @@ export const RdpViewer: React.FC<Props> = ({ session, isActive }) => {
 
                     <div>
                       <span className="text-[11px] font-medium text-slate-300 block mb-1.5">
-                        Klawisz główny:
+                        {t('Klawisz główny:')}
                       </span>
                       <select
                         value={customKey}
@@ -2028,10 +2030,10 @@ export const RdpViewer: React.FC<Props> = ({ session, isActive }) => {
                             return acc;
                           }, {} as Record<string, typeof SCANCODE_OPTIONS>)
                         ).map(([group, opts]) => (
-                          <optgroup key={group} label={group} className="bg-slate-900 text-slate-300">
+                          <optgroup key={group} label={t(group)} className="bg-slate-900 text-slate-300">
                             {opts.map((opt) => (
                               <option key={opt.label + opt.code} value={opt.code} className="bg-slate-800 text-slate-200">
-                                {opt.label}
+                                {t(opt.label)}
                               </option>
                             ))}
                           </optgroup>
@@ -2047,7 +2049,7 @@ export const RdpViewer: React.FC<Props> = ({ session, isActive }) => {
                           customAlt && 'Alt',
                           customShift && 'Shift',
                           customWin && 'Win',
-                          SCANCODE_OPTIONS.find((o) => o.code === customKey)?.label || 'Klawisz',
+                          t(SCANCODE_OPTIONS.find((o) => o.code === customKey)?.label || 'Klawisz'),
                         ]
                           .filter(Boolean)
                           .join(' + ')}
@@ -2057,7 +2059,7 @@ export const RdpViewer: React.FC<Props> = ({ session, isActive }) => {
                         className="flex items-center gap-1.5 rounded-lg bg-cyan-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-cyan-500 transition-colors shrink-0 shadow-xs"
                       >
                         <Send className="h-3 w-3" />
-                        <span>Wyślij</span>
+                        <span>{t('Wyślij')}</span>
                       </button>
                     </div>
                   </div>
@@ -2067,12 +2069,12 @@ export const RdpViewer: React.FC<Props> = ({ session, isActive }) => {
                 {keyMenuTab === 'text' && (
                   <div className="space-y-2">
                     <span className="text-[11px] text-slate-300 block">
-                      Wpisz tekst do wysłania jako sekwencję naciśnięć klawiszy do systemu Windows:
+                      {t('Wpisz tekst do wysłania jako sekwencję naciśnięć klawiszy do systemu Windows:')}
                     </span>
                     <textarea
                       value={customTextInput}
                       onChange={(e) => setCustomTextInput(e.target.value)}
-                      placeholder="Wpisz lub wklej tekst do wysłania..."
+                      placeholder={t('Wpisz lub wklej tekst do wysłania...')}
                       rows={3}
                       className="w-full rounded-lg border border-slate-700 bg-slate-950 px-2.5 py-1.5 text-xs text-slate-200 placeholder:text-slate-600 focus:border-cyan-500 focus:outline-hidden resize-none font-mono"
                     />
@@ -2087,7 +2089,7 @@ export const RdpViewer: React.FC<Props> = ({ session, isActive }) => {
                         className="flex items-center gap-1.5 rounded-lg bg-cyan-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-cyan-500 disabled:opacity-40 disabled:pointer-events-none transition-colors shadow-xs"
                       >
                         <Send className="h-3 w-3" />
-                        <span>Wyślij tekst ({customTextInput.length} zn.)</span>
+                        <span>{t('Wyślij tekst ({n} zn.)', { n: customTextInput.length })}</span>
                       </button>
                     </div>
                   </div>
@@ -2100,17 +2102,17 @@ export const RdpViewer: React.FC<Props> = ({ session, isActive }) => {
           <button
             onClick={sendF5ToRemote}
             disabled={!isConnected}
-            title="Wyślij klawisz F5 (Odśwież w systemie Windows) [F5]"
+            title={t('Wyślij klawisz F5 (Odśwież w systemie Windows) [F5]')}
             className="flex items-center gap-1 rounded-lg border border-slate-700 bg-slate-800/80 px-2 py-1 text-slate-200 hover:bg-slate-700 hover:text-white disabled:opacity-40 disabled:pointer-events-none transition-colors"
           >
             <span className="text-[11px] font-semibold text-amber-400">F5</span>
-            <span className="text-[11px] hidden lg:inline text-slate-300">Odśwież</span>
+            <span className="text-[11px] hidden lg:inline text-slate-300">{t('Odśwież')}</span>
           </button>
 
           {/* Copy Password Button */}
           <button
             onClick={handleCopyPassword}
-            title="Kopiuj hasło sesji do schowka (lokalnego i RDP)"
+            title={t('Kopiuj hasło sesji do schowka (lokalnego i RDP)')}
             className="flex items-center gap-1 rounded-lg border border-slate-700 bg-slate-800/80 px-2 py-1 text-slate-200 hover:bg-slate-700 hover:text-white transition-colors"
           >
             {copiedPassword ? (
@@ -2118,13 +2120,13 @@ export const RdpViewer: React.FC<Props> = ({ session, isActive }) => {
             ) : (
               <KeyRound className="h-3 w-3 text-cyan-400" />
             )}
-            <span className="text-[11px] hidden md:inline">{copiedPassword ? 'Skopiowano!' : 'Hasło'}</span>
+            <span className="text-[11px] hidden md:inline">{copiedPassword ? t('Skopiowano!') : t('Hasło')}</span>
           </button>
 
           {/* Fullscreen Toggle */}
           <button
             onClick={handleToggleFullscreen}
-            title={isFullscreen ? 'Opuść pełny ekran' : 'Pełny ekran'}
+            title={isFullscreen ? t('Opuść pełny ekran') : t('Pełny ekran')}
             className="flex h-7 w-7 items-center justify-center rounded-lg border border-slate-700 bg-slate-800/80 text-slate-300 hover:bg-slate-700 hover:text-white transition-colors"
           >
             {isFullscreen ? (
@@ -2137,7 +2139,7 @@ export const RdpViewer: React.FC<Props> = ({ session, isActive }) => {
           {/* Reconnect Button */}
           <button
             onClick={() => setConnectionAttempts((c) => c + 1)}
-            title="Połącz ponownie"
+            title={t('Połącz ponownie')}
             className="flex h-7 w-7 items-center justify-center rounded-lg border border-slate-700 bg-slate-800/80 text-slate-300 hover:bg-slate-700 hover:text-white transition-colors"
           >
             <RefreshCw className="h-3.5 w-3.5 text-slate-400" />
@@ -2166,9 +2168,9 @@ export const RdpViewer: React.FC<Props> = ({ session, isActive }) => {
         {isDragOver && (
           <div className="absolute inset-0 bg-cyan-950/85 border-2 border-dashed border-cyan-400 backdrop-blur-xs flex flex-col items-center justify-center z-30 pointer-events-none p-6 text-center animate-fadeIn">
             <FileUp className="h-12 w-12 text-cyan-400 mb-3 animate-bounce" />
-            <h3 className="text-base font-bold text-white">Upuść pliki lub katalogi do sesji Windows RDP</h3>
+            <h3 className="text-base font-bold text-white">{t('Upuść pliki lub katalogi do sesji Windows RDP')}</h3>
             <p className="text-xs text-cyan-200/90 mt-1 max-w-md">
-              Zostaną umieszczone bezpośrednio w <span className="font-semibold text-white">Schowku Windows RDP</span> (wystarczy nacisnąć <span className="font-semibold text-white">Ctrl+V</span> lub wybrać <span className="font-semibold text-white">Wklej</span> w dowolnym folderze Windows) oraz zapisane w <span className="font-mono font-semibold">~/RemoteFlow_Shared</span>.
+              {t('Zostaną umieszczone bezpośrednio w schowku Windows RDP (wystarczy nacisnąć Ctrl+V lub wybrać „Wklej” w dowolnym folderze Windows) oraz zapisane w ~/RemoteFlow_Shared.')}
             </p>
           </div>
         )}
@@ -2179,16 +2181,16 @@ export const RdpViewer: React.FC<Props> = ({ session, isActive }) => {
             <div className="flex h-11 items-center justify-between border-b border-slate-800 px-3 bg-slate-900/90 shrink-0">
               <div className="flex items-center gap-2">
                 <FolderSync className="h-4 w-4 text-emerald-400" />
-                <span className="font-semibold text-white">Transfer Plików, Katalogów i Schowek RDP</span>
+                <span className="font-semibold text-white">{t('Transfer Plików, Katalogów i Schowek RDP')}</span>
               </div>
               <div className="flex items-center gap-1.5">
                 <button
                   onClick={handleClearClipboard}
-                  title="Wyczyść schowek (usuń przygotowane pliki, tekst oraz zresetuj schowek RDP)"
+                  title={t('Wyczyść schowek (usuń przygotowane pliki, tekst oraz zresetuj schowek RDP)')}
                   className="flex items-center gap-1 rounded bg-slate-800 hover:bg-rose-900/60 hover:border-rose-500/50 border border-slate-700 px-2 py-1 text-[11px] font-medium text-slate-300 hover:text-rose-200 transition-colors"
                 >
                   <Trash2 className="h-3 w-3 text-rose-400" />
-                  <span>Wyczyść schowek</span>
+                  <span>{t('Wyczyść schowek')}</span>
                 </button>
                 <button
                   onClick={() => {
@@ -2208,11 +2210,11 @@ export const RdpViewer: React.FC<Props> = ({ session, isActive }) => {
                 <div className="flex items-center justify-between">
                   <span className="font-semibold text-white flex items-center gap-1.5">
                     <Upload className="h-3.5 w-3.5 text-cyan-400" />
-                    <span>1. Wyślij pliki lub katalogi do Windows</span>
+                    <span>{t('1. Wyślij pliki lub katalogi do Windows')}</span>
                   </span>
                 </div>
                 <p className="text-[11px] text-slate-300 leading-relaxed">
-                  Wybierz pliki lub cały katalog poniżej (albo przeciągnij je na ekran RDP). Po wybraniu przejdź do okna Windows (np. na Pulpit lub do Eksploratora plików) i naciśnij <strong className="text-emerald-300">Ctrl+V</strong> (Prawy przycisk myszy → <strong className="text-emerald-300">Wklej</strong>).
+                  {t('Wybierz pliki lub cały katalog poniżej (albo przeciągnij je na ekran RDP). Po wybraniu przejdź do okna Windows (np. na Pulpit lub do Eksploratora plików) i naciśnij Ctrl+V (prawy przycisk myszy → „Wklej”).')}
                 </p>
 
                 <div className="flex flex-wrap items-center gap-1.5 pt-1">
@@ -2222,7 +2224,7 @@ export const RdpViewer: React.FC<Props> = ({ session, isActive }) => {
                     className="flex items-center gap-1 rounded-lg bg-cyan-600 hover:bg-cyan-500 disabled:opacity-40 px-2.5 py-1.5 text-[11px] font-medium text-white transition-colors"
                   >
                     <Upload className="h-3 w-3" />
-                    <span>Wybierz pliki...</span>
+                    <span>{t('Wybierz pliki...')}</span>
                   </button>
                   <input
                     ref={rdpFileInputRef}
@@ -2258,7 +2260,7 @@ export const RdpViewer: React.FC<Props> = ({ session, isActive }) => {
                     }`}
                   >
                     <Folder className="h-3 w-3 text-amber-400" />
-                    <span>Wybierz katalog...</span>
+                    <span>{t('Wybierz katalog...')}</span>
                   </button>
 
                   <button
@@ -2267,15 +2269,15 @@ export const RdpViewer: React.FC<Props> = ({ session, isActive }) => {
                       if (clipFiles.length > 0) {
                         await stageLocalPathsToRdpClipboard(clipFiles);
                       } else {
-                        showToast('Brak skopiowanych plików/katalogów w schowku Linux (użyj Ctrl+C w menedżerze plików)');
+                        showToast(t('Brak skopiowanych plików/katalogów w schowku Linux (użyj Ctrl+C w menedżerze plików)'));
                       }
                     }}
                     disabled={!isConnected || isSavingFiles}
                     className="flex items-center gap-1 rounded-lg border border-slate-700 bg-slate-800 hover:bg-slate-700 px-2.5 py-1.5 text-[11px] font-medium text-slate-200 transition-colors"
-                    title="Jeśli skopiowałeś plik lub katalog w systemie Linux (Ctrl+C), kliknij tutaj aby przekazać go do schowka Windows"
+                    title={t('Jeśli skopiowałeś plik lub katalog w systemie Linux (Ctrl+C), kliknij tutaj aby przekazać go do schowka Windows')}
                   >
                     <ClipboardPaste className="h-3 w-3 text-emerald-400" />
-                    <span>Ze schowka Linux</span>
+                    <span>{t('Ze schowka Linux')}</span>
                   </button>
                 </div>
 
@@ -2285,7 +2287,7 @@ export const RdpViewer: React.FC<Props> = ({ session, isActive }) => {
                     <div className="flex items-center justify-between">
                       <span className="text-[10px] font-semibold text-amber-300 flex items-center gap-1">
                         <HardDrive className="h-3 w-3" />
-                        <span>Kliknij „Wyślij katalog” przy wybranym folderze:</span>
+                        <span>{t('Kliknij „Wyślij katalog” przy wybranym folderze:')}</span>
                       </span>
                       <button
                         onClick={async () => {
@@ -2294,7 +2296,7 @@ export const RdpViewer: React.FC<Props> = ({ session, isActive }) => {
                         }}
                         className="rounded border border-amber-500/40 bg-amber-950/60 hover:bg-amber-900 px-2 py-0.5 text-[10px] text-amber-200"
                       >
-                        Okno systemowe...
+                        {t('Okno systemowe...')}
                       </button>
                     </div>
 
@@ -2320,7 +2322,7 @@ export const RdpViewer: React.FC<Props> = ({ session, isActive }) => {
                           onClick={() => stageLocalPathsToRdpClipboard([localCurrentPath])}
                           className="rounded bg-emerald-600 hover:bg-emerald-500 px-2 py-1 text-[10px] font-semibold text-white shrink-0"
                         >
-                          Wyślij ten katalog
+                          {t('Wyślij ten katalog')}
                         </button>
                       )}
                     </div>
@@ -2360,7 +2362,7 @@ export const RdpViewer: React.FC<Props> = ({ session, isActive }) => {
                                   : 'bg-slate-800 hover:bg-cyan-600 text-slate-200'
                               }`}
                             >
-                              {item.isDir ? 'Wyślij katalog' : 'Wyślij plik'}
+                              {item.isDir ? t('Wyślij katalog') : t('Wyślij plik')}
                             </button>
                           </div>
                         ))
@@ -2375,12 +2377,12 @@ export const RdpViewer: React.FC<Props> = ({ session, isActive }) => {
                     <div className="flex items-center justify-between">
                       <span className="text-[11px] font-semibold text-cyan-200 flex items-center gap-1.5">
                         <Download className="h-3.5 w-3.5 text-cyan-400" />
-                        <span>Skopiowano w sesji Windows ({remoteAvailableFiles.length}):</span>
+                        <span>{t('Skopiowano w sesji Windows ({n}):', { n: remoteAvailableFiles.length })}</span>
                       </span>
                       <button
                         onClick={() => setRemoteAvailableFiles([])}
                         className="text-slate-400 hover:text-white p-0.5"
-                        title="Wyczyść listę"
+                        title={t('Wyczyść listę')}
                       >
                         <X className="h-3.5 w-3.5" />
                       </button>
@@ -2403,12 +2405,13 @@ export const RdpViewer: React.FC<Props> = ({ session, isActive }) => {
                       ) : (
                         <Download className="h-3.5 w-3.5" />
                       )}
-                      <span>Pobierz na komputer (~/RemoteFlow_Shared)</span>
+                      <span>{t('Pobierz na komputer (~/RemoteFlow_Shared)')}</span>
                     </button>
                   </div>
                 ) : (
                   <div className="mt-1 rounded border border-slate-800/80 bg-slate-950/40 p-2 text-[10px] text-slate-400 leading-relaxed">
-                    <span className="text-slate-300 font-medium">Kopiowanie z Windows na komputer:</span> zaznacz plik w sesji Windows i naciśnij <strong className="text-cyan-300">Ctrl+C</strong>. Na głównym pasku połączenia pojawi się informacja, a w tym menu uaktywni się przycisk <span className="text-cyan-200 font-semibold">„Pobierz na komputer”</span>.
+                    <span className="text-slate-300 font-medium">{t('Kopiowanie z Windows na komputer:')}</span>{' '}
+                    {t('zaznacz plik w sesji Windows i naciśnij Ctrl+C. Na głównym pasku połączenia pojawi się informacja, a w tym menu uaktywni się przycisk „Pobierz na komputer”.')}
                   </div>
                 )}
               </div>
@@ -2418,7 +2421,7 @@ export const RdpViewer: React.FC<Props> = ({ session, isActive }) => {
                 <div className="flex items-center justify-between">
                   <span className="font-semibold text-white flex items-center gap-1.5">
                     <Clipboard className="h-3.5 w-3.5 text-emerald-400" />
-                    <span>2. Schowek tekstowy (Linux ↔ Windows)</span>
+                    <span>{t('2. Schowek tekstowy (Linux ↔ Windows)')}</span>
                   </span>
                   <div className="flex items-center gap-2">
                     {clipboardDraft && (
@@ -2426,27 +2429,27 @@ export const RdpViewer: React.FC<Props> = ({ session, isActive }) => {
                         onClick={() => setClipboardDraft('')}
                         className="text-[10px] text-slate-400 hover:text-rose-300 transition-colors"
                       >
-                        Wyczyść
+                        {t('Wyczyść')}
                       </button>
                     )}
                     <button
                       onClick={async () => {
-                        const t = await api.clipboardReadText();
-                        if (t) {
-                          setClipboardDraft(t);
-                          showToast('Wczytano tekst ze schowka systemowego');
+                        const text = await api.clipboardReadText();
+                        if (text) {
+                          setClipboardDraft(text);
+                          showToast(t('Wczytano tekst ze schowka systemowego'));
                         }
                       }}
                       className="text-[10px] text-cyan-400 hover:underline"
                     >
-                      Wczytaj ze schowka Linux
+                      {t('Wczytaj ze schowka Linux')}
                     </button>
                   </div>
                 </div>
                 <textarea
                   value={clipboardDraft}
                   onChange={(e) => setClipboardDraft(e.target.value)}
-                  placeholder="Wpisz lub wklej tekst, hasło lub polecenie PowerShell/CMD..."
+                  placeholder={t('Wpisz lub wklej tekst, hasło lub polecenie PowerShell/CMD...')}
                   rows={3}
                   className="w-full rounded-lg border border-slate-700 bg-slate-950 p-2 font-mono text-[11px] text-slate-100 placeholder-slate-500 focus:outline-hidden focus:border-cyan-500"
                 />
@@ -2457,7 +2460,7 @@ export const RdpViewer: React.FC<Props> = ({ session, isActive }) => {
                     className="flex-1 flex items-center justify-center gap-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 disabled:opacity-40 py-1.5 text-white font-medium shadow-xs transition-colors"
                   >
                     <Send className="h-3 w-3" />
-                    <span>Wyślij do schowka Windows</span>
+                    <span>{t('Wyślij do schowka Windows')}</span>
                   </button>
                   <button
                     onClick={async () => {
@@ -2470,7 +2473,7 @@ export const RdpViewer: React.FC<Props> = ({ session, isActive }) => {
                     className="flex items-center gap-1.5 rounded-lg bg-cyan-600 hover:bg-cyan-500 disabled:opacity-40 px-3 py-1.5 text-white font-medium shadow-xs transition-colors"
                   >
                     <ClipboardPaste className="h-3 w-3" />
-                    <span>Wyślij i wklej (Ctrl+V)</span>
+                    <span>{t('Wyślij i wklej (Ctrl+V)')}</span>
                   </button>
                 </div>
 
@@ -2478,7 +2481,7 @@ export const RdpViewer: React.FC<Props> = ({ session, isActive }) => {
                 {remoteClipboardText && (
                   <div className="flex flex-col gap-1 pt-2 mt-1 border-t border-slate-800">
                     <span className="font-medium text-slate-400 text-[10px]">
-                      Ostatnio skopiowano w sesji Windows (automatycznie w schowku Linux):
+                      {t('Ostatnio skopiowano w sesji Windows (automatycznie w schowku Linux):')}
                     </span>
                     <div className="rounded border border-slate-800 bg-slate-950 p-2 font-mono text-[10px] text-slate-300 max-h-20 overflow-y-auto whitespace-pre-wrap select-all">
                       {remoteClipboardText}
@@ -2491,14 +2494,16 @@ export const RdpViewer: React.FC<Props> = ({ session, isActive }) => {
               <div className="mt-auto rounded-lg border border-cyan-500/30 bg-cyan-950/25 p-2.5 text-[11px] text-cyan-200 flex flex-col gap-1.5">
                 <div className="flex items-center gap-1.5 font-semibold text-white">
                   <FolderSync className="h-4 w-4 text-cyan-400" />
-                  <span>Gdzie szukać plików w systemie Windows?</span>
+                  <span>{t('Gdzie szukać plików w systemie Windows?')}</span>
                 </div>
                 <ul className="text-[10px] text-cyan-200/90 space-y-1 list-disc pl-4 leading-relaxed">
                   <li>
-                    <strong>W zakładce aplikacji (widok wbudowany):</strong> po wybraniu lub upuszczeniu pliku/katalogu użyj <strong>Ctrl+V (Wklej)</strong> w dowolnym folderze Eksploratora Windows lub na Pulpicie.
+                    <strong>{t('W zakładce aplikacji (widok wbudowany):')}</strong>{' '}
+                    {t('po wybraniu lub upuszczeniu pliku/katalogu użyj Ctrl+V (Wklej) w dowolnym folderze Eksploratora Windows lub na Pulpicie.')}
                   </li>
                   <li>
-                    <strong>W oknie zewnętrznym FreeRDP:</strong> folder <code className="text-white">~/RemoteFlow_Shared</code> jest widoczny w Eksploratorze plików w sekcji <strong>Ten komputer</strong> (a nie w „Sieć”) jako dysk <strong>RemoteFlow</strong> lub pod adresem <code className="text-white">\\tsclient\RemoteFlow</code>.
+                    <strong>{t('W oknie zewnętrznym FreeRDP:')}</strong>{' '}
+                    {t('folder ~/RemoteFlow_Shared jest widoczny w Eksploratorze plików w sekcji „Ten komputer” (a nie w „Sieć”) jako dysk RemoteFlow lub pod adresem \\\\tsclient\\RemoteFlow.')}
                   </li>
                 </ul>
                 <div className="flex items-center gap-1.5 mt-1">
@@ -2507,7 +2512,7 @@ export const RdpViewer: React.FC<Props> = ({ session, isActive }) => {
                     className="flex-1 flex items-center justify-center gap-1 rounded border border-cyan-500/40 bg-cyan-900/50 hover:bg-cyan-800/60 py-1 text-[10px] font-medium text-cyan-100 transition-colors"
                   >
                     <FolderOpen className="h-3 w-3" />
-                    <span>Otwórz ~/RemoteFlow_Shared</span>
+                    <span>{t('Otwórz ~/RemoteFlow_Shared')}</span>
                   </button>
                   <button
                     onClick={() => {
@@ -2515,7 +2520,7 @@ export const RdpViewer: React.FC<Props> = ({ session, isActive }) => {
                       api.clipboardWriteText('\\\\tsclient\\RemoteFlow');
                     }}
                     className="flex items-center justify-center gap-1 rounded border border-slate-700 bg-slate-800 hover:bg-slate-700 px-2 py-1 text-[10px] font-mono text-slate-200 transition-colors"
-                    title="Skopiuj ścieżkę \\tsclient\RemoteFlow do schowka Windows"
+                    title={t('Skopiuj ścieżkę \\\\tsclient\\RemoteFlow do schowka Windows')}
                   >
                     <Copy className="h-2.5 w-2.5" />
                     <span>\\tsclient\RemoteFlow</span>
@@ -2535,7 +2540,7 @@ export const RdpViewer: React.FC<Props> = ({ session, isActive }) => {
               </div>
               <Loader2 className="absolute -bottom-1 -right-1 h-6 w-6 text-cyan-400 animate-spin" />
             </div>
-            <h3 className="text-base font-semibold text-white tracking-tight">Łączenie z {session.title}</h3>
+            <h3 className="text-base font-semibold text-white tracking-tight">{t('Łączenie z {title}', { title: session.title })}</h3>
             <p className="mt-1 font-mono text-xs text-slate-400">
               {rdpLogin}@{session.host}:{session.port}
             </p>
@@ -2553,7 +2558,7 @@ export const RdpViewer: React.FC<Props> = ({ session, isActive }) => {
               <AlertTriangle className="h-7 w-7" />
             </div>
             <h3 className="text-base font-bold text-white tracking-tight">
-              {isError ? 'Błąd połączenia z sesją RDP' : 'Sesja RDP zakończona'}
+              {isError ? t('Błąd połączenia z sesją RDP') : t('Sesja RDP zakończona')}
             </h3>
             <div className="relative mt-1 max-w-md my-2">
               <p className="select-text cursor-text break-words text-xs text-slate-400 leading-relaxed font-mono bg-slate-900/80 border border-slate-800 p-2.5 pr-8 rounded-lg">
@@ -2561,7 +2566,7 @@ export const RdpViewer: React.FC<Props> = ({ session, isActive }) => {
               </p>
               <button
                 type="button"
-                title="Kopiuj treść błędu"
+                title={t('Kopiuj treść błędu')}
                 onClick={() => {
                   api.clipboardWriteText(statusMessage).catch(() => {});
                   setErrorCopied(true);
@@ -2576,7 +2581,7 @@ export const RdpViewer: React.FC<Props> = ({ session, isActive }) => {
               <div className="max-w-md rounded-lg border border-amber-500/30 bg-amber-500/10 p-2.5 text-left text-xs leading-relaxed text-amber-200">
                 {explainRdpError(statusMessage)}
                 <div className="mt-1.5 text-amber-300/80">
-                  Wysłany login: <span className="select-text font-mono text-amber-100">{rdpLogin}</span>
+                  {t('Wysłany login:')} <span className="select-text font-mono text-amber-100">{rdpLogin}</span>
                 </div>
               </div>
             )}
@@ -2586,7 +2591,7 @@ export const RdpViewer: React.FC<Props> = ({ session, isActive }) => {
                 className="flex items-center gap-1.5 rounded-xl bg-blue-600 px-4 py-2 text-xs font-semibold text-white hover:bg-blue-500 shadow-lg shadow-blue-600/20 transition-all"
               >
                 <RefreshCw className="h-3.5 w-3.5" />
-                <span>Połącz ponownie</span>
+                <span>{t('Połącz ponownie')}</span>
               </button>
               <button
                 onClick={handleLaunchExternal}
@@ -2594,14 +2599,14 @@ export const RdpViewer: React.FC<Props> = ({ session, isActive }) => {
                 className="flex items-center gap-1.5 rounded-xl border border-slate-700 bg-slate-800 px-4 py-2 text-xs font-semibold text-slate-200 hover:bg-slate-700 hover:text-white transition-all"
               >
                 <ExternalLink className="h-3.5 w-3.5 text-purple-400" />
-                <span>Otwórz w FreeRDP</span>
+                <span>{t('Otwórz w FreeRDP')}</span>
               </button>
               <button
                 onClick={handleDownloadRdp}
                 className="flex items-center gap-1.5 rounded-xl border border-slate-800 bg-slate-900 px-3 py-2 text-xs text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
               >
                 <Download className="h-3.5 w-3.5" />
-                <span>Pobierz .rdp</span>
+                <span>{t('Pobierz .rdp')}</span>
               </button>
             </div>
           </div>

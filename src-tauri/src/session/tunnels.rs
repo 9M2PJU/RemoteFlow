@@ -172,8 +172,8 @@ fn spawn_local_tunnel(
             l
         }
         Err(e) => {
-            let msg = format!(
-                "\r\n\x1b[1;31m[RemoteFlow Błąd Tunelu SSH]\x1b[0m Nie udało się otworzyć portu lokalnego {}: {}\r\n",
+            let msg = tr!(
+                "\r\n\x1b[1;31m[RemoteFlow Błąd Tunelu SSH]\x1b[0m Nie udało się otworzyć portu lokalnego {}: {}\r\n", "\r\n\x1b[1;31m[RemoteFlow SSH tunnel error]\x1b[0m Could not open local port {}: {}\r\n",
                 local_port, e
             );
             let _ = app.emit(&format!("ssh-data-{}", session_id), msg);
@@ -251,8 +251,8 @@ fn spawn_dynamic_tunnel(
             l
         }
         Err(e) => {
-            let msg = format!(
-                "\r\n\x1b[1;31m[RemoteFlow Błąd Tunelu SSH]\x1b[0m Nie udało się otworzyć portu SOCKS5 {}: {}\r\n",
+            let msg = tr!(
+                "\r\n\x1b[1;31m[RemoteFlow Błąd Tunelu SSH]\x1b[0m Nie udało się otworzyć portu SOCKS5 {}: {}\r\n", "\r\n\x1b[1;31m[RemoteFlow SSH tunnel error]\x1b[0m Could not open SOCKS5 port {}: {}\r\n",
                 local_port, e
             );
             let _ = app.emit(&format!("ssh-data-{}", session_id), msg);
@@ -416,8 +416,8 @@ fn spawn_remote_tunnel(
         let sess = match ssh_connect_raw(&config) {
             Ok(s) => s,
             Err(e) => {
-                let msg = format!(
-                    "\r\n\x1b[1;31m[RemoteFlow Błąd Tunelu SSH]\x1b[0m Nie udało się połączyć dla tunelu zdalnego (-R): {}\r\n",
+                let msg = tr!(
+                    "\r\n\x1b[1;31m[RemoteFlow Błąd Tunelu SSH]\x1b[0m Nie udało się połączyć dla tunelu zdalnego (-R): {}\r\n", "\r\n\x1b[1;31m[RemoteFlow SSH tunnel error]\x1b[0m Could not connect for the remote tunnel (-R): {}\r\n",
                     e
                 );
                 let _ = app.emit(&format!("ssh-data-{}", session_id), msg);
@@ -435,8 +435,8 @@ fn spawn_remote_tunnel(
                 (l, port)
             }
             Err(e) => {
-                let msg = format!(
-                    "\r\n\x1b[1;31m[RemoteFlow Błąd Tunelu SSH]\x1b[0m Nie udało się powiązać portu zdalnego {}: {}\r\n",
+                let msg = tr!(
+                    "\r\n\x1b[1;31m[RemoteFlow Błąd Tunelu SSH]\x1b[0m Nie udało się powiązać portu zdalnego {}: {}\r\n", "\r\n\x1b[1;31m[RemoteFlow SSH tunnel error]\x1b[0m Could not bind remote port {}: {}\r\n",
                     remote_listen_port, e
                 );
                 let _ = app.emit(&format!("ssh-data-{}", session_id), msg);

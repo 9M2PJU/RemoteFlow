@@ -67,9 +67,9 @@ impl AuthManager {
     /// Master key, available only while the vault is fully unlocked.
     pub fn unlocked_key(&self) -> Result<&SecretKey, String> {
         if !self.is_unlocked {
-            return Err("Sejf jest zablokowany".to_string());
+            return Err(tr!("Sejf jest zablokowany", "The vault is locked").to_string());
         }
-        self.master_key.as_ref().ok_or_else(|| "Sejf jest zablokowany".to_string())
+        self.master_key.as_ref().ok_or_else(|| tr!("Sejf jest zablokowany", "The vault is locked").to_string())
     }
 
     fn clear(&mut self) {
@@ -143,9 +143,9 @@ fn build_status(vault: Option<&VaultData>, mgr: &AuthManager, warning: Option<St
 }
 
 fn decode_nonce(b64: &str) -> Result<[u8; 12], String> {
-    let bytes = BASE64.decode(b64).map_err(|e| format!("Błąd dekodowania nonce: {}", e))?;
+    let bytes = BASE64.decode(b64).map_err(|e| tr!("Błąd dekodowania nonce: {}", "Nonce decoding error: {}", e))?;
     if bytes.len() != 12 {
-        return Err("Niepoprawna długość nonce".to_string());
+        return Err(tr!("Niepoprawna długość nonce", "Invalid nonce length").to_string());
     }
     let mut out = [0u8; 12];
     out.copy_from_slice(&bytes);
@@ -157,10 +157,10 @@ fn open_canary(key: &[u8; 32], metadata: &VaultMetadata) -> Result<Zeroizing<Vec
     let nonce = decode_nonce(&metadata.canary_nonce_base64)?;
     let ct = BASE64
         .decode(&metadata.canary_ciphertext_base64)
-        .map_err(|e| format!("Błąd dekodowania szyfrogramu: {}", e))?;
+        .map_err(|e| tr!("Błąd dekodowania szyfrogramu: {}", "Ciphertext decoding error: {}", e))?;
     decrypt_bytes(key, &ct, &nonce)
         .map(Zeroizing::new)
-        .map_err(|_| "Nieprawidłowe Master Password".to_string())
+        .map_err(|_| tr!("Nieprawidłowe Master Password", "Invalid Master Password").to_string())
 }
 
 fn set_canary_v2(key: &[u8; 32], metadata: &mut VaultMetadata) -> Result<(), String> {
@@ -181,7 +181,7 @@ fn clear_pin_metadata(metadata: &mut VaultMetadata) {
 
 fn check_new_password(password: &str, what: &str) -> Result<(), String> {
     if password.chars().count() < MIN_MASTER_PASSWORD_LEN {
-        return Err(format!("{} musi mieć co najmniej {} znaków", what, MIN_MASTER_PASSWORD_LEN));
+        return Err(tr!("{} musi mieć co najmniej {} znaków", "{} must be at least {} characters long", what, MIN_MASTER_PASSWORD_LEN));
     }
     Ok(())
 }
@@ -247,7 +247,7 @@ pub fn vault_init(master_password: &str, state: tauri::State<'_, AuthState>) -> 
 
 pub(crate) fn vault_init_impl(master_password: &str, state: &AuthState) -> Result<VaultStatus, String> {
     if vault_exists() {
-        return Err("Sejf już istnieje – aby utworzyć nowy, najpierw zresetuj obecny".to_string());
+        return Err(tr!("Sejf już istnieje – aby utworzyć nowy, najpierw zresetuj obecny", "The vault already exists – reset the current one to create a new one").to_string());
     }
     check_new_password(master_password, "Master Password")?;
 
@@ -310,7 +310,7 @@ pub(crate) fn vault_init_impl(master_password: &str, state: &AuthState) -> Resul
     {
         let _io = lock_io();
         if vault_exists() {
-            return Err("Sejf już istnieje".to_string());
+            return Err(tr!("Sejf już istnieje", "The vault already exists").to_string());
         }
         save_vault_signed(&mut data, &key)?;
     }
@@ -329,19 +329,19 @@ pub fn vault_unlock_master(master_password: &str, accept_modified: Option<bool>,
 }
 
 pub(crate) fn vault_unlock_master_impl(master_password: &str, accept_modified: Option<bool>, state: &AuthState) -> Result<VaultStatus, String> {
-    let initial = load_vault()?.ok_or("Sejf nie został jeszcze zainicjalizowany")?;
+    let initial = load_vault()?.ok_or(tr!("Sejf nie został jeszcze zainicjalizowany", "The vault has not been initialised yet"))?;
     let salt = BASE64
         .decode(&initial.metadata.salt_base64)
-        .map_err(|e| format!("Błąd dekodowania soli: {}", e))?;
+        .map_err(|e| tr!("Błąd dekodowania soli: {}", "Salt decoding error: {}", e))?;
     // Slow KDF outside of any lock.
     let key = derive_key(master_password, &salt)?;
 
     let mut warnings: Vec<String> = Vec::new();
     let vault = {
         let _io = lock_io();
-        let mut vault = load_vault()?.ok_or("Sejf nie istnieje")?;
+        let mut vault = load_vault()?.ok_or(tr!("Sejf nie istnieje", "The vault does not exist"))?;
         if vault.metadata.salt_base64 != initial.metadata.salt_base64 {
-            return Err("Plik sejfu zmienił się podczas odblokowywania – spróbuj ponownie".to_string());
+            return Err(tr!("Plik sejfu zmienił się podczas odblokowywania – spróbuj ponownie", "The vault file changed while unlocking – try again").to_string());
         }
 
         let canary = open_canary(&key, &vault.metadata)?;
@@ -380,7 +380,7 @@ pub(crate) fn vault_unlock_master_impl(master_password: &str, accept_modified: O
             }
             dirty = true;
         } else {
-            return Err("Nieprawidłowe Master Password (weryfikacja tokena nie powiodła się)".to_string());
+            return Err(tr!("Nieprawidłowe Master Password (weryfikacja tokena nie powiodła się)", "Invalid Master Password (token verification failed)").to_string());
         }
 
         if dirty {
@@ -473,7 +473,7 @@ pub fn vault_unlock_pin(pin: &str, state: tauri::State<'_, AuthState>) -> Result
 pub(crate) fn vault_unlock_pin_impl(pin: &str, state: &AuthState) -> Result<VaultStatus, String> {
     let mut mgr = lock_auth(&state)?;
     if !mgr.is_pin_locked || mgr.pin_wrap.is_none() {
-        return Err("Blokada PIN nie jest aktywna – wymagane jest Master Password".to_string());
+        return Err(tr!("Blokada PIN nie jest aktywna – wymagane jest Master Password", "PIN lock is not active – the Master Password is required").to_string());
     }
 
     let unwrapped = {
@@ -497,12 +497,12 @@ pub(crate) fn vault_unlock_pin_impl(pin: &str, state: &AuthState) -> Result<Vaul
             if attempts >= max_attempts {
                 // Drop the PIN-wrapped key entirely – only the Master Password can unlock now.
                 mgr.clear();
-                return Err(format!(
-                    "Przekroczono limit {} prób PIN! Wymagane jest podanie Master Password.",
+                return Err(tr!(
+                    "Przekroczono limit {} prób PIN! Wymagane jest podanie Master Password.", "Too many PIN attempts ({})! The Master Password is required.",
                     max_attempts
                 ));
             }
-            Err(format!("Nieprawidłowy PIN! Pozostało prób: {}", max_attempts - attempts))
+            Err(tr!("Nieprawidłowy PIN! Pozostało prób: {}", "Wrong PIN! Attempts left: {}", max_attempts - attempts))
         }
     }
 }
@@ -516,13 +516,13 @@ pub(crate) fn vault_set_pin_impl(pin: &str, enable: bool, state: &AuthState) -> 
     let mut mgr = lock_auth(&state)?;
     let key = mgr
         .unlocked_key()
-        .map_err(|_| "Sejf musi być odblokowany, aby zmienić konfigurację PIN".to_string())?
+        .map_err(|_| tr!("Sejf musi być odblokowany, aby zmienić konfigurację PIN", "The vault must be unlocked to change the PIN settings").to_string())?
         .clone();
 
     let vault = if enable {
         let len = pin.chars().count();
         if !(MIN_PIN_LEN..=MAX_PIN_LEN).contains(&len) || !pin.chars().all(|c| c.is_ascii_digit()) {
-            return Err(format!("PIN musi składać się z {}-{} cyfr", MIN_PIN_LEN, MAX_PIN_LEN));
+            return Err(tr!("PIN musi składać się z {}-{} cyfr", "The PIN must have {}-{} digits", MIN_PIN_LEN, MAX_PIN_LEN));
         }
         let pin_encrypted = encrypt_string(&key, pin)?;
         let vault = update_vault(&key, |v| {
@@ -614,7 +614,7 @@ pub(crate) fn vault_reveal_password_impl(connection_id: &str, state: &AuthState)
         .connections
         .iter()
         .find(|c| c.id == connection_id)
-        .ok_or("Nie znaleziono połączenia")?;
+        .ok_or(tr!("Nie znaleziono połączenia", "Connection not found"))?;
 
     if let Some(pwd) = decrypt_opt(key, &conn.password_encrypted)? {
         return Ok(pwd);
@@ -705,7 +705,7 @@ pub(crate) fn vault_export_impl(export_password: Option<String>, allow_plaintext
     let mgr = lock_auth(&state).map_err(|e| e.to_string())?;
     let key = mgr
         .unlocked_key()
-        .map_err(|_| "Sejf musi być odblokowany, aby wyeksportować dane".to_string())?;
+        .map_err(|_| tr!("Sejf musi być odblokowany, aby wyeksportować dane", "The vault must be unlocked to export data").to_string())?;
 
     let vault = load_vault_verified(key)?;
     let now = chrono::Utc::now().to_rfc3339();
@@ -715,7 +715,7 @@ pub(crate) fn vault_export_impl(export_password: Option<String>, allow_plaintext
     let mut clean_connections = Vec::with_capacity(vault.connections.len());
     for conn in &vault.connections {
         let mut clean = conn.clone();
-        let ctx = |e: String| format!("Nie udało się odszyfrować danych połączenia '{}': {}", conn.name, e);
+        let ctx = |e: String| tr!("Nie udało się odszyfrować danych połączenia '{}': {}", "Could not decrypt the data of connection '{}': {}", conn.name, e);
         clean.password_encrypted = decrypt_opt(key, &conn.password_encrypted).map_err(ctx)?;
         clean.private_key_encrypted = decrypt_opt(key, &conn.private_key_encrypted).map_err(ctx)?;
         clean.private_key_passphrase_encrypted =
@@ -725,7 +725,7 @@ pub(crate) fn vault_export_impl(export_password: Option<String>, allow_plaintext
     let mut clean_credentials = Vec::with_capacity(vault.credentials.len());
     for cred in &vault.credentials {
         let mut clean = cred.clone();
-        let ctx = |e: String| format!("Nie udało się odszyfrować poświadczenia '{}': {}", cred.name, e);
+        let ctx = |e: String| tr!("Nie udało się odszyfrować poświadczenia '{}': {}", "Could not decrypt credential '{}': {}", cred.name, e);
         clean.password_encrypted = decrypt_opt(key, &cred.password_encrypted).map_err(ctx)?;
         clean.private_key_encrypted = decrypt_opt(key, &cred.private_key_encrypted).map_err(ctx)?;
         clean.private_key_passphrase_encrypted =
@@ -735,7 +735,7 @@ pub(crate) fn vault_export_impl(export_password: Option<String>, allow_plaintext
 
     if let Some(password) = export_password {
         let password = Zeroizing::new(password);
-        check_new_password(&password, "Hasło eksportu")?;
+        check_new_password(&password, tr!("Hasło eksportu", "The export password"))?;
 
         let decrypted_data = DecryptedExportData {
             groups: vault.groups,
@@ -744,7 +744,7 @@ pub(crate) fn vault_export_impl(export_password: Option<String>, allow_plaintext
             exported_at: now.clone(),
         };
         let json_bytes = Zeroizing::new(
-            serde_json::to_vec(&decrypted_data).map_err(|e| format!("Błąd serializacji danych eksportu: {}", e))?,
+            serde_json::to_vec(&decrypted_data).map_err(|e| tr!("Błąd serializacji danych eksportu: {}", "Export data serialisation error: {}", e))?,
         );
 
         let salt = generate_salt();
@@ -763,10 +763,10 @@ pub(crate) fn vault_export_impl(export_password: Option<String>, allow_plaintext
             credentials: None,
             exported_at: now,
         };
-        serde_json::to_string_pretty(&payload).map_err(|e| format!("Błąd serializacji pliku eksportu: {}", e))
+        serde_json::to_string_pretty(&payload).map_err(|e| tr!("Błąd serializacji pliku eksportu: {}", "Export file serialisation error: {}", e))
     } else {
         if allow_plaintext != Some(true) {
-            return Err("Eksport bez szyfrowania zapisuje wszystkie hasła i klucze jawnym tekstem – wymaga wyraźnego potwierdzenia".to_string());
+            return Err(tr!("Eksport bez szyfrowania zapisuje wszystkie hasła i klucze jawnym tekstem – wymaga wyraźnego potwierdzenia", "An unencrypted export stores all passwords and keys in plain text – explicit confirmation is required").to_string());
         }
         let payload = ExportPayload {
             format: "remoteflow_export".to_string(),
@@ -780,7 +780,7 @@ pub(crate) fn vault_export_impl(export_password: Option<String>, allow_plaintext
             credentials: Some(clean_credentials),
             exported_at: now,
         };
-        serde_json::to_string_pretty(&payload).map_err(|e| format!("Błąd serializacji pliku eksportu: {}", e))
+        serde_json::to_string_pretty(&payload).map_err(|e| tr!("Błąd serializacji pliku eksportu: {}", "Export file serialisation error: {}", e))
     }
 }
 
@@ -793,22 +793,22 @@ pub(crate) fn vault_import_impl(payload_json: String, import_password: Option<St
     let mgr = lock_auth(&state)?;
     let key = mgr
         .unlocked_key()
-        .map_err(|_| "Sejf musi być odblokowany, aby zaimportować dane".to_string())?;
+        .map_err(|_| tr!("Sejf musi być odblokowany, aby zaimportować dane", "The vault must be unlocked to import data").to_string())?;
 
     let export_payload: ExportPayload =
-        serde_json::from_str(&payload_json).map_err(|e| format!("Błąd parsowania pliku importu: {}", e))?;
+        serde_json::from_str(&payload_json).map_err(|e| tr!("Błąd parsowania pliku importu: {}", "Import file parse error: {}", e))?;
     if export_payload.format != "remoteflow_export" {
-        return Err("Nieobsługiwany format pliku importu".to_string());
+        return Err(tr!("Nieobsługiwany format pliku importu", "Unsupported import file format").to_string());
     }
     // v1 exports: the passphrase field (and fields whose decryption failed) still hold
     // ciphertext of the source vault.
     let legacy = export_payload.version < 2;
 
     let (imported_groups, mut imported_connections, mut imported_credentials) = if export_payload.is_encrypted {
-        let password = Zeroizing::new(import_password.ok_or("Plik importu jest zaszyfrowany. Wprowadź hasło.")?);
-        let salt_b64 = export_payload.salt_base64.ok_or("Brak soli w pliku importu")?;
-        let nonce_b64 = export_payload.nonce_base64.ok_or("Brak nonce w pliku importu")?;
-        let ct_b64 = export_payload.ciphertext_base64.ok_or("Brak szyfrogramu w pliku importu")?;
+        let password = Zeroizing::new(import_password.ok_or(tr!("Plik importu jest zaszyfrowany. Wprowadź hasło.", "The import file is encrypted. Enter the password."))?);
+        let salt_b64 = export_payload.salt_base64.ok_or(tr!("Brak soli w pliku importu", "The import file has no salt"))?;
+        let nonce_b64 = export_payload.nonce_base64.ok_or(tr!("Brak nonce w pliku importu", "The import file has no nonce"))?;
+        let ct_b64 = export_payload.ciphertext_base64.ok_or(tr!("Brak szyfrogramu w pliku importu", "The import file has no ciphertext"))?;
 
         let salt = BASE64.decode(salt_b64).map_err(|e| e.to_string())?;
         let nonce = decode_nonce(&nonce_b64)?;
@@ -817,10 +817,10 @@ pub(crate) fn vault_import_impl(payload_json: String, import_password: Option<St
         let import_key = derive_key(&password, &salt)?;
         let decrypted_bytes = Zeroizing::new(
             decrypt_bytes(&import_key, &ct, &nonce)
-                .map_err(|_| "Błędne hasło pliku importu lub uszkodzone dane".to_string())?,
+                .map_err(|_| tr!("Błędne hasło pliku importu lub uszkodzone dane", "Wrong import file password or corrupted data").to_string())?,
         );
         let data: DecryptedExportData = serde_json::from_slice(&decrypted_bytes)
-            .map_err(|e| format!("Błąd parsowania odszyfrowanych danych: {}", e))?;
+            .map_err(|e| tr!("Błąd parsowania odszyfrowanych danych: {}", "Error parsing the decrypted data: {}", e))?;
         (data.groups, data.connections, data.credentials)
     } else {
         (
@@ -886,7 +886,7 @@ pub fn vault_batch_import(
     let mgr = lock_auth(&state)?;
     let key = mgr
         .unlocked_key()
-        .map_err(|_| "Sejf musi być odblokowany, aby zaimportować połączenia".to_string())?;
+        .map_err(|_| tr!("Sejf musi być odblokowany, aby zaimportować połączenia", "The vault must be unlocked to import connections").to_string())?;
 
     let groups_count = groups.len();
     let conns_count = connections.len();
@@ -1012,7 +1012,7 @@ pub fn vault_reveal_credential_password(
         .credentials
         .iter()
         .find(|c| c.id == credential_id)
-        .ok_or("Nie znaleziono poświadczenia")?;
+        .ok_or(tr!("Nie znaleziono poświadczenia", "Credential not found"))?;
     Ok(decrypt_opt(key, &cred.password_encrypted)?.unwrap_or_default())
 }
 
@@ -1046,7 +1046,7 @@ pub fn vault_set_connection_download_dir(
             .connections
             .iter_mut()
             .find(|c| c.id == connection_id)
-            .ok_or("Nie znaleziono połączenia")?;
+            .ok_or(tr!("Nie znaleziono połączenia", "Connection not found"))?;
         conn.default_download_dir = dir;
         conn.updated_at = chrono::Utc::now().to_rfc3339();
         Ok(())
@@ -1088,10 +1088,10 @@ pub(crate) fn vault_change_master_password_impl(current_password: &str, new_pass
         mgr.unlocked_key()?;
     }
 
-    let initial = load_vault()?.ok_or("Sejf nie istnieje")?;
+    let initial = load_vault()?.ok_or(tr!("Sejf nie istnieje", "The vault does not exist"))?;
     let old_salt = BASE64
         .decode(&initial.metadata.salt_base64)
-        .map_err(|e| format!("Błąd dekodowania soli: {}", e))?;
+        .map_err(|e| tr!("Błąd dekodowania soli: {}", "Salt decoding error: {}", e))?;
     let old_key = derive_key(current_password, &old_salt)?;
     let new_salt = generate_salt();
     let new_key = derive_key(new_password, &new_salt)?;
@@ -1108,14 +1108,14 @@ pub(crate) fn vault_change_master_password_impl(current_password: &str, new_pass
 
     let vault = {
         let _io = lock_io();
-        let mut vault = load_vault()?.ok_or("Sejf nie istnieje")?;
+        let mut vault = load_vault()?.ok_or(tr!("Sejf nie istnieje", "The vault does not exist"))?;
         if vault.metadata.salt_base64 != initial.metadata.salt_base64 {
-            return Err("Plik sejfu zmienił się w trakcie operacji – spróbuj ponownie".to_string());
+            return Err(tr!("Plik sejfu zmienił się w trakcie operacji – spróbuj ponownie", "The vault file changed during the operation – try again").to_string());
         }
 
         // 1. Verify current password (canary) and file integrity.
         let canary =
-            open_canary(&old_key, &vault.metadata).map_err(|_| "Obecne Master Password jest nieprawidłowe".to_string())?;
+            open_canary(&old_key, &vault.metadata).map_err(|_| tr!("Obecne Master Password jest nieprawidłowe", "The current Master Password is incorrect").to_string())?;
         if canary.as_slice() != CANARY_PHRASE_V2.as_bytes() || !verify_vault_mac(&vault, &old_key) {
             return Err(integrity_error());
         }
@@ -1455,18 +1455,18 @@ pub fn vault_get_backup_settings(state: tauri::State<'_, AuthState>) -> Result<B
 pub fn vault_set_backup_settings(settings: BackupSettings, state: tauri::State<'_, AuthState>) -> Result<(), String> {
     let mut settings = settings;
     if settings.interval_hours == 0 || settings.interval_hours > backup::MAX_INTERVAL_HOURS {
-        return Err(format!("Interwał kopii musi wynosić od 1 do {} godzin", backup::MAX_INTERVAL_HOURS));
+        return Err(tr!("Interwał kopii musi wynosić od 1 do {} godzin", "The backup interval must be between 1 and {} hours", backup::MAX_INTERVAL_HOURS));
     }
     if settings.keep == 0 || settings.keep > backup::MAX_KEEP {
-        return Err(format!("Liczba przechowywanych kopii musi wynosić od 1 do {}", backup::MAX_KEEP));
+        return Err(tr!("Liczba przechowywanych kopii musi wynosić od 1 do {}", "The number of kept backups must be between 1 and {}", backup::MAX_KEEP));
     }
     settings.dir = settings.dir.map(|d| d.trim().to_string()).filter(|d| !d.is_empty());
     if let Some(dir) = &settings.dir {
         let path = std::path::Path::new(dir);
         if !path.is_absolute() {
-            return Err("Katalog kopii zapasowych musi być ścieżką bezwzględną".to_string());
+            return Err(tr!("Katalog kopii zapasowych musi być ścieżką bezwzględną", "The backup folder must be an absolute path").to_string());
         }
-        std::fs::create_dir_all(path).map_err(|e| format!("Nie można utworzyć katalogu kopii: {}", e))?;
+        std::fs::create_dir_all(path).map_err(|e| tr!("Nie można utworzyć katalogu kopii: {}", "Cannot create the backup folder: {}", e))?;
     }
 
     let mgr = lock_auth(&state)?;
@@ -1483,7 +1483,7 @@ pub fn vault_backup_now(state: tauri::State<'_, AuthState>) -> Result<String, St
     let key = mgr.unlocked_key()?;
     let settings = load_vault_verified(key)?.metadata.backup;
     let path = backup::create_backup(&settings, "manual", false)?
-        .ok_or_else(|| "Brak pliku sejfu do skopiowania".to_string())?;
+        .ok_or_else(|| tr!("Brak pliku sejfu do skopiowania", "No vault file to back up").to_string())?;
     Ok(path.to_string_lossy().to_string())
 }
 

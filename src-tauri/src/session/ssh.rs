@@ -58,18 +58,18 @@ pub fn ssh_connect_raw(config: &SshConnectionConfig) -> Result<ssh2::Session, St
     }
 
     let tcp = tcp_stream.ok_or_else(|| {
-        format!("Nie udało się połączyć z hostem '{}': brak odpowiedzi (sprawdź adres IP i port)", addr_str)
+        tr!("Nie udało się połączyć z hostem '{}': brak odpowiedzi (sprawdź adres IP i port)", "Could not connect to host '{}': no response (check the IP address and port)", addr_str)
     })?;
 
-    let mut sess = ssh2::Session::new().map_err(|e| format!("Błąd inicjalizacji biblioteki SSH: {}", e))?;
+    let mut sess = ssh2::Session::new().map_err(|e| tr!("Błąd inicjalizacji biblioteki SSH: {}", "SSH library initialisation error: {}", e))?;
     sess.set_tcp_stream(tcp);
-    sess.handshake().map_err(|e| format!("Błąd negocjacji SSH (Handshake): {}", e))?;
+    sess.handshake().map_err(|e| tr!("Błąd negocjacji SSH (Handshake): {}", "SSH handshake error: {}", e))?;
 
     // Host key verification (TOFU) – must happen before any authentication attempt,
     // otherwise a man-in-the-middle would receive the password.
     let digest = sess
         .host_key_hash(ssh2::HashType::Sha256)
-        .ok_or_else(|| "Serwer SSH nie przedstawił klucza hosta".to_string())?;
+        .ok_or_else(|| tr!("Serwer SSH nie przedstawił klucza hosta", "The SSH server did not present a host key").to_string())?;
     let fingerprint = fingerprint_from_digest(digest);
     (config.host_key_verifier.0)(&fingerprint)?;
 
@@ -131,8 +131,8 @@ pub fn ssh_connect_raw(config: &SshConnectionConfig) -> Result<ssh2::Session, St
     }
 
     if !sess.authenticated() {
-        return Err(format!(
-            "Niepowodzenie logowania dla użytkownika '{}' na serwerze {}. Sprawdź hasło lub klucz.",
+        return Err(tr!(
+            "Niepowodzenie logowania dla użytkownika '{}' na serwerze {}. Sprawdź hasło lub klucz.", "Login failed for user '{}' on server {}. Check the password or key.",
             config.username, addr_str
         ));
     }
@@ -149,7 +149,7 @@ pub fn spawn_ssh_session(
     std::thread::spawn(move || {
         let sid = session_id.clone();
         let emit_error = |msg: String| {
-            let formatted = format!("\r\n\x1b[1;31m[RemoteFlow Błąd SSH]\x1b[0m {}\r\n", msg);
+            let formatted = tr!("\r\n\x1b[1;31m[RemoteFlow Błąd SSH]\x1b[0m {}\r\n", "\r\n\x1b[1;31m[RemoteFlow SSH error]\x1b[0m {}\r\n", msg);
             let _ = app.emit(&format!("ssh-data-{}", sid), formatted);
         };
 
@@ -165,18 +165,18 @@ pub fn spawn_ssh_session(
         let mut channel = match sess.channel_session() {
             Ok(c) => c,
             Err(e) => {
-                emit_error(format!("Błąd otwierania kanału SSH: {}", e));
+                emit_error(tr!("Błąd otwierania kanału SSH: {}", "Error opening the SSH channel: {}", e));
                 return;
             }
         };
 
         if let Err(e) = channel.request_pty("xterm-256color", None, Some((100, 30, 0, 0))) {
-            emit_error(format!("Błąd żądania PTY: {}", e));
+            emit_error(tr!("Błąd żądania PTY: {}", "PTY request error: {}", e));
             return;
         }
 
         if let Err(e) = channel.shell() {
-            emit_error(format!("Błąd uruchamiania powłoki: {}", e));
+            emit_error(tr!("Błąd uruchamiania powłoki: {}", "Error starting the shell: {}", e));
             return;
         }
 
@@ -218,7 +218,7 @@ pub fn spawn_ssh_session(
                     // EOF - remote server closed session
                     let _ = app.emit(
                         &format!("ssh-data-{}", sid),
-                        "\r\n\x1b[33m[Sesja SSH została zakończona przez serwer zdalny]\x1b[0m\r\n".to_string(),
+                        tr!("\r\n\x1b[33m[Sesja SSH została zakończona przez serwer zdalny]\x1b[0m\r\n", "\r\n\x1b[33m[The SSH session was closed by the remote server]\x1b[0m\r\n").to_string(),
                     );
                     break;
                 }
@@ -291,10 +291,10 @@ pub fn spawn_ssh_session(
                         || err_str.contains("WSAECONNRESET")
                     {
                         emit_error(
-                            "Połączenie SSH zostało zakończone przez serwer zdalny lub nastąpiła utrata łączności sieciowej.".to_string(),
+                            tr!("Połączenie SSH zostało zakończone przez serwer zdalny lub nastąpiła utrata łączności sieciowej.", "The SSH connection was closed by the remote server or the network connection was lost.").to_string(),
                         );
                     } else {
-                        emit_error(format!("Błąd odczytu z kanału SSH: {}", e));
+                        emit_error(tr!("Błąd odczytu z kanału SSH: {}", "Error reading from the SSH channel: {}", e));
                     }
                     break;
                 }

@@ -15,6 +15,7 @@ import {
 import { api, isTauri } from '../../services/api';
 import { SessionInfo } from '../../types';
 import { SftpManager } from './SftpManager';
+import { useT } from '../../i18n';
 
 interface Props {
   session: SessionInfo;
@@ -24,6 +25,7 @@ interface Props {
 }
 
 export const SshTerminal: React.FC<Props> = ({ session, isActive, splitLayout = false }) => {
+  const t = useT();
   const containerRef = useRef<HTMLDivElement>(null);
   // xterm is mounted in a padding-free inner element: FitAddon measures the parent's CSS height
   // (border-box with Tailwind) but only subtracts the terminal's own padding, so a padded parent
@@ -89,12 +91,12 @@ export const SshTerminal: React.FC<Props> = ({ session, isActive, splitLayout = 
       const clipFiles = await api.clipboardReadFiles();
       if (clipFiles.length > 0) {
         setIsUploading(true);
-        showNotification(`Przesyłanie ${clipFiles.length} elementów ze schowka przez SFTP...`);
+        showNotification(t('Przesyłanie {length} elementów ze schowka przez SFTP...', { length: clipFiles.length }));
         try {
           const count = await api.sftpUploadPaths(session.connectionId, '.', clipFiles);
-          showNotification(`Przesłano ze schowka ${count} plików do katalogu domowego`);
+          showNotification(t('Przesłano ze schowka {count} plików do katalogu domowego', { count }));
         } catch (err: any) {
-          showNotification(`Błąd przesyłania: ${err?.message || err}`);
+          showNotification(t('Błąd przesyłania: {p0}', { p0: err?.message || err }));
         } finally {
           setIsUploading(false);
         }
@@ -104,7 +106,7 @@ export const SshTerminal: React.FC<Props> = ({ session, isActive, splitLayout = 
       const text = await api.clipboardReadText();
       if (text) {
         api.sendInput(session.sessionId, text);
-        showNotification('Wklejono tekst ze schowka');
+        showNotification(t('Wklejono tekst ze schowka'));
       }
     } catch (err) {
       console.warn('Błąd odczytu schowka:', err);
@@ -121,7 +123,7 @@ export const SshTerminal: React.FC<Props> = ({ session, isActive, splitLayout = 
     if (selection) {
       try {
         await api.clipboardWriteText(selection);
-        showNotification('Skopiowano zaznaczenie do schowka');
+        showNotification(t('Skopiowano zaznaczenie do schowka'));
       } catch (err) {
         console.warn('Błąd zapisu do schowka:', err);
       }
@@ -215,7 +217,7 @@ export const SshTerminal: React.FC<Props> = ({ session, isActive, splitLayout = 
         const text = term.getSelection();
         if (text) {
           api.clipboardWriteText(text).then(() => {
-            showNotificationRef.current('Skopiowano zaznaczenie');
+            showNotificationRef.current(t('Skopiowano zaznaczenie'));
           });
         }
         return false; // Prevent sending ^C SIGINT to shell
@@ -474,12 +476,12 @@ export const SshTerminal: React.FC<Props> = ({ session, isActive, splitLayout = 
 
       if (paths.length > 0) {
         setIsUploading(true);
-        showNotification(`Przesyłanie rekursywne ${paths.length} elementów przez SFTP...`);
+        showNotification(t('Przesyłanie rekursywne {length} elementów przez SFTP...', { length: paths.length }));
         try {
           const count = await api.sftpUploadPaths(session.connectionId, '.', paths);
-          showNotification(`Przesłano pomyślnie ${count} plików do katalogu domowego`);
+          showNotification(t('Przesłano pomyślnie {count} plików do katalogu domowego', { count }));
         } catch (err: any) {
-          showNotification(`Błąd przesyłania: ${err?.message || err}`);
+          showNotification(t('Błąd przesyłania: {p0}', { p0: err?.message || err }));
         } finally {
           setIsUploading(false);
         }
@@ -491,7 +493,7 @@ export const SshTerminal: React.FC<Props> = ({ session, isActive, splitLayout = 
     if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
       const files = e.dataTransfer.files;
       setIsUploading(true);
-      showNotification(`Przesyłanie ${files.length} plików przez SFTP...`);
+      showNotification(t('Przesyłanie {length} plików przez SFTP...', { length: files.length }));
 
       let count = 0;
       for (let i = 0; i < files.length; i++) {
@@ -512,7 +514,7 @@ export const SshTerminal: React.FC<Props> = ({ session, isActive, splitLayout = 
         }
       }
       setIsUploading(false);
-      showNotification(`Przesłano pomyślnie ${count} z ${files.length} plików do katalogu domowego`);
+      showNotification(t('Przesłano pomyślnie {count} z {length} plików do katalogu domowego', { count, length: files.length }));
       return;
     }
 
@@ -520,7 +522,7 @@ export const SshTerminal: React.FC<Props> = ({ session, isActive, splitLayout = 
     const text = e.dataTransfer.getData('text/plain');
     if (text) {
       api.sendInput(session.sessionId, text);
-      showNotification('Wklejono tekst ze schowka');
+      showNotification(t('Wklejono tekst ze schowka'));
     }
   };
 
@@ -549,25 +551,25 @@ export const SshTerminal: React.FC<Props> = ({ session, isActive, splitLayout = 
         {isUploading && (
           <div className="flex items-center gap-1 rounded-full bg-amber-950/90 border border-amber-500/50 px-2.5 py-0.5 text-[11px] text-amber-300 shadow-md">
             <Loader2 className="h-3 w-3 animate-spin text-amber-400 shrink-0" />
-            <span>Przesyłanie SFTP...</span>
+            <span>{t('Przesyłanie SFTP...')}</span>
           </div>
         )}
 
         {/* Active Port Forwards Badge */}
         {session.activePortForwards && session.activePortForwards.length > 0 && (
           <div
-            title={`Aktywne tunele SSH:\n${session.activePortForwards.join('\n')}`}
+            title={t('Aktywne tunele SSH:\n{p0}', { p0: session.activePortForwards.join('\n') })}
             className="flex items-center gap-1 rounded-lg border border-emerald-500/40 bg-emerald-950/70 px-2 py-1 text-[11px] font-mono text-emerald-300 shadow-sm"
           >
             <ArrowRightLeft className="h-3 w-3 text-emerald-400 shrink-0" />
-            <span>Tunele ({session.activePortForwards.length})</span>
+            <span>{t('Tunele ({n})', { n: session.activePortForwards.length })}</span>
           </div>
         )}
 
         {/* Toggle SFTP File Explorer Drawer */}
         <button
           onClick={() => setIsSftpOpen((v) => !v)}
-          title="Menedżer transferu plików i katalogów (SFTP)"
+          title={t('Menedżer transferu plików i katalogów (SFTP)')}
           className={`flex items-center gap-1 rounded-lg border px-2.5 py-1 text-[11px] font-medium transition-colors shadow-sm ${
             isSftpOpen
               ? 'border-cyan-500 bg-cyan-950/80 text-cyan-200 shadow-cyan-950/50'
@@ -575,7 +577,7 @@ export const SshTerminal: React.FC<Props> = ({ session, isActive, splitLayout = 
           }`}
         >
           <FolderUp className="h-3.5 w-3.5 text-amber-400" />
-          <span>Pliki (SFTP)</span>
+          <span>{t('Pliki (SFTP)')}</span>
         </button>
       </div>
 
@@ -593,9 +595,9 @@ export const SshTerminal: React.FC<Props> = ({ session, isActive, splitLayout = 
       {isDragOver && (
         <div className="absolute inset-0 bg-cyan-950/85 border-2 border-dashed border-cyan-400 backdrop-blur-xs flex flex-col items-center justify-center z-30 pointer-events-none p-6 text-center animate-fadeIn">
           <Upload className="h-12 w-12 text-cyan-400 mb-3 animate-bounce" />
-          <h3 className="text-base font-bold text-white">Upuść pliki lub katalogi tutaj</h3>
+          <h3 className="text-base font-bold text-white">{t('Upuść pliki lub katalogi tutaj')}</h3>
           <p className="text-xs text-cyan-200/90 mt-1 max-w-sm">
-            Zostaną automatycznie przesłane przez protokół SFTP do Twojego katalogu na serwerze{' '}
+            {t('Zostaną automatycznie przesłane przez protokół SFTP do Twojego katalogu na serwerze')}{' '}
             <span className="font-mono font-semibold">{session.host}</span>.
           </p>
         </div>
@@ -618,7 +620,7 @@ export const SshTerminal: React.FC<Props> = ({ session, isActive, splitLayout = 
             className="flex w-full items-center gap-2 px-3 py-1.5 hover:bg-slate-800 text-left transition-colors"
           >
             <Copy className="h-3.5 w-3.5 text-slate-400" />
-            <span>Kopiuj zaznaczenie</span>
+            <span>{t('Kopiuj zaznaczenie')}</span>
           </button>
           <button
             onClick={() => {
@@ -628,7 +630,7 @@ export const SshTerminal: React.FC<Props> = ({ session, isActive, splitLayout = 
             className="flex w-full items-center gap-2 px-3 py-1.5 hover:bg-slate-800 text-left transition-colors"
           >
             <ClipboardPaste className="h-3.5 w-3.5 text-cyan-400" />
-            <span>Wklej ze schowka</span>
+            <span>{t('Wklej ze schowka')}</span>
           </button>
           <div className="my-1 border-t border-slate-800" />
           <button
@@ -639,7 +641,7 @@ export const SshTerminal: React.FC<Props> = ({ session, isActive, splitLayout = 
             className="flex w-full items-center gap-2 px-3 py-1.5 hover:bg-slate-800 text-left transition-colors"
           >
             <FolderUp className="h-3.5 w-3.5 text-amber-400" />
-            <span>Menedżer plików (SFTP)</span>
+            <span>{t('Menedżer plików (SFTP)')}</span>
           </button>
           <button
             onClick={() => {
@@ -649,7 +651,7 @@ export const SshTerminal: React.FC<Props> = ({ session, isActive, splitLayout = 
             className="flex w-full items-center gap-2 px-3 py-1.5 hover:bg-slate-800 text-left transition-colors"
           >
             <Eraser className="h-3.5 w-3.5 text-slate-400" />
-            <span>Wyczyść ekran</span>
+            <span>{t('Wyczyść ekran')}</span>
           </button>
         </div>
       )}

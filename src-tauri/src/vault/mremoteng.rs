@@ -123,8 +123,8 @@ pub fn verify_password(params: &MrngParams, protected: Option<&str>) -> Result<(
     };
     match decrypt_value(params, protected) {
         Some(marker) if PROTECTED_MARKERS.contains(&marker.as_str()) => Ok(()),
-        _ => Err(format!(
-            "{}: Plik mRemoteNG jest zabezpieczony własnym hasłem głównym (lub podane hasło jest błędne).",
+        _ => Err(tr!(
+            "{}: Plik mRemoteNG jest zabezpieczony własnym hasłem głównym (lub podane hasło jest błędne).", "{}: The mRemoteNG file is protected with its own master password (or the password given is wrong).",
             PASSWORD_REQUIRED
         )),
     }
@@ -143,7 +143,7 @@ pub fn mremoteng_unlock(
         None => Ok(None),
         Some(data) => decrypt_value(&params, data)
             .map(|xml| Some(xml.to_string()))
-            .ok_or_else(|| format!("{}: Nie udało się odszyfrować pliku mRemoteNG.", PASSWORD_REQUIRED)),
+            .ok_or_else(|| tr!("{}: Nie udało się odszyfrować pliku mRemoteNG.", "{}: Could not decrypt the mRemoteNG file.", PASSWORD_REQUIRED)),
     }
 }
 

@@ -40,12 +40,12 @@ pub fn check_host(
     let id = host_id(kind, host, port);
 
     let Some(key) = key else {
-        let vault = load_vault()?.ok_or("Sejf nie istnieje")?;
+        let vault = load_vault()?.ok_or(tr!("Sejf nie istnieje", "The vault does not exist"))?;
         return match vault.metadata.known_hosts.get(&id) {
             Some(fp) if fp == fingerprint => Ok(HostTrust::Known),
             Some(fp) => Err(mismatch_error(kind, host, port, fp, fingerprint)),
-            None => Err(format!(
-                "Serwer {}:{} nie jest jeszcze zaufany, a sejf jest zablokowany. Odblokuj sejf i połącz się ponownie.",
+            None => Err(tr!(
+                "Serwer {}:{} nie jest jeszcze zaufany, a sejf jest zablokowany. Odblokuj sejf i połącz się ponownie.", "Server {}:{} is not trusted yet and the vault is locked. Unlock the vault and connect again.",
                 host, port
             )),
         };

@@ -22,15 +22,15 @@ fn percent_decode(s: &str) -> Result<String, String> {
     let mut i = 0;
     while i < b.len() {
         if b[i] == b'%' {
-            let hex = s.get(i + 1..i + 3).ok_or("Nieprawidłowe kodowanie nazwy pliku")?;
-            out.push(u8::from_str_radix(hex, 16).map_err(|_| "Nieprawidłowe kodowanie nazwy pliku")?);
+            let hex = s.get(i + 1..i + 3).ok_or(tr!("Nieprawidłowe kodowanie nazwy pliku", "Invalid file name encoding"))?;
+            out.push(u8::from_str_radix(hex, 16).map_err(|_| tr!("Nieprawidłowe kodowanie nazwy pliku", "Invalid file name encoding"))?);
             i += 3;
         } else {
             out.push(b[i]);
             i += 1;
         }
     }
-    String::from_utf8(out).map_err(|_| "Nazwa pliku nie jest poprawnym UTF-8".to_string())
+    String::from_utf8(out).map_err(|_| tr!("Nazwa pliku nie jest poprawnym UTF-8", "The file name is not valid UTF-8").to_string())
 }
 
 /// Converts a relative path from the remote side ("dir\\sub\\file.txt") into a safe relative
@@ -54,7 +54,7 @@ fn sanitize_relative(rel: &str) -> Result<PathBuf, String> {
     }
     // Defence in depth: only normal components allowed.
     if !out.components().all(|c| matches!(c, Component::Normal(_))) {
-        return Err(format!("Niedozwolona ścieżka: {}", rel));
+        return Err(tr!("Niedozwolona ścieżka: {}", "Path not allowed: {}", rel));
     }
     Ok(out)
 }
@@ -63,10 +63,10 @@ fn sanitize_relative(rel: &str) -> Result<PathBuf, String> {
 fn checked_stage_dir(dir: &str) -> Result<PathBuf, String> {
     let root = staging_root()
         .canonicalize()
-        .map_err(|e| format!("Brak katalogu tymczasowego schowka: {}", e))?;
+        .map_err(|e| tr!("Brak katalogu tymczasowego schowka: {}", "Clipboard staging folder missing: {}", e))?;
     let canonical = Path::new(dir)
         .canonicalize()
-        .map_err(|e| format!("Nieprawidłowy katalog tymczasowy schowka: {}", e))?;
+        .map_err(|e| tr!("Nieprawidłowy katalog tymczasowy schowka: {}", "Invalid clipboard staging folder: {}", e))?;
     if canonical.parent() != Some(root.as_path()) {
         return Err("Katalog spoza obszaru tymczasowego schowka".to_string());
     }
@@ -109,7 +109,7 @@ pub fn clipboard_sequence() -> Option<u32> {
 #[tauri::command]
 pub fn rdp_clip_stage_begin() -> Result<String, String> {
     let root = staging_root();
-    std::fs::create_dir_all(&root).map_err(|e| format!("Nie można utworzyć katalogu tymczasowego: {}", e))?;
+    std::fs::create_dir_all(&root).map_err(|e| tr!("Nie można utworzyć katalogu tymczasowego: {}", "Cannot create the temporary folder: {}", e))?;
     cleanup_old(&root);
     let name = format!(
         "{}-{}",
@@ -117,7 +117,7 @@ pub fn rdp_clip_stage_begin() -> Result<String, String> {
         &uuid::Uuid::new_v4().simple().to_string()[..8]
     );
     let dir = root.join(name);
-    std::fs::create_dir_all(&dir).map_err(|e| format!("Nie można utworzyć katalogu tymczasowego: {}", e))?;
+    std::fs::create_dir_all(&dir).map_err(|e| tr!("Nie można utworzyć katalogu tymczasowego: {}", "Cannot create the temporary folder: {}", e))?;
     Ok(dir.to_string_lossy().to_string())
 }
 
@@ -126,16 +126,16 @@ pub fn rdp_clip_stage_begin() -> Result<String, String> {
 pub fn rdp_clip_stage_dir(stage_dir: String, rel_path: String) -> Result<(), String> {
     let dir = checked_stage_dir(&stage_dir)?;
     let target = dir.join(sanitize_relative(&rel_path)?);
-    std::fs::create_dir_all(&target).map_err(|e| format!("Nie można utworzyć katalogu {:?}: {}", target, e))
+    std::fs::create_dir_all(&target).map_err(|e| tr!("Nie można utworzyć katalogu {:?}: {}", "Cannot create folder {:?}: {}", target, e))
 }
 
 fn header(request: &tauri::ipc::Request<'_>, name: &str) -> Result<String, String> {
     let raw = request
         .headers()
         .get(name)
-        .ok_or_else(|| format!("Brak nagłówka {}", name))?
+        .ok_or_else(|| tr!("Brak nagłówka {}", "Missing header {}", name))?
         .to_str()
-        .map_err(|_| format!("Nieprawidłowy nagłówek {}", name))?;
+        .map_err(|_| tr!("Nieprawidłowy nagłówek {}", "Invalid header {}", name))?;
     percent_decode(raw)
 }
 
@@ -144,14 +144,14 @@ fn header(request: &tauri::ipc::Request<'_>, name: &str) -> Result<String, Strin
 #[tauri::command]
 pub async fn rdp_clip_stage_file(request: tauri::ipc::Request<'_>) -> Result<(), String> {
     let tauri::ipc::InvokeBody::Raw(bytes) = request.body() else {
-        return Err("Oczekiwano binarnej zawartości pliku".to_string());
+        return Err(tr!("Oczekiwano binarnej zawartości pliku", "Binary file content expected").to_string());
     };
     let dir = checked_stage_dir(&header(&request, "x-stage-dir")?)?;
     let target = dir.join(sanitize_relative(&header(&request, "x-rel-path")?)?);
     if let Some(parent) = target.parent() {
-        std::fs::create_dir_all(parent).map_err(|e| format!("Nie można utworzyć katalogu {:?}: {}", parent, e))?;
+        std::fs::create_dir_all(parent).map_err(|e| tr!("Nie można utworzyć katalogu {:?}: {}", "Cannot create folder {:?}: {}", parent, e))?;
     }
-    std::fs::write(&target, bytes).map_err(|e| format!("Błąd zapisu pliku {:?}: {}", target, e))
+    std::fs::write(&target, bytes).map_err(|e| tr!("Błąd zapisu pliku {:?}: {}", "Error writing file {:?}: {}", target, e))
 }
 
 /// Puts the given top-level entries of the staging directory on the local clipboard as a file
@@ -163,7 +163,7 @@ pub async fn rdp_clip_stage_commit(stage_dir: String, top_level: Vec<String>) ->
     for name in &top_level {
         let p = dir.join(sanitize_relative(name)?);
         if !p.exists() {
-            return Err(format!("Brak pliku w katalogu tymczasowym: {}", name));
+            return Err(tr!("Brak pliku w katalogu tymczasowym: {}", "File missing in the temporary folder: {}", name));
         }
         let s = p.to_string_lossy().to_string();
         if !paths.contains(&s) {
@@ -171,7 +171,7 @@ pub async fn rdp_clip_stage_commit(stage_dir: String, top_level: Vec<String>) ->
         }
     }
     if paths.is_empty() {
-        return Err("Brak plików do umieszczenia w schowku".to_string());
+        return Err(tr!("Brak plików do umieszczenia w schowku", "No files to put on the clipboard").to_string());
     }
 
     #[cfg(target_os = "windows")]
@@ -184,7 +184,7 @@ pub async fn rdp_clip_stage_commit(stage_dir: String, top_level: Vec<String>) ->
     }
     #[cfg(not(target_os = "windows"))]
     {
-        Err("Schowek plików jest dostępny tylko w systemie Windows".to_string())
+        Err(tr!("Schowek plików jest dostępny tylko w systemie Windows", "The file clipboard is available only on Windows").to_string())
     }
 }
 

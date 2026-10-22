@@ -53,9 +53,9 @@ mod imp {
     /// so Explorer pastes (copies) the files.
     pub fn clipboard_set_files(paths: &[String]) -> Result<(), String> {
         let _clip = clipboard_win::Clipboard::new_attempts(10)
-            .map_err(|e| format!("Nie można otworzyć schowka: {:?}", e))?;
+            .map_err(|e| tr!("Nie można otworzyć schowka: {:?}", "Cannot open the clipboard: {:?}", e))?;
         clipboard_win::raw::set_file_list_with(paths, clipboard_win::options::DoClear)
-            .map_err(|e| format!("Nie można zapisać listy plików w schowku: {:?}", e))?;
+            .map_err(|e| tr!("Nie można zapisać listy plików w schowku: {:?}", "Cannot put the file list on the clipboard: {:?}", e))?;
         if let Some(fmt) = clipboard_win::raw::register_format("Preferred DropEffect") {
             const DROPEFFECT_COPY: u32 = 1;
             let _ = clipboard_win::raw::set_without_clear(fmt.get(), &DROPEFFECT_COPY.to_le_bytes());

@@ -121,7 +121,7 @@ fn resolve_connection(auth_state: &AuthState, connection_id: &str) -> Result<Res
     let mgr = lock_auth(auth_state)?;
     let key = mgr
         .unlocked_key()
-        .map_err(|_| "Magazyn poświadczeń jest zablokowany".to_string())?;
+        .map_err(|_| tr!("Magazyn poświadczeń jest zablokowany", "The credential store is locked").to_string())?;
     let vault = load_vault_verified(key)?;
 
     let conn = vault
@@ -129,7 +129,7 @@ fn resolve_connection(auth_state: &AuthState, connection_id: &str) -> Result<Res
         .iter()
         .find(|c| c.id == connection_id)
         .cloned()
-        .ok_or_else(|| format!("Nie znaleziono połączenia o ID '{}'", connection_id))?;
+        .ok_or_else(|| tr!("Nie znaleziono połączenia o ID '{}'", "Connection with ID '{}' not found", connection_id))?;
 
     let mut username = conn.username.clone();
     let mut password: Option<String> = None;
@@ -237,7 +237,7 @@ pub fn session_connect(
             port,
             username: resolved.username.clone(),
             status: "connected".to_string(),
-            status_message: Some("Połączono pomyślnie".to_string()),
+            status_message: Some(tr!("Połączono pomyślnie", "Connected").to_string()),
             bytes_sent: 0,
             bytes_received: 0,
             started_at: now,
@@ -288,7 +288,7 @@ pub fn session_connect(
         );
         let proxy_handle = proxy_res.map_err(|e| {
             eprintln!("[RemoteFlow] Błąd startu proxy RDP: {}", e);
-            format!("Nie udało się uruchomić lokalnego proxy RDP: {}", e)
+            tr!("Nie udało się uruchomić lokalnego proxy RDP: {}", "Could not start the local RDP proxy: {}", e)
         })?;
         let rdp_proxy_port = Some(proxy_handle.port);
         // "CORP\\jan", "jan@corp.local" and the separate domain field are reduced to one consistent form
@@ -306,7 +306,7 @@ pub fn session_connect(
             port,
             username: rdp_user,
             status: "connected".to_string(),
-            status_message: Some("Sesja RDP aktywna w zakładce".to_string()),
+            status_message: Some(tr!("Sesja RDP aktywna w zakładce", "RDP session active in the tab").to_string()),
             bytes_sent: 0,
             bytes_received: 0,
             started_at: now,
@@ -323,7 +323,7 @@ pub fn session_connect(
         mgr.rdp_proxies.insert(session_id.clone(), proxy_handle);
         Ok(session)
     } else {
-        Err(format!("Nieobsługiwany protokół: {}", protocol))
+        Err(tr!("Nieobsługiwany protokół: {}", "Unsupported protocol: {}", protocol))
     }
 }
 
@@ -586,7 +586,7 @@ pub async fn sftp_list(
         transfer::with_pooled_sftp(&connection_id, &config, |sftp| transfer::remote_list(sftp, &remote_path))
     })
     .await
-    .map_err(|e| format!("Błąd zadania SFTP: {}", e))??;
+    .map_err(|e| tr!("Błąd zadania SFTP: {}", "SFTP task error: {}", e))??;
 
     Ok(SftpListResponse {
         current_path,
@@ -609,7 +609,7 @@ pub async fn sftp_upload_file(
         sftp::sftp_upload_base64_file(&config, &remote_dir, &filename, &content_base64)
     })
     .await
-    .map_err(|e| format!("Błąd zadania przesyłania pliku SFTP: {}", e))?
+    .map_err(|e| tr!("Błąd zadania przesyłania pliku SFTP: {}", "SFTP file upload task error: {}", e))?
 }
 
 #[tauri::command]
@@ -625,7 +625,7 @@ pub async fn sftp_upload_paths(
         sftp::sftp_upload_local_paths(&config, local_paths, &remote_dir)
     })
     .await
-    .map_err(|e| format!("Błąd zadania przesyłania katalogu SFTP: {}", e))?
+    .map_err(|e| tr!("Błąd zadania przesyłania katalogu SFTP: {}", "SFTP folder upload task error: {}", e))?
 }
 
 #[tauri::command]
@@ -665,7 +665,7 @@ pub async fn save_dropped_file_to_shared(
         use base64::Engine;
         let data = base64::engine::general_purpose::STANDARD
             .decode(&content_base64)
-            .map_err(|e| format!("Błąd dekodowania pliku: {}", e))?;
+            .map_err(|e| tr!("Błąd dekodowania pliku: {}", "File decoding error: {}", e))?;
 
         let save_dir = if let Some(dir) = target_dir.filter(|s| !s.trim().is_empty()) {
             std::path::PathBuf::from(dir)
@@ -688,7 +688,7 @@ pub async fn save_dropped_file_to_shared(
             .collect();
 
         if parts.is_empty() {
-            return Err("Nieprawidłowa nazwa pliku".to_string());
+            return Err(tr!("Nieprawidłowa nazwa pliku", "Invalid file name").to_string());
         }
 
         let mut target_path = save_dir;
@@ -701,7 +701,7 @@ pub async fn save_dropped_file_to_shared(
         target_path = target_path.join(parts.last().unwrap());
 
         std::fs::write(&target_path, &data)
-            .map_err(|e| format!("Błąd zapisu pliku do katalogu wymiany: {}", e))?;
+            .map_err(|e| tr!("Błąd zapisu pliku do katalogu wymiany: {}", "Error writing the file to the exchange folder: {}", e))?;
 
         Ok(target_path.to_string_lossy().to_string())
     })
@@ -935,7 +935,7 @@ pub async fn local_list_dir(local_path: String) -> Result<SftpListResponse, Stri
         let parent_path = canonical.parent().map(transfer::display_path);
 
         let read_dir = std::fs::read_dir(&canonical)
-            .map_err(|e| format!("Błąd odczytu katalogu lokalnego '{}': {}", current_path, e))?;
+            .map_err(|e| tr!("Błąd odczytu katalogu lokalnego '{}': {}", "Error reading local folder '{}': {}", current_path, e))?;
 
         let mut entries = Vec::new();
         for item in read_dir.flatten() {
@@ -998,8 +998,8 @@ pub async fn pick_local_folder() -> Result<Option<String>, String> {
     tokio::task::spawn_blocking(|| {
         #[cfg(target_os = "windows")]
         {
-            let script = format!(
-                "{} $f = New-Object System.Windows.Forms.FolderBrowserDialog; $f.Description = 'Wybierz katalog'; if ($f.ShowDialog($owner) -eq [System.Windows.Forms.DialogResult]::OK) {{ Write-Output $f.SelectedPath }}",
+            let script = tr!(
+                "{} $f = New-Object System.Windows.Forms.FolderBrowserDialog; $f.Description = 'Wybierz katalog'; if ($f.ShowDialog($owner) -eq [System.Windows.Forms.DialogResult]::OK) {{ Write-Output $f.SelectedPath }}", "{} $f = New-Object System.Windows.Forms.FolderBrowserDialog; $f.Description = 'Choose a folder'; if ($f.ShowDialog($owner) -eq [System.Windows.Forms.DialogResult]::OK) {{ Write-Output $f.SelectedPath }}",
                 winproc::DIALOG_PRELUDE
             );
             if let Some(out) = winproc::powershell(&script) {
@@ -1021,7 +1021,7 @@ pub async fn pick_local_folder() -> Result<Option<String>, String> {
                 .arg("--getexistingdirectory")
                 .arg(&home)
                 .arg("--title")
-                .arg("Wybierz katalog do przesłania")
+                .arg(tr!("Wybierz katalog do przesłania", "Choose a folder to upload"))
                 .output()
             {
                 if out.status.success() {
@@ -1036,7 +1036,7 @@ pub async fn pick_local_folder() -> Result<Option<String>, String> {
             if let Ok(out) = std::process::Command::new("zenity")
                 .arg("--file-selection")
                 .arg("--directory")
-                .arg("--title=Wybierz katalog do przesłania")
+                .arg(tr!("--title=Wybierz katalog do przesłania", "--title=Choose a folder to upload"))
                 .arg(format!("--filename={}/", home))
                 .output()
             {
@@ -1059,7 +1059,7 @@ pub async fn pick_local_folder() -> Result<Option<String>, String> {
 #[tauri::command]
 pub async fn pick_local_file(title: Option<String>) -> Result<Option<String>, String> {
     tokio::task::spawn_blocking(move || {
-        let dialog_title = title.unwrap_or_else(|| "Wybierz plik klucza prywatnego SSH".to_string());
+        let dialog_title = title.unwrap_or_else(|| tr!("Wybierz plik klucza prywatnego SSH", "Choose the SSH private key file").to_string());
         #[cfg(target_os = "windows")]
         {
             let script = format!(
@@ -1122,7 +1122,7 @@ pub async fn pick_local_file(title: Option<String>) -> Result<Option<String>, St
 
 #[tauri::command]
 pub fn read_local_text_file(path: String) -> Result<String, String> {
-    std::fs::read_to_string(&path).map_err(|e| format!("Błąd odczytu pliku '{}': {}", path, e))
+    std::fs::read_to_string(&path).map_err(|e| tr!("Błąd odczytu pliku '{}': {}", "Error reading file '{}': {}", path, e))
 }
 
 #[derive(Serialize)]
@@ -1218,7 +1218,7 @@ fn collect_rdp_clipboard_entries(
         }
         use base64::Engine;
         let data = std::fs::read(local)
-            .map_err(|e| format!("Błąd odczytu pliku '{}': {}", local.display(), e))?;
+            .map_err(|e| tr!("Błąd odczytu pliku '{}': {}", "Error reading file '{}': {}", local.display(), e))?;
         let _ = std::fs::write(&shared_dest, &data);
         let b64 = base64::engine::general_purpose::STANDARD.encode(&data);
         out.push(RdpClipboardFileEntry {
@@ -1252,11 +1252,11 @@ pub async fn read_local_paths_for_rdp_clipboard(
         for lp in local_paths {
             let clean = lp.trim_end_matches('/');
             if clean.is_empty() || clean == "/" {
-                return Err("Nie można przesłać głównego systemu plików '/'.".to_string());
+                return Err(tr!("Nie można przesłać głównego systemu plików '/'.", "The root file system '/' cannot be uploaded.").to_string());
             }
             if !home_dir.is_empty() && clean == home_dir {
-                return Err(format!(
-                    "Nie można przesłać całego katalogu domowego ({}). Wybierz konkretny podkatalog lub plik.",
+                return Err(tr!(
+                    "Nie można przesłać całego katalogu domowego ({}). Wybierz konkretny podkatalog lub plik.", "The whole home folder ({}) cannot be uploaded. Choose a specific subfolder or file.",
                     home_dir
                 ));
             }

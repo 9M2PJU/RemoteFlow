@@ -194,7 +194,7 @@ pub fn remote_list(sftp: &ssh2::Sftp, remote_path: &str) -> Result<(String, Vec<
     let current = target.to_string_lossy().to_string();
     let entries = sftp
         .readdir(&target)
-        .map_err(|e| format!("Błąd odczytu katalogu '{}': {}", current, e))?;
+        .map_err(|e| tr!("Błąd odczytu katalogu '{}': {}", "Error reading folder '{}': {}", current, e))?;
     let mut result: Vec<SftpFileEntry> = entries.iter().filter_map(|(p, st)| remote_entry(p, st)).collect();
     result.sort_by(|a, b| b.is_dir.cmp(&a.is_dir).then_with(|| a.name.to_lowercase().cmp(&b.name.to_lowercase())));
     Ok((current, result))
@@ -202,19 +202,19 @@ pub fn remote_list(sftp: &ssh2::Sftp, remote_path: &str) -> Result<(String, Vec<
 
 pub fn remote_delete(sftp: &ssh2::Sftp, remote_path: &str) -> Result<(), String> {
     let p = Path::new(remote_path);
-    let stat = sftp.lstat(p).map_err(|e| format!("Nie można odczytać '{}': {}", remote_path, e))?;
+    let stat = sftp.lstat(p).map_err(|e| tr!("Nie można odczytać '{}': {}", "Cannot read '{}': {}", remote_path, e))?;
     if stat.is_dir() && !is_remote_symlink(&stat) {
         delete_remote_dir(sftp, p, 0)
     } else {
-        sftp.unlink(p).map_err(|e| format!("Błąd usuwania '{}': {}", remote_path, e))
+        sftp.unlink(p).map_err(|e| tr!("Błąd usuwania '{}': {}", "Error deleting '{}': {}", remote_path, e))
     }
 }
 
 fn delete_remote_dir(sftp: &ssh2::Sftp, dir: &Path, depth: u32) -> Result<(), String> {
     if depth > MAX_DEPTH {
-        return Err(format!("Zbyt głębokie zagnieżdżenie: {}", dir.display()));
+        return Err(tr!("Zbyt głębokie zagnieżdżenie: {}", "Nesting too deep: {}", dir.display()));
     }
-    let entries = sftp.readdir(dir).map_err(|e| format!("Błąd odczytu '{}': {}", dir.display(), e))?;
+    let entries = sftp.readdir(dir).map_err(|e| tr!("Błąd odczytu '{}': {}", "Error reading '{}': {}", dir.display(), e))?;
     for (path, stat) in entries {
         let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
         if name == "." || name == ".." {
@@ -223,32 +223,32 @@ fn delete_remote_dir(sftp: &ssh2::Sftp, dir: &Path, depth: u32) -> Result<(), St
         if stat.is_dir() && !is_remote_symlink(&stat) {
             delete_remote_dir(sftp, &path, depth + 1)?;
         } else {
-            sftp.unlink(&path).map_err(|e| format!("Błąd usuwania '{}': {}", path.display(), e))?;
+            sftp.unlink(&path).map_err(|e| tr!("Błąd usuwania '{}': {}", "Error deleting '{}': {}", path.display(), e))?;
         }
     }
-    sftp.rmdir(dir).map_err(|e| format!("Błąd usuwania katalogu '{}': {}", dir.display(), e))
+    sftp.rmdir(dir).map_err(|e| tr!("Błąd usuwania katalogu '{}': {}", "Error deleting folder '{}': {}", dir.display(), e))
 }
 
 pub fn remote_mkdir(sftp: &ssh2::Sftp, parent: &str, name: &str) -> Result<String, String> {
     let name = sanitize_name(name)?;
     let target = remote_join(parent, &name);
     sftp.mkdir(&target, 0o755)
-        .map_err(|e| format!("Błąd tworzenia katalogu '{}': {}", target.display(), e))?;
+        .map_err(|e| tr!("Błąd tworzenia katalogu '{}': {}", "Error creating folder '{}': {}", target.display(), e))?;
     Ok(target.to_string_lossy().to_string())
 }
 
 pub fn local_mkdir(parent: &str, name: &str) -> Result<String, String> {
     let name = sanitize_name(name)?;
     let base = if parent.trim().is_empty() {
-        dirs::home_dir().ok_or("Brak katalogu domowego")?
+        dirs::home_dir().ok_or(tr!("Brak katalogu domowego", "No home folder"))?
     } else {
         PathBuf::from(parent)
     };
     let target = base.join(name);
     if target.exists() {
-        return Err(format!("'{}' już istnieje", display_path(&target)));
+        return Err(tr!("'{}' już istnieje", "'{}' already exists", display_path(&target)));
     }
-    std::fs::create_dir(&target).map_err(|e| format!("Błąd tworzenia katalogu '{}': {}", display_path(&target), e))?;
+    std::fs::create_dir(&target).map_err(|e| tr!("Błąd tworzenia katalogu '{}': {}", "Error creating folder '{}': {}", display_path(&target), e))?;
     Ok(display_path(&target))
 }
 
@@ -296,7 +296,7 @@ pub fn local_search(root: &str, query: &str) -> Result<Vec<SftpFileEntry>, Strin
         return Ok(Vec::new());
     }
     let root_path = if root.trim().is_empty() {
-        dirs::home_dir().ok_or("Brak katalogu domowego")?
+        dirs::home_dir().ok_or(tr!("Brak katalogu domowego", "No home folder"))?
     } else {
         PathBuf::from(root)
     };
@@ -379,11 +379,11 @@ fn upload_one(
     progress: Progress,
 ) {
     if depth > MAX_DEPTH {
-        sum.fail(format!("Zbyt głębokie zagnieżdżenie: {}", display_path(local)));
+        sum.fail(tr!("Zbyt głębokie zagnieżdżenie: {}", "Nesting too deep: {}", display_path(local)));
         return;
     }
     let Ok(meta) = std::fs::symlink_metadata(local) else {
-        sum.fail(format!("Nie można odczytać: {}", display_path(local)));
+        sum.fail(tr!("Nie można odczytać: {}", "Cannot read: {}", display_path(local)));
         return;
     };
     if meta.file_type().is_symlink() {
@@ -392,7 +392,7 @@ fn upload_one(
     let name = match local.file_name() {
         Some(n) => n.to_string_lossy().to_string(),
         None => {
-            sum.fail(format!("Nieprawidłowa ścieżka: {}", display_path(local)));
+            sum.fail(tr!("Nieprawidłowa ścieżka: {}", "Invalid path: {}", display_path(local)));
             return;
         }
     };
@@ -402,7 +402,7 @@ fn upload_one(
         if sftp.stat(&target).map(|s| s.is_dir()).unwrap_or(false) || sftp.mkdir(&target, 0o755).is_ok() {
             sum.folders += 1;
         } else {
-            sum.fail(format!("Nie można utworzyć katalogu zdalnego {}", target.display()));
+            sum.fail(tr!("Nie można utworzyć katalogu zdalnego {}", "Cannot create remote folder {}", target.display()));
             return;
         }
         match std::fs::read_dir(local) {
@@ -411,17 +411,17 @@ fn upload_one(
                     upload_one(sftp, &item.path(), &target, depth + 1, sum, progress);
                 }
             }
-            Err(e) => sum.fail(format!("Błąd odczytu katalogu {}: {}", display_path(local), e)),
+            Err(e) => sum.fail(tr!("Błąd odczytu katalogu {}: {}", "Error reading folder {}: {}", display_path(local), e)),
         }
     } else if meta.is_file() {
         progress(sum.files, &name);
         let result = File::open(local)
-            .map_err(|e| format!("Błąd otwierania {}: {}", display_path(local), e))
+            .map_err(|e| tr!("Błąd otwierania {}: {}", "Error opening {}: {}", display_path(local), e))
             .and_then(|mut src| {
                 let mut dst = sftp
                     .create(&target)
-                    .map_err(|e| format!("Błąd tworzenia pliku zdalnego {}: {}", target.display(), e))?;
-                copy_with_progress(&mut src, &mut dst).map_err(|e| format!("Błąd przesyłania {}: {}", name, e))
+                    .map_err(|e| tr!("Błąd tworzenia pliku zdalnego {}: {}", "Error creating remote file {}: {}", target.display(), e))?;
+                copy_with_progress(&mut src, &mut dst).map_err(|e| tr!("Błąd przesyłania {}: {}", "Error uploading {}: {}", name, e))
             });
         match result {
             Ok(n) => {
@@ -462,7 +462,7 @@ fn download_one(
     progress: Progress,
 ) {
     if depth > MAX_DEPTH {
-        sum.fail(format!("Zbyt głębokie zagnieżdżenie: {}", remote.display()));
+        sum.fail(tr!("Zbyt głębokie zagnieżdżenie: {}", "Nesting too deep: {}", remote.display()));
         return;
     }
     if is_remote_symlink(stat) {
@@ -481,7 +481,7 @@ fn download_one(
 
     if stat.is_dir() {
         if let Err(e) = std::fs::create_dir_all(&target) {
-            sum.fail(format!("Nie można utworzyć katalogu {}: {}", display_path(&target), e));
+            sum.fail(tr!("Nie można utworzyć katalogu {}: {}", "Cannot create folder {}: {}", display_path(&target), e));
             return;
         }
         sum.folders += 1;
@@ -495,17 +495,17 @@ fn download_one(
                     download_one(sftp, &path, &child_stat, &target, depth + 1, sum, progress);
                 }
             }
-            Err(e) => sum.fail(format!("Błąd odczytu katalogu zdalnego {}: {}", remote.display(), e)),
+            Err(e) => sum.fail(tr!("Błąd odczytu katalogu zdalnego {}: {}", "Error reading remote folder {}: {}", remote.display(), e)),
         }
     } else {
         progress(sum.files, &name);
         let result = sftp
             .open(remote)
-            .map_err(|e| format!("Nie można otworzyć {}: {}", remote.display(), e))
+            .map_err(|e| tr!("Nie można otworzyć {}: {}", "Cannot open {}: {}", remote.display(), e))
             .and_then(|mut src| {
                 let mut dst = File::create(&target)
-                    .map_err(|e| format!("Błąd tworzenia pliku {}: {}", display_path(&target), e))?;
-                copy_with_progress(&mut src, &mut dst).map_err(|e| format!("Błąd pobierania {}: {}", name, e))
+                    .map_err(|e| tr!("Błąd tworzenia pliku {}: {}", "Error creating file {}: {}", display_path(&target), e))?;
+                copy_with_progress(&mut src, &mut dst).map_err(|e| tr!("Błąd pobierania {}: {}", "Error downloading {}: {}", name, e))
             });
         match result {
             Ok(n) => {
@@ -524,12 +524,12 @@ pub fn download_paths(
     progress: Progress,
 ) -> Result<TransferSummary, String> {
     let local_dir = if local_dir.trim().is_empty() {
-        dirs::download_dir().or_else(dirs::home_dir).ok_or("Brak katalogu docelowego")?
+        dirs::download_dir().or_else(dirs::home_dir).ok_or(tr!("Brak katalogu docelowego", "No target folder"))?
     } else {
         PathBuf::from(local_dir)
     };
     if !local_dir.is_dir() {
-        return Err(format!("Katalog docelowy nie istnieje: {}", display_path(&local_dir)));
+        return Err(tr!("Katalog docelowy nie istnieje: {}", "The target folder does not exist: {}", display_path(&local_dir)));
     }
     let (_sess, sftp) = crate::session::sftp::sftp_connect(config)?;
     let mut sum = TransferSummary::default();
@@ -537,7 +537,7 @@ pub fn download_paths(
         let p = Path::new(rp);
         match sftp.lstat(p) {
             Ok(stat) => download_one(&sftp, p, &stat, &local_dir, 0, &mut sum, progress),
-            Err(e) => sum.fail(format!("Nie można odczytać {}: {}", rp, e)),
+            Err(e) => sum.fail(tr!("Nie można odczytać {}: {}", "Cannot read {}: {}", rp, e)),
         }
     }
     Ok(sum)

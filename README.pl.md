@@ -11,6 +11,7 @@ Wszystkie połączenia, hasła i klucze są przechowywane w lokalnym, zaszyfrowa
 ## Funkcje
 
 ### Połączenia i obszar roboczy
+- Interfejs po polsku i angielsku – zmiana języka w nagłówku, na ekranie logowania lub w Ustawieniach (działa od razu).
 - Drzewo połączeń z zagnieżdżonymi folderami, kolorami, wyszukiwaniem (nazwa, host, IP, tagi) i przeciąganiem.
 - Zakładki i podział ekranu: pojedynczy, poziomy, pionowy, 3 kolumny i siatka 2×2.
 - Wspólne profile poświadczeń używane przez wiele połączeń.
@@ -87,6 +88,7 @@ albo po prostu uruchom `build-linux-docker.bat` na Windows. Pakiety trafią do f
 
 ### Testy
 ```bash
+node scripts/check-i18n.mjs   # każdy tekst interfejsu ma tłumaczenie angielskie
 cd src-tauri
 cargo test --lib              # testy jednostkowe
 cargo test --lib -- --ignored # testy integracyjne (wymagają lokalnych serwerów testowych SSH/RDP)

@@ -22,6 +22,7 @@ import {
 import { api } from '../../services/api';
 import { anchorFromElement, DialogAnchor } from '../dialogs/ConfirmDialog';
 import { Connection, Group } from '../../types';
+import { useT } from '../../i18n';
 
 interface Props {
   groups: Group[];
@@ -58,6 +59,7 @@ export const Sidebar: React.FC<Props> = ({
   onNewConnection,
   onNewGroup,
 }) => {
+  const t = useT();
   const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>({});
   const [dragOverGroupId, setDragOverGroupId] = useState<string | null | 'root'>(null);
   const [draggingConnectionId, setDraggingConnectionId] = useState<string | null>(null);
@@ -255,7 +257,7 @@ export const Sidebar: React.FC<Props> = ({
         {/* Group header – full width, counter aligned to the right edge */}
         <div
           style={{ paddingLeft: rowPadding(depth) }}
-          title={`Folder: ${group.name} (${allGroupConns.length} połączeń)`}
+          title={t('Folder: {name} ({length} połączeń)', { name: group.name, length: allGroupConns.length })}
           onClick={() => toggleGroupCollapse(group.id)}
           className={`group relative flex items-center gap-1 pr-1.5 h-6 cursor-pointer select-none transition-colors ${
             depth === 0
@@ -289,7 +291,7 @@ export const Sidebar: React.FC<Props> = ({
           >
             <button
               onClick={() => onConnectAllInGroup(group, allGroupConns)}
-              title={`Połącz ze wszystkimi w '${group.name}' (${allGroupConns.length})`}
+              title={t("Połącz ze wszystkimi w '{name}' ({length})", { name: group.name, length: allGroupConns.length })}
               disabled={allGroupConns.length === 0}
               className="flex h-4.5 w-4.5 items-center justify-center rounded text-emerald-400 hover:bg-emerald-500/20 disabled:opacity-30"
             >
@@ -297,28 +299,28 @@ export const Sidebar: React.FC<Props> = ({
             </button>
             <button
               onClick={() => onAddConnectionToGroup(group.id)}
-              title="Dodaj połączenie do tego folderu"
+              title={t('Dodaj połączenie do tego folderu')}
               className="flex h-4.5 w-4.5 items-center justify-center rounded text-slate-400 hover:bg-slate-700 hover:text-white"
             >
               <Plus className="h-3 w-3" />
             </button>
             <button
               onClick={() => onAddSubgroup(group.id)}
-              title="Dodaj podfolder (zagnieżdżona grupa)"
+              title={t('Dodaj podfolder (zagnieżdżona grupa)')}
               className="flex h-4.5 w-4.5 items-center justify-center rounded text-amber-400/80 hover:bg-amber-500/20 hover:text-amber-300"
             >
               <FolderPlus className="h-3 w-3" />
             </button>
             <button
               onClick={() => onEditGroup(group)}
-              title="Edytuj folder"
+              title={t('Edytuj folder')}
               className="flex h-4.5 w-4.5 items-center justify-center rounded text-slate-400 hover:bg-slate-700 hover:text-white"
             >
               <Edit2 className="h-2.5 w-2.5" />
             </button>
             <button
               onClick={(e) => onDeleteGroup(group.id, anchorFromElement(e.currentTarget))}
-              title="Usuń folder"
+              title={t('Usuń folder')}
               className="flex h-4.5 w-4.5 items-center justify-center rounded text-slate-400 hover:bg-red-500/20 hover:text-red-400"
             >
               <Trash2 className="h-2.5 w-2.5" />
@@ -341,7 +343,7 @@ export const Sidebar: React.FC<Props> = ({
                 style={{ marginLeft: rowPadding(depth + 1) }}
                 className="my-0.5 mr-1 rounded border border-dashed border-slate-800 py-1 px-2 text-[10px] italic text-slate-500"
               >
-                Pusty folder – przeciągnij tutaj połączenie
+                {t('Pusty folder – przeciągnij tutaj połączenie')}
               </div>
             )}
           </div>
@@ -363,13 +365,13 @@ export const Sidebar: React.FC<Props> = ({
             type="text"
             value={searchQuery}
             onChange={(e) => onSearchChange(e.target.value)}
-            placeholder="Szukaj (host, nazwa, IP, tagi)..."
+            placeholder={t('Szukaj (host, nazwa, IP, tagi)...')}
             className="w-full rounded-md border border-slate-800 bg-[#121c2e] py-1.5 pl-8 pr-7 text-xs text-white placeholder-slate-500 focus:border-cyan-500 focus:outline-none focus:ring-1 focus:ring-cyan-500"
           />
           {searchQuery && (
             <button
               onClick={() => onSearchChange('')}
-              title="Wyczyść wyszukiwanie"
+              title={t('Wyczyść wyszukiwanie')}
               className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-300"
             >
               <X className="h-3 w-3" />
@@ -383,10 +385,10 @@ export const Sidebar: React.FC<Props> = ({
         <div className="flex items-center justify-between mb-1.5">
           <span className="flex items-center gap-1.5 uppercase tracking-wider text-[11px] font-bold text-slate-300 min-w-0">
             <Layers className="h-3.5 w-3.5 text-cyan-400 shrink-0" />
-            <span className="truncate">Struktura Połączeń</span>
+            <span className="truncate">{t('Struktura Połączeń')}</span>
           </span>
           <span className="text-[10px] text-cyan-300/90 font-mono bg-cyan-950/70 border border-cyan-800/50 px-1.5 py-0.2 rounded-full font-medium shrink-0">
-            {filteredConnections.length} hostów
+            {t('{n} hostów', { n: filteredConnections.length })}
           </span>
         </div>
 
@@ -394,20 +396,20 @@ export const Sidebar: React.FC<Props> = ({
         <div className="flex items-center gap-1.5">
           <button
             onClick={() => (onNewGroup ? onNewGroup() : onAddSubgroup(''))}
-            title="Utwórz nowy folder / grupę połączeń"
+            title={t('Utwórz nowy folder / grupę połączeń')}
             className="flex-1 flex items-center justify-center gap-1 rounded-sm border border-slate-700/80 bg-slate-800/80 hover:bg-slate-700 hover:text-white px-2 py-1 text-[11px] font-medium text-slate-200 transition-colors shadow-2xs cursor-pointer"
           >
             <FolderPlus className="h-3.5 w-3.5 text-amber-400 shrink-0" />
-            <span className="truncate">Nowy Folder</span>
+            <span className="truncate">{t('Nowy Folder')}</span>
           </button>
 
           <button
             onClick={() => (onNewConnection ? onNewConnection() : onAddConnectionToGroup(null))}
-            title="Dodaj nowe połączenie (SSH, SFTP, RDP)"
+            title={t('Dodaj nowe połączenie (SSH, SFTP, RDP)')}
             className="flex-1 flex items-center justify-center gap-1 rounded-sm bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 px-2 py-1 text-[11px] font-semibold text-white transition-all shadow-xs shadow-cyan-600/20 cursor-pointer"
           >
             <Plus className="h-3.5 w-3.5 shrink-0" />
-            <span className="truncate">Nowe Połączenie</span>
+            <span className="truncate">{t('Nowe Połączenie')}</span>
           </button>
         </div>
       </div>
@@ -448,7 +450,7 @@ export const Sidebar: React.FC<Props> = ({
           <div className="flex items-center justify-between px-2 py-1 text-[10px] font-bold text-slate-400 uppercase tracking-wider border-b border-slate-800/80 mb-1.5">
             <span className="flex items-center gap-1.5">
               <Layers className="h-3 w-3 text-slate-500" />
-              Połączenia bez folderu
+              {t('Połączenia bez folderu')}
             </span>
             <span className="font-mono text-[9px] text-slate-400 bg-slate-900 px-1.5 py-0.2 rounded-full border border-slate-700/60 font-medium">
               {uncategorizedConnections.length}
@@ -458,7 +460,7 @@ export const Sidebar: React.FC<Props> = ({
           <div className="space-y-1 mt-1">
             {uncategorizedConnections.length === 0 ? (
               <div className="py-2 px-2 text-[10px] text-slate-500 italic text-center rounded-none bg-slate-950/40 border border-dashed border-slate-800">
-                Przeciągnij tutaj, aby przenieść do poziomu głównego
+                {t('Przeciągnij tutaj, aby przenieść do poziomu głównego')}
               </div>
             ) : (
               uncategorizedConnections.map((conn) => (
@@ -487,14 +489,14 @@ export const Sidebar: React.FC<Props> = ({
 
         {filteredConnections.length === 0 && (!isSearching || matchedGroupIds.size === 0) && (
           <div className="p-6 text-center text-xs text-slate-500">
-            {searchQuery ? 'Brak wyników wyszukiwania' : 'Brak zdefiniowanych połączeń'}
+            {searchQuery ? t('Brak wyników wyszukiwania') : t('Brak zdefiniowanych połączeń')}
           </div>
         )}
       </div>
 
       {/* Footer Info */}
       <div className="border-t border-slate-800/80 bg-[#080d1a] p-2 text-center text-[10px] text-slate-500">
-        Przeciągaj myszką, aby przenieść • Dwuklik: połącz
+        {t('Przeciągaj myszką, aby przenieść • Dwuklik: połącz')}
       </div>
 
       {/* Resizer Handle */}
@@ -503,7 +505,7 @@ export const Sidebar: React.FC<Props> = ({
           e.preventDefault();
           setIsResizing(true);
         }}
-        title="Przeciągnij, aby zmienić szerokość paska połączeń"
+        title={t('Przeciągnij, aby zmienić szerokość paska połączeń')}
         className={`absolute top-0 right-0 bottom-0 w-1.5 cursor-col-resize z-30 transition-colors ${
           isResizing
             ? 'bg-cyan-500 shadow-md shadow-cyan-500/50'
@@ -533,6 +535,7 @@ const ConnectionItem: React.FC<ConnectionItemProps> = ({
   onEdit,
   onDelete,
 }) => {
+  const t = useT();
   const isSSH = connection.protocol === 'ssh';
   const activeTunnelsCount = connection.portForwarding.filter((p) => p.enabled).length;
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
@@ -595,7 +598,7 @@ const ConnectionItem: React.FC<ConnectionItemProps> = ({
               </span>
               {activeTunnelsCount > 0 && (
                 <span
-                  title={`${activeTunnelsCount} aktywnych przekierowań portów`}
+                  title={t('{activeTunnelsCount} aktywnych przekierowań portów', { activeTunnelsCount })}
                   className="flex items-center gap-0.5 rounded bg-amber-500/10 px-1 py-0.2 text-[9px] font-mono text-amber-400 border border-amber-500/20"
                 >
                   <ArrowRightLeft className="h-2.5 w-2.5" />
@@ -617,7 +620,7 @@ const ConnectionItem: React.FC<ConnectionItemProps> = ({
           {/* Direct Connect */}
           <button
             onClick={() => onConnect(connection, false)}
-            title="Połącz natychmiast"
+            title={t('Połącz natychmiast')}
             className="flex h-5 w-5 items-center justify-center rounded text-cyan-400 hover:bg-cyan-500/20"
           >
             <Play className="h-2.5 w-2.5 fill-current" />
@@ -626,7 +629,7 @@ const ConnectionItem: React.FC<ConnectionItemProps> = ({
           {/* Open in new tab (Duplicate) */}
           <button
             onClick={() => onConnect(connection, true)}
-            title="Otwórz w nowej karcie (duplikat sesji)"
+            title={t('Otwórz w nowej karcie (duplikat sesji)')}
             className="flex h-5 w-5 items-center justify-center rounded text-slate-400 hover:bg-slate-700 hover:text-cyan-400"
           >
             <Copy className="h-2.5 w-2.5" />
@@ -635,7 +638,7 @@ const ConnectionItem: React.FC<ConnectionItemProps> = ({
           {/* Edit */}
           <button
             onClick={() => onEdit(connection)}
-            title="Edytuj połączenie"
+            title={t('Edytuj połączenie')}
             className="flex h-5 w-5 items-center justify-center rounded text-slate-400 hover:bg-slate-700 hover:text-white"
           >
             <Edit2 className="h-2.5 w-2.5" />
@@ -644,7 +647,7 @@ const ConnectionItem: React.FC<ConnectionItemProps> = ({
           {/* Delete */}
           <button
             onClick={(e) => onDelete(connection.id, anchorFromElement(e.currentTarget))}
-            title="Usuń połączenie"
+            title={t('Usuń połączenie')}
             className="flex h-5 w-5 items-center justify-center rounded text-slate-400 hover:bg-red-500/20 hover:text-red-400"
           >
             <Trash2 className="h-2.5 w-2.5" />
@@ -671,7 +674,7 @@ const ConnectionItem: React.FC<ConnectionItemProps> = ({
               className="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 hover:bg-cyan-600 hover:text-white transition-colors"
             >
               <Play className="h-3.5 w-3.5 text-cyan-400 group-hover:text-white fill-current" />
-              <span>Połącz</span>
+              <span>{t('Połącz')}</span>
             </button>
 
             <button
@@ -682,7 +685,7 @@ const ConnectionItem: React.FC<ConnectionItemProps> = ({
               className="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 hover:bg-slate-800 hover:text-white transition-colors"
             >
               <Copy className="h-3.5 w-3.5 text-cyan-400" />
-              <span>Otwórz w nowej karcie</span>
+              <span>{t('Otwórz w nowej karcie')}</span>
             </button>
 
             <div className="my-1 border-t border-slate-800" />
@@ -703,7 +706,7 @@ const ConnectionItem: React.FC<ConnectionItemProps> = ({
               className="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 hover:bg-slate-800 hover:text-cyan-400 transition-colors"
             >
               <KeyRound className="h-3.5 w-3.5 text-cyan-400" />
-              <span>Kopiuj hasło do schowka</span>
+              <span>{t('Kopiuj hasło do schowka')}</span>
             </button>
 
             {/* Copy Username */}
@@ -720,7 +723,7 @@ const ConnectionItem: React.FC<ConnectionItemProps> = ({
                 className="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 hover:bg-slate-800 hover:text-cyan-400 transition-colors"
               >
                 <User className="h-3.5 w-3.5 text-slate-400" />
-                <span>Kopiuj login ({connection.username})</span>
+                <span>{t('Kopiuj login ({user})', { user: connection.username })}</span>
               </button>
             )}
 
@@ -734,7 +737,7 @@ const ConnectionItem: React.FC<ConnectionItemProps> = ({
               className="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 hover:bg-slate-800 hover:text-white transition-colors"
             >
               <Edit2 className="h-3.5 w-3.5 text-slate-400" />
-              <span>Edytuj konfigurację</span>
+              <span>{t('Edytuj konfigurację')}</span>
             </button>
 
             <button
@@ -745,7 +748,7 @@ const ConnectionItem: React.FC<ConnectionItemProps> = ({
               className="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 hover:bg-red-500/20 hover:text-red-400 transition-colors"
             >
               <Trash2 className="h-3.5 w-3.5 text-red-400" />
-              <span>Usuń połączenie</span>
+              <span>{t('Usuń połączenie')}</span>
             </button>
           </div>
         </div>

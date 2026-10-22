@@ -76,7 +76,7 @@ pub fn get_vault_path() -> PathBuf {
 fn mac_payload(data: &VaultData) -> Result<Vec<u8>, String> {
     let mut copy = data.clone();
     copy.mac = None;
-    serde_json::to_vec(&copy).map_err(|e| format!("Błąd serializacji sejfu: {}", e))
+    serde_json::to_vec(&copy).map_err(|e| tr!("Błąd serializacji sejfu: {}", "Vault serialisation error: {}", e))
 }
 
 pub fn verify_vault_mac(data: &VaultData, key: &[u8; 32]) -> bool {
@@ -100,14 +100,14 @@ pub(crate) fn write_atomic(path: &Path, bytes: &[u8]) -> Result<(), String> {
     }
     let tmp = path.with_extension("json.tmp");
     {
-        let mut f = fs::File::create(&tmp).map_err(|e| format!("Błąd zapisu do pliku {:?}: {}", tmp, e))?;
+        let mut f = fs::File::create(&tmp).map_err(|e| tr!("Błąd zapisu do pliku {:?}: {}", "Error writing file {:?}: {}", tmp, e))?;
         f.write_all(bytes)
             .and_then(|_| f.sync_all())
-            .map_err(|e| format!("Błąd zapisu do pliku {:?}: {}", tmp, e))?;
+            .map_err(|e| tr!("Błąd zapisu do pliku {:?}: {}", "Error writing file {:?}: {}", tmp, e))?;
     }
     fs::rename(&tmp, path).map_err(|e| {
         let _ = fs::remove_file(&tmp);
-        format!("Błąd zapisu do pliku {:?}: {}", path, e)
+        tr!("Błąd zapisu do pliku {:?}: {}", "Error writing file {:?}: {}", path, e)
     })
 }
 
@@ -115,7 +115,7 @@ pub(crate) fn write_atomic(path: &Path, bytes: &[u8]) -> Result<(), String> {
 /// Callers doing read-modify-write must hold [`lock_io`] (or use [`update_vault`]).
 pub fn save_vault_signed(data: &mut VaultData, key: &[u8; 32]) -> Result<(), String> {
     sign_vault(data, key)?;
-    let json = serde_json::to_string_pretty(data).map_err(|e| format!("Błąd serializacji sejfu: {}", e))?;
+    let json = serde_json::to_string_pretty(data).map_err(|e| tr!("Błąd serializacji sejfu: {}", "Vault serialisation error: {}", e))?;
     write_atomic(&get_vault_path(), json.as_bytes())
 }
 
@@ -127,9 +127,9 @@ pub fn load_vault() -> Result<Option<VaultData>, String> {
         return Ok(None);
     }
 
-    let content = fs::read_to_string(&path).map_err(|e| format!("Błąd odczytu pliku {:?}: {}", path, e))?;
+    let content = fs::read_to_string(&path).map_err(|e| tr!("Błąd odczytu pliku {:?}: {}", "Error reading file {:?}: {}", path, e))?;
     let data: VaultData =
-        serde_json::from_str(&content).map_err(|e| format!("Błąd parsowania pliku sejfu: {}", e))?;
+        serde_json::from_str(&content).map_err(|e| tr!("Błąd parsowania pliku sejfu: {}", "Vault file parse error: {}", e))?;
     Ok(Some(data))
 }
 
@@ -143,7 +143,7 @@ pub fn integrity_error() -> String {
 
 /// Reads the vault and verifies its integrity MAC with the master key.
 pub fn load_vault_verified(key: &[u8; 32]) -> Result<VaultData, String> {
-    let data = load_vault()?.ok_or("Sejf nie istnieje")?;
+    let data = load_vault()?.ok_or(tr!("Sejf nie istnieje", "The vault does not exist"))?;
     if !verify_vault_mac(&data, key) {
         return Err(integrity_error());
     }
@@ -171,7 +171,7 @@ pub fn delete_vault() -> Result<(), String> {
     let path = get_vault_path();
     if path.exists() {
         let backup_path = path.with_extension(format!("json.bak_{}", chrono::Utc::now().timestamp()));
-        fs::rename(&path, &backup_path).map_err(|e| format!("Nie udało się utworzyć kopii sejfu: {}", e))?;
+        fs::rename(&path, &backup_path).map_err(|e| tr!("Nie udało się utworzyć kopii sejfu: {}", "Could not back up the vault: {}", e))?;
     }
     Ok(())
 }

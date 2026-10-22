@@ -85,8 +85,8 @@ pub fn spawn_rdp_session(
             let _ = app.emit(&format!("rdp-data-{}", sid), msg);
         };
 
-        emit_log(format!(
-            "▶ Inicjalizacja połączenia RDP do {}:{} (użytkownik: {})...",
+        emit_log(tr!(
+            "▶ Inicjalizacja połączenia RDP do {}:{} (użytkownik: {})...", "▶ Starting the RDP connection to {}:{} (user: {})...",
             config.host, config.port, config.username
         ));
 
@@ -129,17 +129,17 @@ pub fn spawn_rdp_session(
         let binary = match found_binary {
             Some(b) => b,
             None => {
-                emit_log("❌ Błąd: Nie znaleziono zainstalowanego klienta RDP (FreeRDP) w systemie.".to_string());
-                emit_log("ℹ️ Wskazówka: Zainstaluj pakiet poleceniem:".to_string());
+                emit_log(tr!("❌ Błąd: Nie znaleziono zainstalowanego klienta RDP (FreeRDP) w systemie.", "❌ Error: no installed RDP client (FreeRDP) was found.").to_string());
+                emit_log(tr!("ℹ️ Wskazówka: Zainstaluj pakiet poleceniem:", "ℹ️ Tip: install the package with:").to_string());
                 emit_log("   Arch/CachyOS: sudo pacman -S freerdp".to_string());
-                emit_log("   Debian/Ubuntu: sudo apt install freerdp3-x11 (lub freerdp2-x11)".to_string());
+                emit_log(tr!("   Debian/Ubuntu: sudo apt install freerdp3-x11 (lub freerdp2-x11)", "   Debian/Ubuntu: sudo apt install freerdp3-x11 (or freerdp2-x11)").to_string());
                 emit_log("   Fedora: sudo dnf install freerdp".to_string());
                 let _ = app.emit(&format!("rdp-status-{}", sid), "error");
                 return;
             }
         };
 
-        emit_log(format!("✓ Wykryto klienta RDP: {}", binary));
+        emit_log(tr!("✓ Wykryto klienta RDP: {}", "✓ RDP client found: {}", binary));
 
         let mut cmd = Command::new(&binary);
 
@@ -198,7 +198,7 @@ pub fn spawn_rdp_session(
                     });
                 }
                 Err(e) => {
-                    emit_log(format!("⚠️ Nie udało się przygotować pliku .rdp ({}), użytkownik nie zostanie podpowiedziany.", e));
+                    emit_log(tr!("⚠️ Nie udało się przygotować pliku .rdp ({}), użytkownik nie zostanie podpowiedziany.", "⚠️ Could not prepare the .rdp file ({}), the user name will not be pre-filled.", e));
                     cmd.arg(format!("/v:{}:{}", config.host, config.port));
                 }
             }
@@ -209,12 +209,12 @@ pub fn spawn_rdp_session(
 
         let mut child = match cmd.spawn() {
             Ok(c) => {
-                emit_log(format!("⚡ Uruchomiono natywne okno sesji RDP (PID: {}).", c.id()));
+                emit_log(tr!("⚡ Uruchomiono natywne okno sesji RDP (PID: {}).", "⚡ Native RDP session window started (PID: {}).", c.id()));
                 let _ = app.emit(&format!("rdp-status-{}", sid), "connected");
                 c
             }
             Err(e) => {
-                emit_log(format!("❌ Błąd uruchamiania procesu RDP: {}", e));
+                emit_log(tr!("❌ Błąd uruchamiania procesu RDP: {}", "❌ Error starting the RDP process: {}", e));
                 let _ = app.emit(&format!("rdp-status-{}", sid), "error");
                 return;
             }
@@ -251,7 +251,7 @@ pub fn spawn_rdp_session(
         loop {
             // Check if user closed tab in RemoteFlow
             if let Ok(()) = kill_rx.try_recv() {
-                emit_log("⏹ Zamykanie procesu RDP na żądanie użytkownika...".to_string());
+                emit_log(tr!("⏹ Zamykanie procesu RDP na żądanie użytkownika...", "⏹ Closing the RDP process at the user's request...").to_string());
                 let _ = child.kill();
                 let _ = child.wait();
                 return;
@@ -260,7 +260,7 @@ pub fn spawn_rdp_session(
             // Check if RDP process exited on its own
             match child.try_wait() {
                 Ok(Some(status)) => {
-                    emit_log(format!("ℹ️ Okno sesji RDP zostało zamknięte (kod: {}).", status));
+                    emit_log(tr!("ℹ️ Okno sesji RDP zostało zamknięte (kod: {}).", "ℹ️ The RDP session window was closed (code: {}).", status));
                     let _ = app.emit(&format!("rdp-status-{}", sid), "disconnected");
                     return;
                 }
@@ -268,7 +268,7 @@ pub fn spawn_rdp_session(
                     std::thread::sleep(std::time::Duration::from_millis(150));
                 }
                 Err(e) => {
-                    emit_log(format!("⚠️ Błąd monitorowania procesu RDP: {}", e));
+                    emit_log(tr!("⚠️ Błąd monitorowania procesu RDP: {}", "⚠️ Error monitoring the RDP process: {}", e));
                     return;
                 }
             }

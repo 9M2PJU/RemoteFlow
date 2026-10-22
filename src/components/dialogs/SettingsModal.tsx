@@ -16,10 +16,13 @@ import {
   Archive,
   RotateCcw,
   MessageSquareWarning,
+  Languages,
 } from 'lucide-react';
 import { api } from '../../services/api';
 import { BackupEntry, BackupSettings, KnownHostEntry, UiSettings, VaultStatus } from '../../types';
 import { ConfirmDialog } from './ConfirmDialog';
+import { locale, useT } from '../../i18n';
+import { LanguageSegmented } from '../../i18n/LanguageSwitcher';
 
 interface Props {
   isOpen: boolean;
@@ -34,6 +37,7 @@ export const SettingsModal: React.FC<Props> = ({
   status,
   onStatusUpdated,
 }) => {
+  const t = useT();
   // General & PIN settings
   const [pinEnabled, setPinEnabled] = useState(status.pinEnabled);
   const [pinCode, setPinCode] = useState('');
@@ -100,7 +104,7 @@ export const SettingsModal: React.FC<Props> = ({
     setBackupMsg(null);
     try {
       const path = await api.backupNow();
-      setBackupMsg({ text: `Utworzono kopię: ${path}`, type: 'success' });
+      setBackupMsg({ text: t('Utworzono kopię: {path}', { path }), type: 'success' });
       setBackups(await api.listBackups());
     } catch (err: unknown) {
       setBackupMsg({ text: err instanceof Error ? err.message : String(err), type: 'error' });
@@ -148,11 +152,11 @@ export const SettingsModal: React.FC<Props> = ({
     // Validate PIN if enabling or changing
     if (pinEnabled && pinCode) {
       if (pinCode.length < 4) {
-        setError('PIN musi mieć co najmniej 4 cyfry');
+        setError(t('PIN musi mieć co najmniej 4 cyfry'));
         return;
       }
       if (pinCode !== confirmPinCode) {
-        setError('Wprowadzone kody PIN nie są zgodne');
+        setError(t('Wprowadzone kody PIN nie są zgodne'));
         return;
       }
     }
@@ -178,7 +182,7 @@ export const SettingsModal: React.FC<Props> = ({
       await api.setUiSettings(uiSettings);
       window.dispatchEvent(new CustomEvent<UiSettings>('remoteflow-ui-settings', { detail: uiSettings }));
 
-      setSuccessMsg('Ustawienia zostały zapisane.');
+      setSuccessMsg(t('Ustawienia zostały zapisane.'));
       setPinCode('');
       setConfirmPinCode('');
       setTimeout(() => {
@@ -197,19 +201,19 @@ export const SettingsModal: React.FC<Props> = ({
     setPasswordSuccessMsg(null);
 
     if (!currentMasterPassword) {
-      setPasswordError('Wprowadź obecne Master Password');
+      setPasswordError(t('Wprowadź obecne Master Password'));
       return;
     }
     if (newMasterPassword.length < 8) {
-      setPasswordError('Nowe Master Password musi mieć co najmniej 8 znaków');
+      setPasswordError(t('Nowe Master Password musi mieć co najmniej 8 znaków'));
       return;
     }
     if (newMasterPassword !== confirmMasterPassword) {
-      setPasswordError('Nowe hasła nie są identyczne');
+      setPasswordError(t('Nowe hasła nie są identyczne'));
       return;
     }
     if (currentMasterPassword === newMasterPassword) {
-      setPasswordError('Nowe Master Password musi być inne niż obecne');
+      setPasswordError(t('Nowe Master Password musi być inne niż obecne'));
       return;
     }
 
@@ -223,7 +227,7 @@ export const SettingsModal: React.FC<Props> = ({
       setCurrentMasterPassword('');
       setNewMasterPassword('');
       setConfirmMasterPassword('');
-      setPasswordSuccessMsg('Master Password zostało pomyślnie zmienione! Wszystkie wpisy zostały ponownie zaszyfrowane nowym kluczem Argon2id / AES-256-GCM. Kod PIN został zresetowany.');
+      setPasswordSuccessMsg(t('Master Password zostało pomyślnie zmienione! Wszystkie wpisy zostały ponownie zaszyfrowane nowym kluczem Argon2id / AES-256-GCM. Kod PIN został zresetowany.'));
       setTimeout(() => {
         setPasswordSuccessMsg(null);
       }, 6000);
@@ -244,7 +248,7 @@ export const SettingsModal: React.FC<Props> = ({
           <div className="flex items-center gap-2">
             <Shield className="h-5 w-5 text-cyan-400" />
             <h2 className="text-sm font-bold text-white">
-              Ustawienia Bezpieczeństwa & Sejfu
+              {t('Ustawienia Bezpieczeństwa & Sejfu')}
             </h2>
           </div>
           <button
@@ -276,10 +280,10 @@ export const SettingsModal: React.FC<Props> = ({
               <div>
                 <div className="text-xs font-bold text-white uppercase tracking-wider flex items-center gap-1.5">
                   <KeyRound className="h-3.5 w-3.5 text-cyan-400" />
-                  Master Password (Hasło Główne)
+                  {t('Master Password (Hasło Główne)')}
                 </div>
                 <p className="text-[11px] text-slate-400 mt-0.5">
-                  Główny klucz kryptograficzny szyfrujący bazę danych, poświadczenia i klucze SSH
+                  {t('Główny klucz kryptograficzny szyfrujący bazę danych, poświadczenia i klucze SSH')}
                 </p>
               </div>
               <button
@@ -295,7 +299,7 @@ export const SettingsModal: React.FC<Props> = ({
                     : 'border-cyan-700/60 bg-cyan-950/60 text-cyan-200 hover:bg-cyan-900/60 hover:text-white shadow-sm'
                 }`}
               >
-                {isChangePasswordOpen ? 'Zwiń' : 'Zmień Master Password'}
+                {isChangePasswordOpen ? t('Zwiń') : t('Zmień Master Password')}
               </button>
             </div>
 
@@ -317,21 +321,22 @@ export const SettingsModal: React.FC<Props> = ({
                 <div className="rounded-lg bg-amber-950/25 border border-amber-800/40 p-2.5 text-[11px] text-amber-300/90 flex items-start gap-2">
                   <AlertTriangle className="h-4 w-4 shrink-0 text-amber-400 mt-0.5" />
                   <span>
-                    <strong>Uwaga:</strong> Zmiana hasła głównego bezpiecznie odszyfruje i ponownie zaszyfruje wszystkie Twoje połączenia oraz poświadczenia nowym kluczem Argon2id + AES-256-GCM. Ze względów bezpieczeństwa ewentualny kod PIN zostanie zresetowany.
+                    <strong>{t('Uwaga:')}</strong>{' '}
+                    {t('Zmiana hasła głównego bezpiecznie odszyfruje i ponownie zaszyfruje wszystkie Twoje połączenia oraz poświadczenia nowym kluczem Argon2id + AES-256-GCM. Ze względów bezpieczeństwa ewentualny kod PIN zostanie zresetowany.')}
                   </span>
                 </div>
 
                 <div className="space-y-2.5">
                   <div>
                     <label className="block text-[11px] font-semibold text-slate-300">
-                      Obecne Master Password
+                      {t('Obecne Master Password')}
                     </label>
                     <div className="relative mt-1">
                       <input
                         type={showCurrentPassword ? 'text' : 'password'}
                         value={currentMasterPassword}
                         onChange={(e) => setCurrentMasterPassword(e.target.value)}
-                        placeholder="Wprowadź obecne hasło główne..."
+                        placeholder={t('Wprowadź obecne hasło główne...')}
                         className="w-full rounded-lg border border-slate-700 bg-slate-800/90 px-3 py-2 pr-9 text-xs text-white placeholder-slate-500 focus:border-cyan-500 focus:outline-none"
                       />
                       <button
@@ -347,14 +352,14 @@ export const SettingsModal: React.FC<Props> = ({
                   <div className="grid grid-cols-2 gap-3">
                     <div>
                       <label className="block text-[11px] font-semibold text-slate-300">
-                        Nowe Master Password
+                        {t('Nowe Master Password')}
                       </label>
                       <div className="relative mt-1">
                         <input
                           type={showNewPassword ? 'text' : 'password'}
                           value={newMasterPassword}
                           onChange={(e) => setNewMasterPassword(e.target.value)}
-                          placeholder="Min. 8 znaków..."
+                          placeholder={t('Min. 8 znaków...')}
                           className="w-full rounded-lg border border-slate-700 bg-slate-800/90 px-3 py-2 pr-9 text-xs text-white placeholder-slate-500 focus:border-cyan-500 focus:outline-none"
                         />
                         <button
@@ -369,14 +374,14 @@ export const SettingsModal: React.FC<Props> = ({
 
                     <div>
                       <label className="block text-[11px] font-semibold text-slate-300">
-                        Powtórz Nowe Hasło
+                        {t('Powtórz Nowe Hasło')}
                       </label>
                       <div className="relative mt-1">
                         <input
                           type={showConfirmPassword ? 'text' : 'password'}
                           value={confirmMasterPassword}
                           onChange={(e) => setConfirmMasterPassword(e.target.value)}
-                          placeholder="Powtórz nowe hasło..."
+                          placeholder={t('Powtórz nowe hasło...')}
                           className="w-full rounded-lg border border-slate-700 bg-slate-800/90 px-3 py-2 pr-9 text-xs text-white placeholder-slate-500 focus:border-cyan-500 focus:outline-none"
                         />
                         <button
@@ -398,7 +403,7 @@ export const SettingsModal: React.FC<Props> = ({
                     className="flex items-center gap-1.5 rounded-lg bg-gradient-to-r from-cyan-600 to-blue-600 px-4 py-2 text-xs font-semibold text-white shadow-md shadow-cyan-600/25 hover:opacity-95 disabled:opacity-50 transition-opacity"
                   >
                     {changingPassword && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
-                    <span>{changingPassword ? 'Re-szyfrowanie sejfu...' : 'Zastosuj nowe Master Password'}</span>
+                    <span>{changingPassword ? t('Re-szyfrowanie sejfu...') : t('Zastosuj nowe Master Password')}</span>
                   </button>
                 </div>
               </form>
@@ -413,10 +418,10 @@ export const SettingsModal: React.FC<Props> = ({
                 <div>
                   <div className="text-xs font-bold text-white uppercase tracking-wider flex items-center gap-1.5">
                     <Lock className="h-3.5 w-3.5 text-cyan-400" />
-                    Szybka blokada kodem PIN (Quick Unlock)
+                    {t('Szybka blokada kodem PIN (Quick Unlock)')}
                   </div>
                   <p className="text-[11px] text-slate-400 mt-0.5">
-                    Pozwala odblokować ekran kodem PIN zamiast długiego Master Password
+                    {t('Pozwala odblokować ekran kodem PIN zamiast długiego Master Password')}
                   </p>
                 </div>
                 <input
@@ -430,34 +435,35 @@ export const SettingsModal: React.FC<Props> = ({
               {pinEnabled && (
                 <div className="pt-2 border-t border-slate-800/80 space-y-3">
                   <div className="rounded-lg bg-cyan-950/30 border border-cyan-800/30 p-2.5 text-[11px] text-cyan-300">
-                    <strong>Ważna zasada:</strong> Przy uruchomieniu aplikacji zawsze wymagany jest Master Password. Kod PIN chroni aktywne sesje podczas blokady ekranu lub bezczynności.
+                    <strong>{t('Ważna zasada:')}</strong>{' '}
+                    {t('Przy uruchomieniu aplikacji zawsze wymagany jest Master Password. Kod PIN chroni aktywne sesje podczas blokady ekranu lub bezczynności.')}
                   </div>
 
                   <div className="grid grid-cols-2 gap-3">
                     <div>
                       <label className="block text-[11px] font-semibold text-slate-300">
-                        {status.pinEnabled ? 'Zmień kod PIN' : 'Ustaw kod PIN (4-8 cyfr)'}
+                        {status.pinEnabled ? t('Zmień kod PIN') : t('Ustaw kod PIN (4-8 cyfr)')}
                       </label>
                       <input
                         type="password"
                         maxLength={8}
                         value={pinCode}
                         onChange={(e) => setPinCode(e.target.value.replace(/\D/g, ''))}
-                        placeholder="Wpisz PIN..."
+                        placeholder={t('Wpisz PIN...')}
                         className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-xs font-mono text-white focus:border-cyan-500 focus:outline-none"
                       />
                     </div>
 
                     <div>
                       <label className="block text-[11px] font-semibold text-slate-300">
-                        Powtórz kod PIN
+                        {t('Powtórz kod PIN')}
                       </label>
                       <input
                         type="password"
                         maxLength={8}
                         value={confirmPinCode}
                         onChange={(e) => setConfirmPinCode(e.target.value.replace(/\D/g, ''))}
-                        placeholder="Powtórz PIN..."
+                        placeholder={t('Powtórz PIN...')}
                         className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-xs font-mono text-white focus:border-cyan-500 focus:outline-none"
                       />
                     </div>
@@ -470,14 +476,14 @@ export const SettingsModal: React.FC<Props> = ({
             <div className="rounded-xl border border-slate-800 bg-slate-950/40 p-4 space-y-3">
               <div className="text-xs font-bold text-white uppercase tracking-wider flex items-center gap-1.5">
                 <Clock className="h-3.5 w-3.5 text-amber-400" />
-                Reguły automatycznej blokady
+                {t('Reguły automatycznej blokady')}
               </div>
 
               <label className="flex items-center justify-between cursor-pointer">
                 <div className="text-xs text-slate-300">
-                  Blokuj program po wykryciu blokady systemu operacyjnego
+                  {t('Blokuj program po wykryciu blokady systemu operacyjnego')}
                   <div className="text-[10px] text-slate-500">
-                    Windows (Win+L, wygaszacz z blokadą) / Linux (logind, ScreenSaver D-Bus)
+                    {t('Windows (Win+L, wygaszacz z blokadą) / Linux (logind, ScreenSaver D-Bus)')}
                   </div>
                 </div>
                 <input
@@ -490,19 +496,33 @@ export const SettingsModal: React.FC<Props> = ({
 
               <div className="flex items-center justify-between pt-2 border-t border-slate-800/80">
                 <div className="text-xs text-slate-300">
-                  Automatyczna blokada przy bezczynności
+                  {t('Automatyczna blokada przy bezczynności')}
                 </div>
                 <select
                   value={autoLockTimeout}
                   onChange={(e) => setAutoLockTimeout(Number(e.target.value))}
                   className="rounded-lg border border-slate-700 bg-slate-800 px-3 py-1.5 text-xs text-white focus:border-cyan-500 focus:outline-none"
                 >
-                  <option value={0}>Nigdy (Wyłączone)</option>
-                  <option value={5}>Po 5 minutach</option>
-                  <option value={15}>Po 15 minutach (Domyślnie)</option>
-                  <option value={30}>Po 30 minutach</option>
-                  <option value={60}>Po 60 minutach</option>
+                  <option value={0}>{t('Nigdy (Wyłączone)')}</option>
+                  <option value={5}>{t('Po 5 minutach')}</option>
+                  <option value={15}>{t('Po 15 minutach (Domyślnie)')}</option>
+                  <option value={30}>{t('Po 30 minutach')}</option>
+                  <option value={60}>{t('Po 60 minutach')}</option>
                 </select>
+              </div>
+            </div>
+
+            {/* Interface language */}
+            <div className="rounded-xl border border-slate-800 bg-slate-950/40 p-4">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <div className="text-xs font-bold text-white uppercase tracking-wider flex items-center gap-1.5">
+                    <Languages className="h-3.5 w-3.5 text-cyan-400" />
+                    {t('Język interfejsu')}
+                  </div>
+                  <p className="text-[11px] text-slate-400 mt-0.5">{t('Zmiana działa od razu, także na ekranie logowania.')}</p>
+                </div>
+                <LanguageSegmented />
               </div>
             </div>
 
@@ -510,14 +530,14 @@ export const SettingsModal: React.FC<Props> = ({
             <div className="rounded-xl border border-slate-800 bg-slate-950/40 p-4 space-y-3">
               <div className="text-xs font-bold text-white uppercase tracking-wider flex items-center gap-1.5">
                 <MessageSquareWarning className="h-3.5 w-3.5 text-rose-400" />
-                Potwierdzenia
+                {t('Potwierdzenia')}
               </div>
 
               <label className="flex items-center justify-between cursor-pointer">
                 <div className="text-xs text-slate-300">
-                  Pytaj przed zamknięciem połączenia
+                  {t('Pytaj przed zamknięciem połączenia')}
                   <div className="text-[10px] text-slate-500">
-                    Wyłączone: zakładki połączeń (pojedyncze, pozostałe, wszystkie) zamykają się bez pytania
+                    {t('Wyłączone: zakładki połączeń (pojedyncze, pozostałe, wszystkie) zamykają się bez pytania')}
                   </div>
                 </div>
                 <input
@@ -530,7 +550,7 @@ export const SettingsModal: React.FC<Props> = ({
 
               <label className="flex items-center justify-between cursor-pointer pt-2 border-t border-slate-800/80">
                 <div className="text-xs text-slate-300">
-                  Pytaj przed zamknięciem programu
+                  {t('Pytaj przed zamknięciem programu')}
                 </div>
                 <input
                   type="checkbox"
@@ -546,7 +566,7 @@ export const SettingsModal: React.FC<Props> = ({
               <div className="flex items-center justify-between">
                 <label className="text-xs font-semibold text-slate-200 flex items-center gap-2">
                   <FolderDown className="h-4 w-4 text-emerald-400" />
-                  <span>Globalny katalog pobierania plików (SFTP)</span>
+                  <span>{t('Globalny katalog pobierania plików (SFTP)')}</span>
                 </label>
                 {globalDownloadDir && (
                   <button
@@ -554,7 +574,7 @@ export const SettingsModal: React.FC<Props> = ({
                     onClick={() => setGlobalDownloadDir('')}
                     className="text-[10px] text-slate-400 hover:text-rose-300 transition-colors"
                   >
-                    Wyczyść (użyj systemowego ~/Downloads)
+                    {t('Wyczyść (użyj systemowego ~/Downloads)')}
                   </button>
                 )}
               </div>
@@ -563,7 +583,7 @@ export const SettingsModal: React.FC<Props> = ({
                   type="text"
                   value={globalDownloadDir}
                   onChange={(e) => setGlobalDownloadDir(e.target.value)}
-                  placeholder="Domyślnie: ~/Downloads (pozostaw puste dla systemowego)"
+                  placeholder={t('Domyślnie: ~/Downloads (pozostaw puste dla systemowego)')}
                   className="flex-1 rounded-lg border border-slate-700 bg-slate-800/80 px-3 py-1.5 font-mono text-xs text-white placeholder-slate-500 focus:border-cyan-500 focus:outline-none"
                 />
                 <button
@@ -574,11 +594,11 @@ export const SettingsModal: React.FC<Props> = ({
                   }}
                   className="rounded-lg border border-slate-700 bg-slate-800 px-3 py-1.5 text-xs font-medium text-slate-200 hover:bg-slate-700 hover:text-white transition-colors shrink-0"
                 >
-                  Wybierz folder...
+                  {t('Wybierz folder...')}
                 </button>
               </div>
               <p className="text-[10px] text-slate-500 leading-relaxed">
-                Używany jako domyślny folder zapisu pobieranych plików SFTP dla wszystkich połączeń, o ile dane połączenie nie ma skonfigurowanego własnego katalogu.
+                {t('Używany jako domyślny folder zapisu pobieranych plików SFTP dla wszystkich połączeń, o ile dane połączenie nie ma skonfigurowanego własnego katalogu.')}
               </p>
             </div>
 
@@ -587,7 +607,7 @@ export const SettingsModal: React.FC<Props> = ({
               <div className="flex items-center justify-between">
                 <div className="text-xs font-bold text-white uppercase tracking-wider flex items-center gap-1.5">
                   <Archive className="h-3.5 w-3.5 text-emerald-400" />
-                  Kopie zapasowe sejfu
+                  {t('Kopie zapasowe sejfu')}
                 </div>
                 <input
                   type="checkbox"
@@ -597,28 +617,27 @@ export const SettingsModal: React.FC<Props> = ({
                 />
               </div>
               <p className="text-[11px] text-slate-400">
-                Kopia pliku z połączeniami jest tworzona automatycznie (tylko gdy dane się zmieniły). Kopie pozostają
-                zaszyfrowane – do ich otwarcia potrzebne jest Master Password obowiązujące w chwili wykonania kopii.
+                {t('Kopia pliku z połączeniami jest tworzona automatycznie (tylko gdy dane się zmieniły). Kopie pozostają zaszyfrowane – do ich otwarcia potrzebne jest Master Password obowiązujące w chwili wykonania kopii.')}
               </p>
 
               <div className="grid grid-cols-2 gap-3">
                 <label className="text-[11px] text-slate-300">
-                  Częstotliwość
+                  {t('Częstotliwość')}
                   <select
                     value={backupSettings.intervalHours}
                     disabled={!backupSettings.enabled}
                     onChange={(e) => setBackupSettings((b) => ({ ...b, intervalHours: Number(e.target.value) }))}
                     className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-800 px-2.5 py-1.5 text-xs text-white focus:border-cyan-500 focus:outline-none disabled:opacity-50"
                   >
-                    <option value={1}>Co godzinę</option>
-                    <option value={6}>Co 6 godzin</option>
-                    <option value={12}>Co 12 godzin</option>
-                    <option value={24}>Codziennie</option>
-                    <option value={168}>Co tydzień</option>
+                    <option value={1}>{t('Co godzinę')}</option>
+                    <option value={6}>{t('Co 6 godzin')}</option>
+                    <option value={12}>{t('Co 12 godzin')}</option>
+                    <option value={24}>{t('Codziennie')}</option>
+                    <option value={168}>{t('Co tydzień')}</option>
                   </select>
                 </label>
                 <label className="text-[11px] text-slate-300">
-                  Przechowuj kopii
+                  {t('Przechowuj kopii')}
                   <select
                     value={backupSettings.keep}
                     onChange={(e) => setBackupSettings((b) => ({ ...b, keep: Number(e.target.value) }))}
@@ -638,7 +657,7 @@ export const SettingsModal: React.FC<Props> = ({
                   type="text"
                   value={backupSettings.dir || ''}
                   onChange={(e) => setBackupSettings((b) => ({ ...b, dir: e.target.value }))}
-                  placeholder="Domyślnie: folder „backups” obok pliku sejfu"
+                  placeholder={t('Domyślnie: folder „backups” obok pliku sejfu')}
                   className="flex-1 rounded-lg border border-slate-700 bg-slate-800/80 px-3 py-1.5 font-mono text-xs text-white placeholder-slate-500 focus:border-cyan-500 focus:outline-none"
                 />
                 <button
@@ -649,13 +668,13 @@ export const SettingsModal: React.FC<Props> = ({
                   }}
                   className="rounded-lg border border-slate-700 bg-slate-800 px-3 py-1.5 text-xs font-medium text-slate-200 hover:bg-slate-700 hover:text-white transition-colors shrink-0"
                 >
-                  Wybierz folder...
+                  {t('Wybierz folder...')}
                 </button>
               </div>
 
               <div className="flex items-center justify-between gap-2 pt-1">
                 <span className="text-[10px] text-slate-500">
-                  Zmiany ustawień zapisz przyciskiem „Zapisz ustawienia”.
+                  {t('Zmiany ustawień zapisz przyciskiem „Zapisz ustawienia”.')}
                 </span>
                 <button
                   type="button"
@@ -664,7 +683,7 @@ export const SettingsModal: React.FC<Props> = ({
                   className="flex items-center gap-1.5 rounded-lg border border-emerald-600/50 bg-emerald-600/10 px-3 py-1.5 text-xs font-semibold text-emerald-300 hover:bg-emerald-600/20 disabled:opacity-50"
                 >
                   {backupBusy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Archive className="h-3.5 w-3.5" />}
-                  Utwórz kopię teraz
+                  {t('Utwórz kopię teraz')}
                 </button>
               </div>
 
@@ -689,7 +708,7 @@ export const SettingsModal: React.FC<Props> = ({
                     >
                       <div className="min-w-0">
                         <div className="text-[11px] text-slate-200 truncate" title={b.path}>
-                          {new Date(b.createdAt).toLocaleString('pl-PL')}
+                          {new Date(b.createdAt).toLocaleString(locale())}
                         </div>
                         <div className="font-mono text-[10px] text-slate-500 truncate">
                           {b.name} · {(b.size / 1024).toFixed(1)} KB
@@ -699,11 +718,11 @@ export const SettingsModal: React.FC<Props> = ({
                         type="button"
                         disabled={backupBusy}
                         onClick={() => setRestoreCandidate(b)}
-                        title="Przywróć tę kopię"
+                        title={t('Przywróć tę kopię')}
                         className="shrink-0 flex items-center gap-1 rounded-md px-2 py-1 text-[11px] text-slate-300 hover:bg-amber-500/10 hover:text-amber-300 disabled:opacity-50"
                       >
                         <RotateCcw className="h-3.5 w-3.5" />
-                        Przywróć
+                        {t('Przywróć')}
                       </button>
                     </li>
                   ))}
@@ -715,14 +734,13 @@ export const SettingsModal: React.FC<Props> = ({
             <div className="rounded-xl border border-slate-800 bg-slate-950/40 p-4 space-y-2.5">
               <div className="text-xs font-bold text-white uppercase tracking-wider flex items-center gap-1.5">
                 <Fingerprint className="h-3.5 w-3.5 text-violet-400" />
-                Zaufane hosty (klucze SSH / certyfikaty RDP)
+                {t('Zaufane hosty (klucze SSH / certyfikaty RDP)')}
               </div>
               <p className="text-[11px] text-slate-400">
-                Odcisk serwera jest zapamiętywany przy pierwszym połączeniu. Jeśli później się zmieni, połączenie
-                zostanie przerwane przed wysłaniem hasła. Usuń wpis tylko wtedy, gdy zmiana jest zamierzona.
+                {t('Odcisk serwera jest zapamiętywany przy pierwszym połączeniu. Jeśli później się zmieni, połączenie zostanie przerwane przed wysłaniem hasła. Usuń wpis tylko wtedy, gdy zmiana jest zamierzona.')}
               </p>
               {knownHosts.length === 0 ? (
-                <div className="text-[11px] text-slate-500">Brak zapamiętanych serwerów.</div>
+                <div className="text-[11px] text-slate-500">{t('Brak zapamiętanych serwerów.')}</div>
               ) : (
                 <ul className="space-y-1.5 max-h-48 overflow-y-auto">
                   {knownHosts.map((h) => (
@@ -739,7 +757,7 @@ export const SettingsModal: React.FC<Props> = ({
                       <button
                         type="button"
                         onClick={() => handleForgetHost(h.id)}
-                        title="Zapomnij ten serwer"
+                        title={t('Zapomnij ten serwer')}
                         className="shrink-0 rounded-md p-1 text-slate-400 hover:bg-rose-500/10 hover:text-rose-300"
                       >
                         <Trash2 className="h-3.5 w-3.5" />
@@ -753,22 +771,22 @@ export const SettingsModal: React.FC<Props> = ({
             {/* Cryptography & Storage Info */}
             <div className="rounded-xl border border-slate-800/80 bg-slate-900/60 p-3 text-[11px] text-slate-400 space-y-1.5">
               <div className="flex justify-between items-center gap-2">
-                <span className="shrink-0">Baza danych (sejf):</span>
+                <span className="shrink-0">{t('Baza danych (sejf):')}</span>
                 <span className="font-mono text-cyan-300 truncate text-[10px] max-w-[280px]" title={vaultPath}>
                   {vaultPath || 'vault.json'}
                 </span>
               </div>
               <div className="flex justify-between">
-                <span>Szyfrowanie bazy:</span>
-                <span className="font-mono text-slate-200">AES-256-GCM (NIST)</span>
+                <span>{t('Szyfrowanie bazy:')}</span>
+                <span className="font-mono text-slate-200">{t('AES-256-GCM (NIST)')}</span>
               </div>
               <div className="flex justify-between">
-                <span>Derywacja klucza KDF:</span>
-                <span className="font-mono text-slate-200">Argon2id (RFC 9106)</span>
+                <span>{t('Derywacja klucza KDF:')}</span>
+                <span className="font-mono text-slate-200">{t('Argon2id (RFC 9106)')}</span>
               </div>
               <div className="flex justify-between">
-                <span>Limit błędnych prób PIN:</span>
-                <span className="font-mono text-slate-200">3 próby ➔ Wymóg Master Password</span>
+                <span>{t('Limit błędnych prób PIN:')}</span>
+                <span className="font-mono text-slate-200">{t('3 próby ➔ Wymóg Master Password')}</span>
               </div>
             </div>
           </form>
@@ -781,7 +799,7 @@ export const SettingsModal: React.FC<Props> = ({
             onClick={onClose}
             className="rounded-lg border border-slate-700 px-4 py-2 text-xs font-medium text-slate-300 hover:bg-slate-800"
           >
-            Zamknij
+            {t('Zamknij')}
           </button>
           <button
             type="submit"
@@ -790,22 +808,23 @@ export const SettingsModal: React.FC<Props> = ({
             className="flex items-center gap-1.5 rounded-lg bg-gradient-to-r from-cyan-600 to-blue-600 px-5 py-2 text-xs font-semibold text-white shadow-md shadow-cyan-600/25 hover:opacity-95 disabled:opacity-50"
           >
             {saving && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
-            Zapisz ustawienia
+            {t('Zapisz ustawienia')}
           </button>
         </div>
       </div>
 
       <ConfirmDialog
         isOpen={restoreCandidate !== null}
-        title="Przywrócić kopię zapasową?"
+        title={t('Przywrócić kopię zapasową?')}
         message={
           restoreCandidate
-            ? `Obecny sejf zostanie zastąpiony kopią z ${new Date(restoreCandidate.createdAt).toLocaleString('pl-PL')} ` +
-              '(aktualny stan zostanie wcześniej zapisany jako osobna kopia). Aplikacja zostanie zablokowana – ' +
-              'podaj Master Password, które obowiązywało w chwili wykonania tej kopii.'
+            ? t(
+                'Obecny sejf zostanie zastąpiony kopią z {date} (aktualny stan zostanie wcześniej zapisany jako osobna kopia). Aplikacja zostanie zablokowana – podaj Master Password, które obowiązywało w chwili wykonania tej kopii.',
+                { date: new Date(restoreCandidate.createdAt).toLocaleString(locale()) }
+              )
             : ''
         }
-        confirmLabel="Przywróć"
+        confirmLabel={t('Przywróć')}
         onConfirm={() => restoreCandidate && handleRestoreBackup(restoreCandidate)}
         onCancel={() => setRestoreCandidate(null)}
       />

@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { KeyRound, Eye, EyeOff, X, ArrowRight, Shield, Terminal } from 'lucide-react';
 import { Connection } from '../../types';
+import { useT } from '../../i18n';
 
 interface Props {
   isOpen: boolean;
@@ -16,6 +17,7 @@ export const PassphrasePromptModal: React.FC<Props> = ({
   onClose,
 }) => {
   const [passphrase, setPassphrase] = useState('');
+  const t = useT();
   const [showPassphrase, setShowPassphrase] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -38,7 +40,7 @@ export const PassphrasePromptModal: React.FC<Props> = ({
 
   const keyFileName = connection.keyFilePath
     ? connection.keyFilePath.split('/').pop()?.split('\\').pop() || connection.keyFilePath
-    : 'Klucz prywatny z sejfu';
+    : t('Klucz prywatny z sejfu');
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 backdrop-blur-xs p-4 animate-fadeIn select-none">
@@ -50,8 +52,8 @@ export const PassphrasePromptModal: React.FC<Props> = ({
               <KeyRound className="h-5 w-5" />
             </div>
             <div>
-              <h3 className="text-sm font-bold text-white">Hasło do klucza SSH</h3>
-              <p className="text-[11px] text-slate-400">Wymagany passphrase do odblokowania klucza</p>
+              <h3 className="text-sm font-bold text-white">{t('Hasło do klucza SSH')}</h3>
+              <p className="text-[11px] text-slate-400">{t('Wymagany passphrase do odblokowania klucza')}</p>
             </div>
           </div>
           <button
@@ -85,7 +87,7 @@ export const PassphrasePromptModal: React.FC<Props> = ({
 
           <div>
             <label className="block text-xs font-semibold text-slate-300 mb-1.5">
-              Wprowadź hasło (Passphrase)
+              {t('Wprowadź hasło (Passphrase)')}
             </label>
             <div className="relative">
               <input
@@ -93,7 +95,7 @@ export const PassphrasePromptModal: React.FC<Props> = ({
                 type={showPassphrase ? 'text' : 'password'}
                 value={passphrase}
                 onChange={(e) => setPassphrase(e.target.value)}
-                placeholder="Wpisz hasło do klucza (lub pozostaw puste)..."
+                placeholder={t('Wpisz hasło do klucza (lub pozostaw puste)...')}
                 className="w-full rounded-xl border border-slate-700 bg-slate-950 px-3.5 py-2.5 pr-10 text-xs text-white placeholder-slate-500 focus:border-cyan-500 focus:outline-hidden"
               />
               <button
@@ -105,7 +107,7 @@ export const PassphrasePromptModal: React.FC<Props> = ({
               </button>
             </div>
             <p className="mt-1.5 text-[11px] text-slate-500">
-              Hasło nie zostanie zapisane na dysku i zostanie użyte tylko dla tej sesji połączenia.
+              {t('Hasło nie zostanie zapisane na dysku i zostanie użyte tylko dla tej sesji połączenia.')}
             </p>
           </div>
 
@@ -116,13 +118,13 @@ export const PassphrasePromptModal: React.FC<Props> = ({
               onClick={onClose}
               className="rounded-xl border border-slate-700 bg-slate-800 px-4 py-2 text-xs font-medium text-slate-300 hover:bg-slate-700 hover:text-white transition-colors"
             >
-              Anuluj
+              {t('Anuluj')}
             </button>
             <button
               type="submit"
               className="inline-flex items-center gap-1.5 rounded-xl bg-gradient-to-r from-cyan-600 to-blue-600 px-4 py-2 text-xs font-semibold text-white shadow-md shadow-cyan-600/20 hover:opacity-95 transition-all"
             >
-              <span>Połącz</span>
+              <span>{t('Połącz')}</span>
               <ArrowRight className="h-3.5 w-3.5" />
             </button>
           </div>

@@ -18,7 +18,7 @@ pub struct SftpFileEntry {
 pub fn sftp_connect(config: &SshConnectionConfig) -> Result<(ssh2::Session, ssh2::Sftp), String> {
     let sess = crate::session::ssh::ssh_connect_raw(config)?;
     sess.set_timeout(20_000);
-    let sftp = sess.sftp().map_err(|e| format!("Błąd otwierania podsystemu SFTP: {}", e))?;
+    let sftp = sess.sftp().map_err(|e| tr!("Błąd otwierania podsystemu SFTP: {}", "Error opening the SFTP subsystem: {}", e))?;
     Ok((sess, sftp))
 }
 
@@ -31,7 +31,7 @@ pub fn sftp_upload_base64_file(
     use base64::Engine;
     let data = base64::engine::general_purpose::STANDARD
         .decode(content_base64)
-        .map_err(|e| format!("Błąd dekodowania Base64: {}", e))?;
+        .map_err(|e| tr!("Błąd dekodowania Base64: {}", "Base64 decoding error: {}", e))?;
 
     let (_sess, sftp) = sftp_connect(config)?;
     let clean_dir = if remote_dir.is_empty() || remote_dir == "~" {
@@ -47,7 +47,7 @@ pub fn sftp_upload_base64_file(
         .collect();
 
     if rel_parts.is_empty() {
-        return Err("Nieprawidłowa nazwa pliku".to_string());
+        return Err(tr!("Nieprawidłowa nazwa pliku", "Invalid file name").to_string());
     }
 
     let mut curr_dir = clean_dir.clone();
@@ -61,11 +61,11 @@ pub fn sftp_upload_base64_file(
     let target_file_path = curr_dir.join(rel_parts.last().unwrap());
     let mut remote_file = sftp
         .create(&target_file_path)
-        .map_err(|e| format!("Nie można utworzyć pliku '{}': {}", target_file_path.display(), e))?;
+        .map_err(|e| tr!("Nie można utworzyć pliku '{}': {}", "Cannot create file '{}': {}", target_file_path.display(), e))?;
 
     remote_file
         .write_all(&data)
-        .map_err(|e| format!("Błąd zapisu pliku: {}", e))?;
+        .map_err(|e| tr!("Błąd zapisu pliku: {}", "File write error: {}", e))?;
     let _ = remote_file.flush();
 
     Ok(data.len() as u64)
@@ -81,7 +81,7 @@ pub fn sftp_upload_local_paths(
         let p = Path::new(lp);
         if p == Path::new("/") || home_dir.as_deref() == Some(p) {
             return Err(
-                "Nie można przesłać całego katalogu głównego użytkownika naraz. Wybierz konkretny podkatalog z listy."
+                tr!("Nie można przesłać całego katalogu głównego użytkownika naraz. Wybierz konkretny podkatalog z listy.", "The whole home folder cannot be uploaded at once. Choose a specific subfolder.")
                     .to_string(),
             );
         }
@@ -141,13 +141,13 @@ fn upload_path_recursive(
         Ok(count)
     } else if sym_meta.is_file() {
         let mut local_file =
-            File::open(local).map_err(|e| format!("Błąd otwierania '{}': {}", local.display(), e))?;
+            File::open(local).map_err(|e| tr!("Błąd otwierania '{}': {}", "Error opening '{}': {}", local.display(), e))?;
         let mut remote_file = sftp
             .create(&target_remote)
-            .map_err(|e| format!("Błąd tworzenia pliku zdalnego '{}': {}", target_remote.display(), e))?;
+            .map_err(|e| tr!("Błąd tworzenia pliku zdalnego '{}': {}", "Error creating remote file '{}': {}", target_remote.display(), e))?;
 
         std::io::copy(&mut local_file, &mut remote_file)
-            .map_err(|e| format!("Błąd transferu pliku '{}': {}", name, e))?;
+            .map_err(|e| tr!("Błąd transferu pliku '{}': {}", "Error transferring file '{}': {}", name, e))?;
         let _ = remote_file.flush();
         Ok(1)
     } else {

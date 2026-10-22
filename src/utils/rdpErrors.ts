@@ -1,10 +1,10 @@
+import { t } from '../i18n';
+
 /** Explains Windows logon status codes returned by CredSSP / NLA (e.g. STATUS_LOGON_FAILURE). */
 const NT_STATUS: Record<string, { name: string; hint: string }> = {
   c000006d: {
     name: 'STATUS_LOGON_FAILURE',
-    hint:
-      'Serwer odrzucił login lub hasło. Sprawdź hasło (wielkość liter, układ klawiatury) oraz domenę: konto domenowe wymaga domeny ' +
-      '(pole „Domena” albo DOMENA\\użytkownik, ewentualnie użytkownik@domena.local), a konto lokalne serwera – formatu .\\użytkownik.',
+    hint: 'Serwer odrzucił login lub hasło. Sprawdź hasło (wielkość liter, układ klawiatury) oraz domenę: konto domenowe wymaga domeny (pole „Domena” albo DOMENA\\użytkownik, ewentualnie użytkownik@domena.local), a konto lokalne serwera – formatu .\\użytkownik.',
   },
   c000006a: { name: 'STATUS_WRONG_PASSWORD', hint: 'Nieprawidłowe hasło.' },
   c0000064: { name: 'STATUS_NO_SUCH_USER', hint: 'Takie konto nie istnieje – sprawdź nazwę użytkownika i domenę.' },
@@ -30,10 +30,10 @@ export const explainRdpError = (message: string): string | null => {
   const m = message.match(/0x([0-9a-f]{8})/i);
   if (m) {
     const entry = NT_STATUS[m[1].toLowerCase()];
-    if (entry) return entry.hint;
+    if (entry) return t(entry.hint);
   }
   for (const entry of Object.values(NT_STATUS)) {
-    if (message.includes(entry.name)) return entry.hint;
+    if (message.includes(entry.name)) return t(entry.hint);
   }
   return null;
 };

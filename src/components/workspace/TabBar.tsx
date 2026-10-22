@@ -21,6 +21,7 @@ import {
 } from 'lucide-react';
 import { api } from '../../services/api';
 import { SessionInfo, WorkspaceLayout } from '../../types';
+import { useT } from '../../i18n';
 
 interface Props {
   sessions: SessionInfo[];
@@ -69,6 +70,7 @@ export const TabBar: React.FC<Props> = ({
   onCloseAll,
   onReorderSessions,
 }) => {
+  const t = useT();
   const [contextMenu, setContextMenu] = useState<{
     x: number;
     y: number;
@@ -99,7 +101,7 @@ export const TabBar: React.FC<Props> = ({
 
       if (!password) {
         setCopyToast({
-          message: `Brak zapisanego hasła dla „${session.title}”`,
+          message: t('Brak zapisanego hasła dla „{title}”', { title: session.title }),
           type: 'error',
         });
         setTimeout(() => setCopyToast(null), 3000);
@@ -109,7 +111,7 @@ export const TabBar: React.FC<Props> = ({
       await api.clipboardWriteText(password);
       setCopiedSessionId(session.sessionId);
       setCopyToast({
-        message: `Hasło sesji „${session.title}” zostało skopiowane do schowka!`,
+        message: t('Hasło sesji „{title}” zostało skopiowane do schowka!', { title: session.title }),
         type: 'success',
       });
       setTimeout(() => setCopiedSessionId(null), 2500);
@@ -117,7 +119,7 @@ export const TabBar: React.FC<Props> = ({
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
       setCopyToast({
-        message: `Błąd podczas pobierania hasła: ${msg}`,
+        message: t('Błąd podczas pobierania hasła: {msg}', { msg }),
         type: 'error',
       });
       setTimeout(() => setCopyToast(null), 4000);
@@ -128,7 +130,7 @@ export const TabBar: React.FC<Props> = ({
     try {
       if (!session.username) {
         setCopyToast({
-          message: `Brak nazwy użytkownika dla „${session.title}”`,
+          message: t('Brak nazwy użytkownika dla „{title}”', { title: session.title }),
           type: 'error',
         });
         setTimeout(() => setCopyToast(null), 3000);
@@ -137,14 +139,14 @@ export const TabBar: React.FC<Props> = ({
 
       await api.clipboardWriteText(session.username);
       setCopyToast({
-        message: `Login (${session.username}) skopiowany do schowka!`,
+        message: t('Login ({username}) skopiowany do schowka!', { username: session.username }),
         type: 'success',
       });
       setTimeout(() => setCopyToast(null), 3000);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
       setCopyToast({
-        message: `Błąd: ${msg}`,
+        message: t('Błąd: {msg}', { msg }),
         type: 'error',
       });
       setTimeout(() => setCopyToast(null), 3000);
@@ -188,11 +190,11 @@ export const TabBar: React.FC<Props> = ({
         <button
           type="button"
           onClick={onToggleSidebar}
-          title="Pokaż panel połączeń (drzewo hostów) [Ctrl+B]"
+          title={t('Pokaż panel połączeń (drzewo hostów) [Ctrl+B]')}
           className="flex h-7 items-center gap-1.5 rounded-md bg-slate-900 border border-slate-800 px-2 text-xs text-slate-300 hover:border-cyan-500/40 hover:bg-slate-800 hover:text-cyan-400 transition-colors shrink-0 mr-1.5"
         >
           <PanelLeftOpen className="h-3.5 w-3.5 text-cyan-400" />
-          <span className="text-[11px] font-medium hidden sm:inline">Połączenia</span>
+          <span className="text-[11px] font-medium hidden sm:inline">{t('Połączenia')}</span>
         </button>
       )}
 
@@ -303,7 +305,7 @@ export const TabBar: React.FC<Props> = ({
                   session,
                 });
               }}
-              title="Przeciągnij zakładkę w inne miejsce, lub na pulpit roboczy aby podzielić ekran"
+              title={t('Przeciągnij zakładkę w inne miejsce, lub na pulpit roboczy aby podzielić ekran')}
               className={`group relative flex h-8 items-center gap-2 rounded-t-md border-t-2 px-3 text-xs font-medium transition-all cursor-grab active:cursor-grabbing max-w-[240px] shrink-0 select-none ${
                 isBeingDragged
                   ? 'opacity-35 scale-[0.98] border-cyan-500/40 bg-slate-900/60 ring-1 ring-cyan-500/30'
@@ -334,10 +336,10 @@ export const TabBar: React.FC<Props> = ({
               <span
                 title={
                   session.status === 'connected'
-                    ? 'Połączono pomyślnie'
+                    ? t('Połączono pomyślnie')
                     : session.status === 'connecting'
-                    ? 'Nawiązywanie połączenia...'
-                    : `Błąd połączenia: ${session.statusMessage || ''}`
+                    ? t('Nawiązywanie połączenia...')
+                    : t('Błąd połączenia: {p0}', { p0: session.statusMessage || '' })
                 }
                 className={`h-2 w-2 shrink-0 rounded-full ${
                   session.status === 'connected'
@@ -354,7 +356,7 @@ export const TabBar: React.FC<Props> = ({
               </span>
 
               {copiedSessionId === session.sessionId && (
-                <span title="Hasło skopiowane!" className="flex items-center text-emerald-400">
+                <span title={t('Hasło skopiowane!')} className="flex items-center text-emerald-400">
                   <Check className="h-3 w-3 animate-pulse" />
                 </span>
               )}
@@ -376,7 +378,7 @@ export const TabBar: React.FC<Props> = ({
                     onSelectSession(session.sessionId);
                     onChangeLayout(layout === 'single' ? 'split-horizontal' : layout);
                   }}
-                  title="Podziel ekran obok siebie (Split Screen)"
+                  title={t('Podziel ekran obok siebie (Split Screen)')}
                   className="flex h-4.5 w-4.5 items-center justify-center rounded text-slate-400 opacity-0 group-hover:opacity-100 hover:bg-slate-800 hover:text-cyan-400 transition-all"
                 >
                   <Columns2 className="h-2.5 w-2.5" />
@@ -389,7 +391,7 @@ export const TabBar: React.FC<Props> = ({
                     e.stopPropagation();
                     onReconnectSession(session.sessionId);
                   }}
-                  title="Połącz ponownie (Reload)"
+                  title={t('Połącz ponownie (Reload)')}
                   className="flex h-4.5 w-4.5 items-center justify-center rounded text-slate-400 opacity-0 group-hover:opacity-100 hover:bg-slate-800 hover:text-cyan-400 transition-all"
                 >
                   <RotateCcw className="h-2.5 w-2.5" />
@@ -402,7 +404,7 @@ export const TabBar: React.FC<Props> = ({
                     e.stopPropagation();
                     onDuplicateSession(session.sessionId);
                   }}
-                  title="Duplikuj zakładkę (Otwórz w nowej karcie)"
+                  title={t('Duplikuj zakładkę (Otwórz w nowej karcie)')}
                   className="flex h-4.5 w-4.5 items-center justify-center rounded text-slate-400 opacity-0 group-hover:opacity-100 hover:bg-slate-800 hover:text-cyan-400 transition-all"
                 >
                   <Copy className="h-2.5 w-2.5" />
@@ -415,7 +417,7 @@ export const TabBar: React.FC<Props> = ({
                     e.stopPropagation();
                     onCloseSession(session.sessionId);
                   }}
-                  title="Zamknij kartę"
+                  title={t('Zamknij kartę')}
                   className="flex h-4.5 w-4.5 items-center justify-center rounded text-slate-400 opacity-60 group-hover:opacity-100 hover:bg-slate-800 hover:text-red-400 transition-all"
                 >
                   <X className="h-3 w-3" />
@@ -433,7 +435,7 @@ export const TabBar: React.FC<Props> = ({
           <button
             type="button"
             onClick={() => onChangeLayout('single')}
-            title="Pojedyncza karta (1 pełne okno)"
+            title={t('Pojedyncza karta (1 pełne okno)')}
             className={`flex h-6 w-6 items-center justify-center rounded transition-colors ${
               layout === 'single'
                 ? 'bg-cyan-500 text-slate-950 font-bold shadow-xs'
@@ -445,7 +447,7 @@ export const TabBar: React.FC<Props> = ({
           <button
             type="button"
             onClick={() => onChangeLayout('split-horizontal')}
-            title="Podział pionowy (2 okna obok siebie)"
+            title={t('Podział pionowy (2 okna obok siebie)')}
             className={`flex h-6 w-6 items-center justify-center rounded transition-colors ${
               layout === 'split-horizontal'
                 ? 'bg-cyan-500 text-slate-950 font-bold shadow-xs'
@@ -457,7 +459,7 @@ export const TabBar: React.FC<Props> = ({
           <button
             type="button"
             onClick={() => onChangeLayout('split-vertical')}
-            title="Podział poziomy (2 okna jedno pod drugim)"
+            title={t('Podział poziomy (2 okna jedno pod drugim)')}
             className={`flex h-6 w-6 items-center justify-center rounded transition-colors ${
               layout === 'split-vertical'
                 ? 'bg-cyan-500 text-slate-950 font-bold shadow-xs'
@@ -469,7 +471,7 @@ export const TabBar: React.FC<Props> = ({
           <button
             type="button"
             onClick={() => onChangeLayout('grid-4')}
-            title="Siatka 2x2 (4 okna równocześnie)"
+            title={t('Siatka 2x2 (4 okna równocześnie)')}
             className={`flex h-6 w-6 items-center justify-center rounded transition-colors ${
               layout === 'grid-4'
                 ? 'bg-cyan-500 text-slate-950 font-bold shadow-xs'
@@ -481,7 +483,7 @@ export const TabBar: React.FC<Props> = ({
           <button
             type="button"
             onClick={() => onChangeLayout('columns-3')}
-            title="3 kolumny obok siebie"
+            title={t('3 kolumny obok siebie')}
             className={`flex h-6 w-6 items-center justify-center rounded transition-colors ${
               layout === 'columns-3'
                 ? 'bg-cyan-500 text-slate-950 font-bold shadow-xs'
@@ -498,8 +500,8 @@ export const TabBar: React.FC<Props> = ({
             onClick={onToggleSidebar}
             title={
               isSidebarCollapsed
-                ? 'Pokaż panel połączeń [Ctrl+B]'
-                : 'Schowaj panel połączeń (pełny ekran) [Ctrl+B]'
+                ? t('Pokaż panel połączeń [Ctrl+B]')
+                : t('Schowaj panel połączeń (pełny ekran) [Ctrl+B]')
             }
             className="flex h-6 w-6 items-center justify-center rounded text-slate-400 hover:bg-slate-800 hover:text-cyan-400 transition-colors"
           >
@@ -513,10 +515,10 @@ export const TabBar: React.FC<Props> = ({
 
         <button
           onClick={onCloseAll}
-          title="Zamknij wszystkie karty"
+          title={t('Zamknij wszystkie karty')}
           className="rounded px-2 py-0.5 text-[11px] text-slate-400 hover:bg-slate-800 hover:text-red-400 transition-colors"
         >
-          Zamknij wszystkie
+          {t('Zamknij wszystkie')}
         </button>
       </div>
 
@@ -542,7 +544,7 @@ export const TabBar: React.FC<Props> = ({
               className="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 hover:bg-slate-800 hover:text-cyan-400 transition-colors"
             >
               <KeyRound className="h-3.5 w-3.5 text-cyan-400" />
-              <span>Kopiuj hasło do schowka</span>
+              <span>{t('Kopiuj hasło do schowka')}</span>
             </button>
 
             {/* Copy Username */}
@@ -556,7 +558,7 @@ export const TabBar: React.FC<Props> = ({
                 className="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 hover:bg-slate-800 hover:text-cyan-400 transition-colors"
               >
                 <User className="h-3.5 w-3.5 text-slate-400" />
-                <span>Kopiuj login ({contextMenu.session.username})</span>
+                <span>{t('Kopiuj login ({user})', { user: contextMenu.session.username })}</span>
               </button>
             )}
 
@@ -571,7 +573,7 @@ export const TabBar: React.FC<Props> = ({
               className="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 hover:bg-cyan-600 hover:text-white transition-colors"
             >
               <RotateCcw className="h-3.5 w-3.5 text-cyan-400 group-hover:text-white" />
-              <span>Połącz ponownie (Reload)</span>
+              <span>{t('Połącz ponownie (Reload)')}</span>
             </button>
 
             {/* Duplicate */}
@@ -583,7 +585,7 @@ export const TabBar: React.FC<Props> = ({
               className="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 hover:bg-slate-800 hover:text-white transition-colors"
             >
               <Copy className="h-3.5 w-3.5 text-slate-400" />
-              <span>Otwórz w nowej karcie</span>
+              <span>{t('Otwórz w nowej karcie')}</span>
             </button>
 
             <div className="my-1 border-t border-slate-800" />
@@ -598,7 +600,7 @@ export const TabBar: React.FC<Props> = ({
               className="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 hover:bg-slate-800 hover:text-cyan-400 transition-colors"
             >
               <Columns2 className="h-3.5 w-3.5 text-cyan-400" />
-              <span>Podziel w prawo (2 okna obok siebie)</span>
+              <span>{t('Podziel w prawo (2 okna obok siebie)')}</span>
             </button>
 
             {/* Split down */}
@@ -611,7 +613,7 @@ export const TabBar: React.FC<Props> = ({
               className="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 hover:bg-slate-800 hover:text-cyan-400 transition-colors"
             >
               <Rows2 className="h-3.5 w-3.5 text-cyan-400" />
-              <span>Podziel w dół (2 okna pod spodem)</span>
+              <span>{t('Podziel w dół (2 okna pod spodem)')}</span>
             </button>
 
             {/* Single full screen */}
@@ -625,7 +627,7 @@ export const TabBar: React.FC<Props> = ({
                 className="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 hover:bg-slate-800 hover:text-white transition-colors"
               >
                 <Square className="h-3.5 w-3.5 text-slate-400" />
-                <span>Pojedyncza karta (pełne okno)</span>
+                <span>{t('Pojedyncza karta (pełne okno)')}</span>
               </button>
             )}
 
@@ -640,7 +642,7 @@ export const TabBar: React.FC<Props> = ({
               className="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 hover:bg-red-500/20 hover:text-red-400 transition-colors"
             >
               <X className="h-3.5 w-3.5 text-slate-400" />
-              <span>Zamknij kartę</span>
+              <span>{t('Zamknij kartę')}</span>
             </button>
 
             {/* Close others */}
@@ -652,7 +654,7 @@ export const TabBar: React.FC<Props> = ({
               className="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 hover:bg-slate-800 hover:text-white transition-colors"
             >
               <XCircle className="h-3.5 w-3.5 text-slate-400" />
-              <span>Zamknij pozostałe karty</span>
+              <span>{t('Zamknij pozostałe karty')}</span>
             </button>
           </div>
         </div>

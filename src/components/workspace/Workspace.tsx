@@ -17,6 +17,7 @@ import {
   Rows2,
 } from 'lucide-react';
 import { Connection, SessionInfo, WorkspaceLayout } from '../../types';
+import { useT } from '../../i18n';
 
 // Session viewers are loaded on demand. The RDP viewer embeds the IronRDP WebAssembly engine
 // (~6 MB of JavaScript); bundling it into the main chunk made every app start parse it, which
@@ -111,6 +112,7 @@ export const Workspace: React.FC<Props> = ({
   onConnect,
   onNewConnection,
 }) => {
+  const t = useT();
   const [dragOverPaneIndex, setDragOverPaneIndex] = useState<number | null>(null);
   const [splitHoverZone, setSplitHoverZone] = useState<'right' | 'bottom' | null>(null);
 
@@ -229,10 +231,10 @@ export const Workspace: React.FC<Props> = ({
           </div>
 
           <h2 className="text-2xl font-bold tracking-tight text-white">
-            Witaj w RemoteFlow
+            {t('Witaj w RemoteFlow')}
           </h2>
           <p className="mt-2 text-sm text-slate-400">
-            Nowoczesny menedżer SSH & RDP inspirowany mRemoteNG — zoptymalizowany pod kątem wieloplatformowości, szyfrowania Master Password, dzielenia okien i obsługi ponad 100 sesji jednocześnie.
+            {t('Nowoczesny menedżer SSH & RDP inspirowany mRemoteNG — zoptymalizowany pod kątem wieloplatformowości, szyfrowania Master Password, dzielenia okien i obsługi ponad 100 sesji jednocześnie.')}
           </p>
 
           {/* Quick Metrics */}
@@ -240,33 +242,33 @@ export const Workspace: React.FC<Props> = ({
             <div className="rounded-xl border border-slate-800 bg-slate-900/60 p-4">
               <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-cyan-400">
                 <Shield className="h-4 w-4" />
-                Kryptografia
+                {t('Kryptografia')}
               </div>
-              <div className="mt-2 text-lg font-bold text-white">Argon2id + AES</div>
+              <div className="mt-2 text-lg font-bold text-white">{t('Argon2id + AES')}</div>
               <div className="mt-1 text-xs text-slate-500">
-                Lokalne szyfrowanie bazy, Master Password i opcjonalny PIN
+                {t('Lokalne szyfrowanie bazy, Master Password i opcjonalny PIN')}
               </div>
             </div>
 
             <div className="rounded-xl border border-slate-800 bg-slate-900/60 p-4">
               <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-emerald-400">
                 <Activity className="h-4 w-4" />
-                Wydajność
+                {t('Wydajność')}
               </div>
-              <div className="mt-2 text-lg font-bold text-white">100+ Sesji</div>
+              <div className="mt-2 text-lg font-bold text-white">{t('100+ Sesji')}</div>
               <div className="mt-1 text-xs text-slate-500">
-                Lekki runtime Rust Tokio + wirtualizacja kart terminala
+                {t('Lekki runtime Rust Tokio + wirtualizacja kart terminala')}
               </div>
             </div>
 
             <div className="rounded-xl border border-slate-800 bg-slate-900/60 p-4">
               <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-blue-400">
                 <LayoutGrid className="h-4 w-4" />
-                Podział Okien
+                {t('Podział Okien')}
               </div>
-              <div className="mt-2 text-lg font-bold text-white">Split Screen</div>
+              <div className="mt-2 text-lg font-bold text-white">{t('Split Screen')}</div>
               <div className="mt-1 text-xs text-slate-500">
-                Dynamiczne przeciąganie, podział poziomy, pionowy i siatka 2x2
+                {t('Dynamiczne przeciąganie, podział poziomy, pionowy i siatka 2x2')}
               </div>
             </div>
           </div>
@@ -275,8 +277,8 @@ export const Workspace: React.FC<Props> = ({
           {connections.length > 0 ? (
             <div className="mt-4 rounded-xl border border-slate-800 bg-slate-900/40 p-4 text-left">
               <div className="mb-3 flex items-center justify-between text-xs font-semibold text-slate-400 uppercase tracking-wider">
-                <span>Zdefiniowane połączenia</span>
-                <span className="text-slate-500">{connections.length} dostępnych</span>
+                <span>{t('Zdefiniowane połączenia')}</span>
+                <span className="text-slate-500">{t('{n} dostępnych', { n: connections.length })}</span>
               </div>
               <div className="grid grid-cols-2 gap-2">
                 {connections.slice(0, 6).map((conn) => (
@@ -319,7 +321,7 @@ export const Workspace: React.FC<Props> = ({
               className="mt-4 inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-cyan-600 to-blue-600 px-5 py-2.5 text-sm font-semibold text-white shadow-lg shadow-cyan-600/25 transition-all hover:opacity-95"
             >
               <Plus className="h-4 w-4" />
-              Dodaj swoje pierwsze połączenie
+              {t('Dodaj swoje pierwsze połączenie')}
             </button>
           )}
         </div>
@@ -350,16 +352,16 @@ export const Workspace: React.FC<Props> = ({
       {layout === 'single' && splitHoverZone === 'right' && (
         <div className="absolute right-0 top-0 bottom-0 w-1/2 bg-cyan-950/85 border-2 border-dashed border-cyan-400 backdrop-blur-xs flex flex-col items-center justify-center z-50 pointer-events-none text-center p-6 shadow-2xl">
           <Columns2 className="h-10 w-10 text-cyan-400 mb-2 animate-bounce" />
-          <span className="text-base font-bold text-white">Upuść tutaj, aby podzielić pionowo (2 okna obok siebie)</span>
-          <span className="text-xs text-cyan-300/80 mt-1">Sesja zostanie otwarta w nowym oknie obok</span>
+          <span className="text-base font-bold text-white">{t('Upuść tutaj, aby podzielić pionowo (2 okna obok siebie)')}</span>
+          <span className="text-xs text-cyan-300/80 mt-1">{t('Sesja zostanie otwarta w nowym oknie obok')}</span>
         </div>
       )}
 
       {layout === 'single' && splitHoverZone === 'bottom' && (
         <div className="absolute left-0 right-0 bottom-0 h-1/2 bg-cyan-950/85 border-2 border-dashed border-cyan-400 backdrop-blur-xs flex flex-col items-center justify-center z-50 pointer-events-none text-center p-6 shadow-2xl">
           <Rows2 className="h-10 w-10 text-cyan-400 mb-2 animate-bounce" />
-          <span className="text-base font-bold text-white">Upuść tutaj, aby podzielić poziomo (2 okna jedno pod drugim)</span>
-          <span className="text-xs text-cyan-300/80 mt-1">Sesja zostanie otwarta w nowym oknie na dole</span>
+          <span className="text-base font-bold text-white">{t('Upuść tutaj, aby podzielić poziomo (2 okna jedno pod drugim)')}</span>
+          <span className="text-xs text-cyan-300/80 mt-1">{t('Sesja zostanie otwarta w nowym oknie na dole')}</span>
         </div>
       )}
 
@@ -387,9 +389,9 @@ export const Workspace: React.FC<Props> = ({
             <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-slate-800/80 border border-slate-700/60 text-slate-400 mb-3">
               <LayoutGrid className="h-6 w-6 text-cyan-400" />
             </div>
-            <h4 className="text-sm font-semibold text-white">Okno podziału #{paneIndex + 1}</h4>
+            <h4 className="text-sm font-semibold text-white">{t('Okno podziału #{n}', { n: paneIndex + 1 })}</h4>
             <p className="mt-1 text-xs text-slate-400 max-w-xs leading-relaxed">
-              Przeciągnij tutaj kartę sesji lub wybierz z dostępnych połączeń poniżej
+              {t('Przeciągnij tutaj kartę sesji lub wybierz z dostępnych połączeń poniżej')}
             </p>
 
             {/* Quick picker from open sessions not currently visible */}
@@ -423,7 +425,7 @@ export const Workspace: React.FC<Props> = ({
                       onClick={() => onConnect(c)}
                       className="flex items-center gap-1 rounded-md border border-slate-800 bg-slate-900/80 px-2 py-1 text-[11px] text-slate-300 hover:border-cyan-500/40 hover:text-white transition-colors"
                     >
-                      <span>Połącz: {c.name}</span>
+                      <span>{t('Połącz: {name}', { name: c.name })}</span>
                     </button>
                   ))}
                 </div>
@@ -433,7 +435,7 @@ export const Workspace: React.FC<Props> = ({
             {isDragOver && (
               <div className="absolute inset-0 bg-cyan-950/80 border-2 border-cyan-400 backdrop-blur-xs flex flex-col items-center justify-center z-50 pointer-events-none">
                 <ArrowRightLeft className="h-8 w-8 text-cyan-400 mb-2 animate-bounce" />
-                <span className="text-sm font-bold text-white">Upuść tutaj, aby otworzyć w tym oknie</span>
+                <span className="text-sm font-bold text-white">{t('Upuść tutaj, aby otworzyć w tym oknie')}</span>
               </div>
             )}
           </div>
@@ -478,7 +480,7 @@ export const Workspace: React.FC<Props> = ({
               <div
                 draggable={true}
                 onDragStart={(e) => handlePaneDragStart(e, session.sessionId)}
-                title="Przeciągnij ten pasek na inne okno, aby zamienić miejscami lub przenieść sesję"
+                title={t('Przeciągnij ten pasek na inne okno, aby zamienić miejscami lub przenieść sesję')}
                 className={`flex h-8 items-center justify-between border-b px-2.5 text-xs select-none cursor-grab active:cursor-grabbing transition-colors shrink-0 z-20 ${
                   isPaneActive
                     ? 'bg-slate-900/95 border-cyan-500/30 text-white'
@@ -516,7 +518,7 @@ export const Workspace: React.FC<Props> = ({
                   <select
                     value={session.sessionId}
                     onChange={(e) => onUpdatePaneSlot(paneIndex, e.target.value)}
-                    title="Przełącz sesję w tym oknie"
+                    title={t('Przełącz sesję w tym oknie')}
                     className="h-5 rounded bg-slate-800 border border-slate-700 px-1 text-[10px] text-slate-200 focus:outline-hidden hover:bg-slate-700 cursor-pointer max-w-[110px] truncate"
                   >
                     {sessions.map((s) => (
@@ -530,7 +532,7 @@ export const Workspace: React.FC<Props> = ({
                   <button
                     type="button"
                     onClick={() => onReconnectSession(session.sessionId)}
-                    title="Połącz ponownie (Reload)"
+                    title={t('Połącz ponownie (Reload)')}
                     className="flex h-5 w-5 items-center justify-center rounded text-slate-400 hover:bg-slate-800 hover:text-cyan-400 transition-colors"
                   >
                     <RotateCcw className="h-2.5 w-2.5" />
@@ -543,7 +545,7 @@ export const Workspace: React.FC<Props> = ({
                       onSelectSession(session.sessionId);
                       onChangeLayout('single');
                     }}
-                    title="Rozwiń to okno na pełny ekran"
+                    title={t('Rozwiń to okno na pełny ekran')}
                     className="flex h-5 w-5 items-center justify-center rounded text-slate-400 hover:bg-slate-800 hover:text-cyan-400 transition-colors"
                   >
                     <Maximize2 className="h-3 w-3" />
@@ -553,7 +555,7 @@ export const Workspace: React.FC<Props> = ({
                   <button
                     type="button"
                     onClick={() => onCloseSession(session.sessionId)}
-                    title="Zamknij to połączenie"
+                    title={t('Zamknij to połączenie')}
                     className="flex h-5 w-5 items-center justify-center rounded text-slate-400 hover:bg-red-500/20 hover:text-red-400 transition-colors"
                   >
                     <X className="h-3 w-3" />
@@ -565,11 +567,11 @@ export const Workspace: React.FC<Props> = ({
             {/* Session Terminal / RDP Canvas Content */}
             <div className="relative flex-1 w-full h-full overflow-hidden min-w-0 min-h-0">
               {session.protocol === 'ssh' ? (
-                <Suspense fallback={<ViewerLoading label="Ładowanie terminala..." />}>
+                <Suspense fallback={<ViewerLoading label={t('Ładowanie terminala...')} />}>
                   <SshTerminal session={session} isActive={isVisible} splitLayout={layout !== 'single'} />
                 </Suspense>
               ) : (
-                <Suspense fallback={<ViewerLoading label="Ładowanie silnika RDP..." />}>
+                <Suspense fallback={<ViewerLoading label={t('Ładowanie silnika RDP...')} />}>
                   <RdpViewer session={session} isActive={isVisible} />
                 </Suspense>
               )}
@@ -579,8 +581,8 @@ export const Workspace: React.FC<Props> = ({
             {isDragOver && (
               <div className="absolute inset-0 bg-cyan-950/80 border-2 border-dashed border-cyan-400 backdrop-blur-xs flex flex-col items-center justify-center z-50 pointer-events-none text-center p-4">
                 <ArrowRightLeft className="h-8 w-8 text-cyan-400 mb-2 animate-bounce" />
-                <span className="text-sm font-bold text-white">Upuść tutaj, aby zamienić lub przenieść sesję</span>
-                <span className="text-xs text-cyan-300/80 mt-1">Pozycje okien zostaną zaktualizowane dynamicznie</span>
+                <span className="text-sm font-bold text-white">{t('Upuść tutaj, aby zamienić lub przenieść sesję')}</span>
+                <span className="text-xs text-cyan-300/80 mt-1">{t('Pozycje okien zostaną zaktualizowane dynamicznie')}</span>
               </div>
             )}
           </div>

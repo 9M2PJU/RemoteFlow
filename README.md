@@ -6,11 +6,12 @@ RemoteFlow is a cross-platform **SSH, SFTP and RDP connection manager** for Wind
 All connections, passwords and keys are kept in a local, encrypted vault. The app is built with
 **Tauri 2 + Rust** (backend) and **React 19 + TypeScript** (UI).
 
-![RemoteFlow – main window](docs/screenshots/main.png)
+![RemoteFlow – main window](docs/screenshots/main-en.png)
 
 ## Features
 
 ### Connections and workspace
+- Polish and English user interface – switch the language in the header, on the login screen or in Settings (applied instantly).
 - Connection tree with nested folders, colours, search (name, host, IP, tags) and drag & drop.
 - Tabs and split-screen layouts: single, horizontal, vertical, 3 columns and 2×2 grid.
 - Reusable credential profiles shared by many connections.
@@ -45,7 +46,7 @@ All connections, passwords and keys are kept in a local, encrypted vault. The ap
 - Periodic vault backups, restore from Settings.
 - Encrypted export / import of the vault.
 
-<img src="docs/screenshots/login.png" alt="RemoteFlow – login screen" width="600">
+<img src="docs/screenshots/login-en.png" alt="RemoteFlow – login screen" width="600">
 
 ### Import from mRemoteNG
 - Imports `confCons.xml` together with folders and **passwords** (AES-GCM and legacy AES-CBC, also fully encrypted files).
@@ -87,6 +88,7 @@ or simply run `build-linux-docker.bat` on Windows. The packages land in `dist-li
 
 ### Tests
 ```bash
+node scripts/check-i18n.mjs   # every UI text has an English translation
 cd src-tauri
 cargo test --lib              # unit tests
 cargo test --lib -- --ignored # integration tests (require local SSH/RDP test servers)

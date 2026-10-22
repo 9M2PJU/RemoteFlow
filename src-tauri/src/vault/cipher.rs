@@ -69,7 +69,7 @@ pub fn decrypt_bytes(key: &[u8; 32], ciphertext: &[u8], nonce_bytes: &[u8; 12]) 
 
     cipher
         .decrypt(nonce, ciphertext)
-        .map_err(|_| "Odszyfrowanie nie powiodło się (błędne hasło lub uszkodzone dane)".to_string())
+        .map_err(|_| tr!("Odszyfrowanie nie powiodło się (błędne hasło lub uszkodzone dane)", "Decryption failed (wrong password or corrupted data)").to_string())
 }
 
 /// Helper: encrypts string to base64 payload formatted as nonce (12B) + ciphertext
@@ -85,9 +85,9 @@ pub fn encrypt_string(key: &[u8; 32], text: &str) -> Result<String, String> {
 pub fn decrypt_string(key: &[u8; 32], payload_base64: &str) -> Result<String, String> {
     let bytes = BASE64
         .decode(payload_base64)
-        .map_err(|e| format!("Błąd dekodowania Base64: {}", e))?;
+        .map_err(|e| tr!("Błąd dekodowania Base64: {}", "Base64 decoding error: {}", e))?;
     if bytes.len() < 12 + 16 {
-        return Err("Nieprawidłowy format szyfrogramu".to_string());
+        return Err(tr!("Nieprawidłowy format szyfrogramu", "Invalid ciphertext format").to_string());
     }
 
     let mut nonce = [0u8; 12];
@@ -96,7 +96,7 @@ pub fn decrypt_string(key: &[u8; 32], payload_base64: &str) -> Result<String, St
 
     let plaintext_bytes = Zeroizing::new(decrypt_bytes(key, ciphertext, &nonce)?);
     String::from_utf8(plaintext_bytes.to_vec())
-        .map_err(|e| format!("Odszyfrowana zawartość nie jest poprawnym ciągiem UTF-8: {}", e))
+        .map_err(|e| tr!("Odszyfrowana zawartość nie jest poprawnym ciągiem UTF-8: {}", "The decrypted content is not valid UTF-8: {}", e))
 }
 
 /// Same as [`decrypt_string`], but the result is wiped from memory when dropped.

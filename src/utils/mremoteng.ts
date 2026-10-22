@@ -1,3 +1,4 @@
+import { t } from '../i18n';
 import { Connection, Group, ProtocolType } from '../types';
 
 export interface MRemoteNGParseResult {
@@ -40,7 +41,7 @@ export function parseMRemoteNGXml(xmlString: string): MRemoteNGParseResult {
 
   const parserError = xmlDoc.querySelector('parsererror');
   if (parserError) {
-    throw new Error('Błąd parsowania pliku XML mRemoteNG: ' + parserError.textContent);
+    throw new Error(t('Błąd parsowania pliku XML mRemoteNG: ') + parserError.textContent);
   }
 
   const groups: Group[] = [];

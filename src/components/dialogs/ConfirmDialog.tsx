@@ -1,5 +1,6 @@
 import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { AlertTriangle, Info } from 'lucide-react';
+import { useT } from '../../i18n';
 
 interface Props {
   isOpen: boolean;
@@ -43,8 +44,8 @@ export const ConfirmDialog: React.FC<Props> = ({
   isOpen,
   title,
   message,
-  confirmLabel = 'Zamknij',
-  cancelLabel = 'Anuluj',
+  confirmLabel,
+  cancelLabel,
   onConfirm,
   onCancel,
   contained = false,
@@ -53,6 +54,7 @@ export const ConfirmDialog: React.FC<Props> = ({
   anchor = null,
 }) => {
   const confirmRef = useRef<HTMLButtonElement>(null);
+  const t = useT();
   const boxRef = useRef<HTMLDivElement>(null);
   const [pos, setPos] = useState<{ left: number; top: number; arrowTop: number | null } | null>(null);
 
@@ -149,7 +151,7 @@ export const ConfirmDialog: React.FC<Props> = ({
             onClick={onCancel}
             className="rounded-lg border border-slate-700 px-3.5 py-1.5 text-xs text-slate-300 hover:bg-slate-800"
           >
-            {cancelLabel}
+            {cancelLabel ?? t('Anuluj')}
           </button>
           )}
           <button
@@ -162,7 +164,7 @@ export const ConfirmDialog: React.FC<Props> = ({
                 : 'rounded-lg bg-rose-600 px-3.5 py-1.5 text-xs font-semibold text-white hover:bg-rose-500 focus:outline-none focus:ring-2 focus:ring-rose-400/60'
             }
           >
-            {confirmLabel}
+            {confirmLabel ?? t('Zamknij')}
           </button>
         </div>
       </div>

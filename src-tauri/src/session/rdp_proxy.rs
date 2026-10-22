@@ -67,10 +67,10 @@ pub fn start_rdp_proxy(
     report: ErrorReporter,
 ) -> Result<RdpProxyHandle, String> {
     let std_listener = std::net::TcpListener::bind("127.0.0.1:0")
-        .map_err(|e| format!("Błąd wiązania lokalnego proxy RDP: {}", e))?;
+        .map_err(|e| tr!("Błąd wiązania lokalnego proxy RDP: {}", "Error binding the local RDP proxy: {}", e))?;
     std_listener
         .set_nonblocking(true)
-        .map_err(|e| format!("Błąd konfiguracji gniazda proxy RDP: {}", e))?;
+        .map_err(|e| tr!("Błąd konfiguracji gniazda proxy RDP: {}", "RDP proxy socket configuration error: {}", e))?;
 
     let port = std_listener.local_addr().map_err(|e| e.to_string())?.port();
 
@@ -89,7 +89,7 @@ pub fn start_rdp_proxy(
         let listener = match TcpListener::from_std(std_listener) {
             Ok(l) => l,
             Err(e) => {
-                ctx.fail(format!("Błąd uruchamiania lokalnego proxy RDP: {}", e));
+                ctx.fail(tr!("Błąd uruchamiania lokalnego proxy RDP: {}", "Error starting the local RDP proxy: {}", e));
                 return;
             }
         };
@@ -112,7 +112,7 @@ pub fn start_rdp_proxy(
                             });
                         }
                         Err(e) => {
-                            ctx.fail(format!("Błąd przyjmowania połączenia przez proxy RDP: {}", e));
+                            ctx.fail(tr!("Błąd przyjmowania połączenia przez proxy RDP: {}", "RDP proxy accept error: {}", e));
                             break;
                         }
                     }
@@ -170,7 +170,7 @@ fn make_tls_connector() -> Result<tokio_rustls::TlsConnector, String> {
     let provider = Arc::new(rustls::crypto::ring::default_provider());
     let config = rustls::ClientConfig::builder_with_provider(Arc::clone(&provider))
         .with_safe_default_protocol_versions()
-        .map_err(|e| format!("Błąd konfiguracji TLS: {}", e))?
+        .map_err(|e| tr!("Błąd konfiguracji TLS: {}", "TLS configuration error: {}", e))?
         .dangerous()
         .with_custom_certificate_verifier(Arc::new(PinnedAfterHandshake(provider)))
         .with_no_client_auth();
@@ -182,15 +182,15 @@ async fn read_tpkt(stream: &mut TcpStream) -> Result<Vec<u8>, String> {
     stream
         .read_exact(&mut header)
         .await
-        .map_err(|e| format!("Błąd odczytu nagłówka TPKT: {}", e))?;
+        .map_err(|e| tr!("Błąd odczytu nagłówka TPKT: {}", "TPKT header read error: {}", e))?;
 
     if header[0] != 3 {
-        return Err(format!("Nieprawidłowy nagłówek TPKT (0x{:02x} != 0x03)", header[0]));
+        return Err(tr!("Nieprawidłowy nagłówek TPKT (0x{:02x} != 0x03)", "Invalid TPKT header (0x{:02x} != 0x03)", header[0]));
     }
 
     let length = u16::from_be_bytes([header[2], header[3]]) as usize;
     if length < 4 {
-        return Err(format!("Nieprawidłowa długość TPKT: {}", length));
+        return Err(tr!("Nieprawidłowa długość TPKT: {}", "Invalid TPKT length: {}", length));
     }
 
     let mut packet = vec![0u8; length];
@@ -198,7 +198,7 @@ async fn read_tpkt(stream: &mut TcpStream) -> Result<Vec<u8>, String> {
     stream
         .read_exact(&mut packet[4..])
         .await
-        .map_err(|e| format!("Błąd odczytu ciała TPKT: {}", e))?;
+        .map_err(|e| tr!("Błąd odczytu ciała TPKT: {}", "TPKT body read error: {}", e))?;
 
     Ok(packet)
 }
@@ -232,14 +232,14 @@ async fn rdp_handshake(ctx: &ProxyContext, x224_req: &[u8], mode: TlsMode) -> Re
             t
         }
         Ok(Err(e)) => {
-            return Err(HandshakeError::Fatal(format!(
-                "Nie można połączyć się z serwerem RDP {}: {}",
+            return Err(HandshakeError::Fatal(tr!(
+                "Nie można połączyć się z serwerem RDP {}: {}", "Cannot connect to RDP server {}: {}",
                 ctx.target, e
             )))
         }
         Err(_) => {
-            return Err(HandshakeError::Fatal(format!(
-                "Serwer RDP {} nie odpowiada (limit {} s). Sprawdź adres, port i zaporę sieciową.",
+            return Err(HandshakeError::Fatal(tr!(
+                "Serwer RDP {} nie odpowiada (limit {} s). Sprawdź adres, port i zaporę sieciową.", "RDP server {} does not respond (timeout {} s). Check the address, port and firewall.",
                 ctx.target,
                 CONNECT_TIMEOUT.as_secs()
             )))
@@ -248,13 +248,13 @@ async fn rdp_handshake(ctx: &ProxyContext, x224_req: &[u8], mode: TlsMode) -> Re
 
     tcp.write_all(x224_req)
         .await
-        .map_err(|e| HandshakeError::Fatal(format!("Błąd wysyłania X.224 do serwera RDP: {}", e)))?;
+        .map_err(|e| HandshakeError::Fatal(tr!("Błąd wysyłania X.224 do serwera RDP: {}", "Error sending X.224 to the RDP server: {}", e)))?;
     let _ = tcp.flush().await;
 
     let x224_resp = match timeout(HANDSHAKE_TIMEOUT, read_tpkt(&mut tcp)).await {
         Ok(Ok(r)) => r,
-        Ok(Err(e)) => return Err(HandshakeError::Fatal(format!("Błąd negocjacji X.224 z serwerem RDP: {}", e))),
-        Err(_) => return Err(HandshakeError::Fatal("Serwer RDP nie odpowiedział na żądanie X.224".to_string())),
+        Ok(Err(e)) => return Err(HandshakeError::Fatal(tr!("Błąd negocjacji X.224 z serwerem RDP: {}", "X.224 negotiation error with the RDP server: {}", e))),
+        Err(_) => return Err(HandshakeError::Fatal(tr!("Serwer RDP nie odpowiedział na żądanie X.224", "The RDP server did not answer the X.224 request").to_string())),
     };
 
     match mode {
@@ -287,7 +287,7 @@ async fn rdp_handshake(ctx: &ProxyContext, x224_req: &[u8], mode: TlsMode) -> Re
                 .use_sni(false)
                 .min_protocol_version(Some(native_tls::Protocol::Tlsv10))
                 .build()
-                .map_err(|e| HandshakeError::Fatal(format!("Błąd konfiguracji TLS systemowego: {}", e)))?;
+                .map_err(|e| HandshakeError::Fatal(tr!("Błąd konfiguracji TLS systemowego: {}", "System TLS configuration error: {}", e)))?;
             let connector = tokio_native_tls::TlsConnector::from(connector);
             let stream = match timeout(HANDSHAKE_TIMEOUT, connector.connect("rdp-server", tcp)).await {
                 Ok(Ok(s)) => s,
@@ -300,7 +300,7 @@ async fn rdp_handshake(ctx: &ProxyContext, x224_req: &[u8], mode: TlsMode) -> Re
                 .ok()
                 .flatten()
                 .and_then(|c| c.to_der().ok())
-                .ok_or_else(|| HandshakeError::Fatal("Serwer RDP nie przedstawił certyfikatu TLS".to_string()))?;
+                .ok_or_else(|| HandshakeError::Fatal(tr!("Serwer RDP nie przedstawił certyfikatu TLS", "The RDP server did not present a TLS certificate").to_string()))?;
             eprintln!("[RemoteFlow RDP Proxy] Połączono z {} w trybie zgodności TLS", ctx.target);
             Ok((Box::new(stream), x224_resp, vec![leaf]))
         }
@@ -363,7 +363,7 @@ async fn handle_client(ws_tcp: TcpStream, ctx: ProxyContext) {
     let pdu = match ironrdp_rdcleanpath::RDCleanPathPdu::from_der(&first_bytes) {
         Ok(p) => p,
         Err(e) => {
-            ctx.fail(format!("Nieprawidłowe żądanie klienta RDP (RDCleanPath): {}", e));
+            ctx.fail(tr!("Nieprawidłowe żądanie klienta RDP (RDCleanPath): {}", "Invalid RDP client request (RDCleanPath): {}", e));
             send_error_pdu(&mut ws_sink, ironrdp_rdcleanpath::RDCleanPathPdu::new_http_error(400)).await;
             return;
         }
@@ -393,7 +393,7 @@ async fn handle_client(ws_tcp: TcpStream, ctx: ProxyContext) {
     let x224_req = match pdu.x224_connection_pdu {
         Some(octets) => octets.as_bytes().to_vec(),
         None => {
-            ctx.fail("Żądanie RDCleanPath bez pakietu X.224".to_string());
+            ctx.fail(tr!("Żądanie RDCleanPath bez pakietu X.224", "RDCleanPath request without an X.224 packet").to_string());
             send_error_pdu(&mut ws_sink, ironrdp_rdcleanpath::RDCleanPathPdu::new_http_error(400)).await;
             return;
         }
@@ -433,7 +433,7 @@ async fn handle_client(ws_tcp: TcpStream, ctx: ProxyContext) {
 
     // 4. Certificate pinning (TOFU) before any credentials flow through the tunnel.
     let Some(leaf) = chain.first() else {
-        ctx.fail("Serwer RDP nie przedstawił certyfikatu TLS".to_string());
+        ctx.fail(tr!("Serwer RDP nie przedstawił certyfikatu TLS", "The RDP server did not present a TLS certificate").to_string());
         send_error_pdu(&mut ws_sink, ironrdp_rdcleanpath::RDCleanPathPdu::new_general_error()).await;
         return;
     };
@@ -441,7 +441,7 @@ async fn handle_client(ws_tcp: TcpStream, ctx: ProxyContext) {
     let verifier = ctx.verifier.clone();
     let verdict = tokio::task::spawn_blocking(move || (verifier.0)(&fingerprint))
         .await
-        .unwrap_or_else(|e| Err(format!("Błąd weryfikacji certyfikatu: {}", e)));
+        .unwrap_or_else(|e| Err(tr!("Błąd weryfikacji certyfikatu: {}", "Certificate verification error: {}", e)));
     if let Err(e) = verdict {
         ctx.fail(e);
         send_error_pdu(&mut ws_sink, ironrdp_rdcleanpath::RDCleanPathPdu::new_general_error()).await;
@@ -455,7 +455,7 @@ async fn handle_client(ws_tcp: TcpStream, ctx: ProxyContext) {
         {
             Ok(d) => d,
             Err(e) => {
-                ctx.fail(format!("Błąd budowania odpowiedzi RDCleanPath: {}", e));
+                ctx.fail(tr!("Błąd budowania odpowiedzi RDCleanPath: {}", "Error building the RDCleanPath response: {}", e));
                 return;
             }
         };

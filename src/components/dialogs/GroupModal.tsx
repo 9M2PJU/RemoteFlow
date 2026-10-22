@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { X, Folder } from 'lucide-react';
 import { Group } from '../../types';
+import { useT } from '../../i18n';
 
 interface Props {
   isOpen: boolean;
@@ -20,6 +21,7 @@ export const GroupModal: React.FC<Props> = ({
   defaultParentId,
 }) => {
   const [name, setName] = useState('');
+  const t = useT();
   const [parentId, setParentId] = useState<string | null>(null);
   const [color, setColor] = useState('#3b82f6');
   const [icon, setIcon] = useState('folder');
@@ -44,7 +46,7 @@ export const GroupModal: React.FC<Props> = ({
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!name.trim()) {
-      setError('Podaj nazwę folderu / grupy');
+      setError(t('Podaj nazwę folderu / grupy'));
       return;
     }
 
@@ -75,7 +77,7 @@ export const GroupModal: React.FC<Props> = ({
           <div className="flex items-center gap-2">
             <Folder className="h-5 w-5 text-amber-400" />
             <h2 className="text-sm font-bold text-white">
-              {editingGroup ? 'Edytuj folder' : 'Nowy folder / grupa'}
+              {editingGroup ? t('Edytuj folder') : t('Nowy folder / grupa')}
             </h2>
           </div>
           <button
@@ -95,13 +97,13 @@ export const GroupModal: React.FC<Props> = ({
 
           <div>
             <label className="block text-xs font-semibold text-slate-300">
-              Nazwa grupy / folderu
+              {t('Nazwa grupy / folderu')}
             </label>
             <input
               type="text"
               value={name}
               onChange={(e) => setName(e.target.value)}
-              placeholder="np. Klastry Produkcyjne, DMZ, Test..."
+              placeholder={t('np. Klastry Produkcyjne, DMZ, Test...')}
               autoFocus
               required
               className="mt-1.5 w-full rounded-lg border border-slate-700 bg-slate-800/80 px-3 py-2 text-xs text-white focus:border-cyan-500 focus:outline-none"
@@ -110,14 +112,14 @@ export const GroupModal: React.FC<Props> = ({
 
           <div>
             <label className="block text-xs font-semibold text-slate-300">
-              Folder nadrzędny (Zagnieżdżenie)
+              {t('Folder nadrzędny (Zagnieżdżenie)')}
             </label>
             <select
               value={parentId || ''}
               onChange={(e) => setParentId(e.target.value || null)}
               className="mt-1.5 w-full rounded-lg border border-slate-700 bg-slate-800/80 px-3 py-2 text-xs text-white focus:border-cyan-500 focus:outline-none"
             >
-              <option value="">(Brak - folder główny)</option>
+              <option value="">{t('(Brak - folder główny)')}</option>
               {groups
                 .filter((g) => !editingGroup || g.id !== editingGroup.id)
                 .map((g) => (
@@ -130,7 +132,7 @@ export const GroupModal: React.FC<Props> = ({
 
           <div>
             <label className="block text-xs font-semibold text-slate-300 mb-1.5">
-              Kolor wyróżniający
+              {t('Kolor wyróżniający')}
             </label>
             <div className="flex gap-2">
               {['#ef4444', '#f97316', '#eab308', '#10b981', '#06b6d4', '#3b82f6', '#8b5cf6'].map(
@@ -155,14 +157,14 @@ export const GroupModal: React.FC<Props> = ({
               onClick={onClose}
               className="rounded-lg border border-slate-700 px-4 py-2 text-xs font-medium text-slate-300 hover:bg-slate-800"
             >
-              Anuluj
+              {t('Anuluj')}
             </button>
             <button
               type="submit"
               disabled={saving}
               className="rounded-lg bg-gradient-to-r from-cyan-600 to-blue-600 px-5 py-2 text-xs font-semibold text-white shadow-md shadow-cyan-600/25 hover:opacity-95 disabled:opacity-50"
             >
-              Zapisz folder
+              {t('Zapisz folder')}
             </button>
           </div>
         </form>

@@ -27,6 +27,7 @@ import {
   ForwardType,
 } from '../../types';
 import { normalizeRdpIdentity, rdpLoginLabel } from '../../utils/rdpIdentity';
+import { useT } from '../../i18n';
 
 interface Props {
   isOpen: boolean;
@@ -50,6 +51,7 @@ export const ConnectionModal: React.FC<Props> = ({
   defaultGroupId,
   onCreateGroup,
 }) => {
+  const t = useT();
   const [activeTab, setActiveTab] = useState<'general' | 'auth' | 'tunnels' | 'rdp' | 'notes'>('general');
 
   // Form states
@@ -174,14 +176,14 @@ export const ConnectionModal: React.FC<Props> = ({
     if (!onCreateGroup) return;
     const trimmed = newGroupName.trim();
     if (!trimmed) {
-      setGroupError('Podaj nazwę grupy');
+      setGroupError(t('Podaj nazwę grupy'));
       return;
     }
     const duplicate = groups.some(
       (g) => g.name.trim().toLowerCase() === trimmed.toLowerCase() && (g.parentId || null) === newGroupParentId
     );
     if (duplicate) {
-      setGroupError('Grupa o tej nazwie już istnieje w wybranym miejscu');
+      setGroupError(t('Grupa o tej nazwie już istnieje w wybranym miejscu'));
       return;
     }
     setCreatingGroup(true);
@@ -212,7 +214,7 @@ export const ConnectionModal: React.FC<Props> = ({
     try {
       setKeyFileLoading(true);
       setError(null);
-      const filePath = await api.pickLocalFile('Wybierz plik klucza prywatnego SSH');
+      const filePath = await api.pickLocalFile(t('Wybierz plik klucza prywatnego SSH'));
       if (filePath) {
         setKeyFilePath(filePath);
         try {
@@ -220,14 +222,14 @@ export const ConnectionModal: React.FC<Props> = ({
           if (content && content.trim()) {
             setPrivateKey(content);
             const fileName = filePath.split('/').pop()?.split('\\').pop() || filePath;
-            setKeyFileSuccess(`Wczytano klucz (${content.length} bajtów) z pliku: ${fileName}`);
+            setKeyFileSuccess(t('Wczytano klucz ({length} bajtów) z pliku: {fileName}', { length: content.length, fileName }));
           }
         } catch {
-          setKeyFileSuccess(`Wybrano plik: ${filePath}`);
+          setKeyFileSuccess(t('Wybrano plik: {filePath}', { filePath }));
         }
       }
     } catch (err: unknown) {
-      setError(`Błąd wyboru pliku klucza: ${err instanceof Error ? err.message : String(err)}`);
+      setError(t('Błąd wyboru pliku klucza: {p0}', { p0: err instanceof Error ? err.message : String(err) }));
     } finally {
       setKeyFileLoading(false);
     }
@@ -242,7 +244,7 @@ export const ConnectionModal: React.FC<Props> = ({
       const text = event.target?.result as string;
       if (text) {
         setPrivateKey(text);
-        setKeyFileSuccess(`Wczytano klucz (${text.length} bajtów) z pliku: ${file.name}`);
+        setKeyFileSuccess(t('Wczytano klucz ({length} bajtów) z pliku: {name}', { length: text.length, name: file.name }));
       }
     };
     reader.readAsText(file);
@@ -274,7 +276,7 @@ export const ConnectionModal: React.FC<Props> = ({
       setPassword(plaintext);
       setShowPassword(true);
     } catch (err: unknown) {
-      setError('Nie udało się odszyfrować hasła: ' + (err instanceof Error ? err.message : String(err)));
+      setError(t('Nie udało się odszyfrować hasła: ') + (err instanceof Error ? err.message : String(err)));
     } finally {
       setRevealingPassword(false);
     }
@@ -304,12 +306,12 @@ export const ConnectionModal: React.FC<Props> = ({
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!name.trim()) {
-      setError('Podaj nazwę połączenia');
+      setError(t('Podaj nazwę połączenia'));
       setActiveTab('general');
       return;
     }
     if (!host.trim()) {
-      setError('Podaj adres hosta');
+      setError(t('Podaj adres hosta'));
       setActiveTab('general');
       return;
     }
@@ -391,10 +393,10 @@ export const ConnectionModal: React.FC<Props> = ({
             </div>
             <div>
               <h2 className="text-sm font-bold text-white">
-                {editingConnection ? 'Edytuj połączenie' : 'Nowe połączenie'}
+                {editingConnection ? t('Edytuj połączenie') : t('Nowe połączenie')}
               </h2>
               <p className="text-[11px] text-slate-400">
-                Konfiguracja hosta, poświadczeń i tuneli
+                {t('Konfiguracja hosta, poświadczeń i tuneli')}
               </p>
             </div>
           </div>
@@ -416,7 +418,7 @@ export const ConnectionModal: React.FC<Props> = ({
                 : 'border-transparent text-slate-400 hover:text-slate-200'
             }`}
           >
-            Ogólne
+            {t('Ogólne')}
           </button>
           <button
             onClick={() => setActiveTab('auth')}
@@ -426,7 +428,7 @@ export const ConnectionModal: React.FC<Props> = ({
                 : 'border-transparent text-slate-400 hover:text-slate-200'
             }`}
           >
-            Uwierzytelnianie & Klucze
+            {t('Uwierzytelnianie & Klucze')}
           </button>
           {protocol === 'ssh' && (
             <button
@@ -437,7 +439,7 @@ export const ConnectionModal: React.FC<Props> = ({
                   : 'border-transparent text-slate-400 hover:text-slate-200'
               }`}
             >
-              Tunele SSH ({portForwarding.length})
+              {t('Tunele SSH ({n})', { n: portForwarding.length })}
             </button>
           )}
           {protocol === 'rdp' && (
@@ -449,7 +451,7 @@ export const ConnectionModal: React.FC<Props> = ({
                   : 'border-transparent text-slate-400 hover:text-slate-200'
               }`}
             >
-              Ustawienia RDP
+              {t('Ustawienia RDP')}
             </button>
           )}
           <button
@@ -460,7 +462,7 @@ export const ConnectionModal: React.FC<Props> = ({
                 : 'border-transparent text-slate-400 hover:text-slate-200'
             }`}
           >
-            Tagi & Notatki
+            {t('Tagi & Notatki')}
           </button>
         </div>
 
@@ -479,20 +481,20 @@ export const ConnectionModal: React.FC<Props> = ({
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <label className="block text-xs font-semibold text-slate-300">
-                      Nazwa wyświetlana
+                      {t('Nazwa wyświetlana')}
                     </label>
                     <input
                       type="text"
                       value={name}
                       onChange={(e) => setName(e.target.value)}
-                      placeholder="np. web-prod-01 (Nginx)"
+                      placeholder={t('np. web-prod-01 (Nginx)')}
                       required
                       className="mt-1.5 w-full rounded-lg border border-slate-700 bg-slate-800/80 px-3 py-2 text-xs text-white placeholder-slate-500 focus:border-cyan-500 focus:outline-none"
                     />
                   </div>
                   <div>
                     <label className="block text-xs font-semibold text-slate-300">
-                      Folder / Grupa
+                      {t('Folder / Grupa')}
                     </label>
                     <div className="mt-1.5 flex items-center gap-1.5">
                       <select
@@ -500,7 +502,7 @@ export const ConnectionModal: React.FC<Props> = ({
                         onChange={(e) => setGroupId(e.target.value || null)}
                         className="min-w-0 flex-1 rounded-lg border border-slate-700 bg-slate-800/80 px-3 py-2 text-xs text-white focus:border-cyan-500 focus:outline-none"
                       >
-                        <option value="">(Brak - poziom główny)</option>
+                        <option value="">{t('(Brak - poziom główny)')}</option>
                         {groups.map((g) => (
                           <option key={g.id} value={g.id}>
                             {g.name}
@@ -510,7 +512,7 @@ export const ConnectionModal: React.FC<Props> = ({
                       {onCreateGroup && (
                         <button
                           type="button"
-                          title="Dodaj nową grupę"
+                          title={t('Dodaj nową grupę')}
                           onClick={() => {
                             setIsAddingGroup((v) => !v);
                             setNewGroupName('');
@@ -544,7 +546,7 @@ export const ConnectionModal: React.FC<Props> = ({
                               setIsAddingGroup(false);
                             }
                           }}
-                          placeholder="Nazwa nowej grupy..."
+                          placeholder={t('Nazwa nowej grupy...')}
                           className="w-full rounded-md border border-slate-700 bg-slate-800 px-2.5 py-1.5 text-xs text-white placeholder-slate-500 focus:border-cyan-500 focus:outline-none"
                         />
                         <select
@@ -552,10 +554,10 @@ export const ConnectionModal: React.FC<Props> = ({
                           onChange={(e) => setNewGroupParentId(e.target.value || null)}
                           className="w-full rounded-md border border-slate-700 bg-slate-800 px-2.5 py-1.5 text-[11px] text-slate-300 focus:border-cyan-500 focus:outline-none"
                         >
-                          <option value="">Grupa nadrzędna: (brak - poziom główny)</option>
+                          <option value="">{t('Grupa nadrzędna: (brak - poziom główny)')}</option>
                           {groups.map((g) => (
                             <option key={g.id} value={g.id}>
-                              Grupa nadrzędna: {g.name}
+                              {t('Grupa nadrzędna: {name}', { name: g.name })}
                             </option>
                           ))}
                         </select>
@@ -566,7 +568,7 @@ export const ConnectionModal: React.FC<Props> = ({
                             onClick={() => setIsAddingGroup(false)}
                             className="rounded-md border border-slate-700 px-2.5 py-1 text-[11px] text-slate-300 hover:bg-slate-800"
                           >
-                            Anuluj
+                            {t('Anuluj')}
                           </button>
                           <button
                             type="button"
@@ -575,7 +577,7 @@ export const ConnectionModal: React.FC<Props> = ({
                             className="flex items-center gap-1 rounded-md bg-cyan-600 px-2.5 py-1 text-[11px] font-semibold text-white hover:bg-cyan-500 disabled:opacity-50"
                           >
                             {creatingGroup ? <Loader2 className="h-3 w-3 animate-spin" /> : <Check className="h-3 w-3" />}
-                            Utwórz i wybierz
+                            {t('Utwórz i wybierz')}
                           </button>
                         </div>
                       </div>
@@ -586,7 +588,7 @@ export const ConnectionModal: React.FC<Props> = ({
                 {/* Protocol selector */}
                 <div>
                   <label className="block text-xs font-semibold text-slate-300 mb-1.5">
-                    Protokół połączenia
+                    {t('Protokół połączenia')}
                   </label>
                   <div className="grid grid-cols-2 gap-3">
                     <button
@@ -600,9 +602,9 @@ export const ConnectionModal: React.FC<Props> = ({
                     >
                       <Terminal className="h-5 w-5 text-emerald-400" />
                       <div>
-                        <div className="text-xs font-semibold">SSH (Terminal & Tunele)</div>
+                        <div className="text-xs font-semibold">{t('SSH (Terminal & Tunele)')}</div>
                         <div className="text-[10px] text-slate-400">
-                          Port 22, klucze, certyfikaty, SOCKS5
+                          {t('Port 22, klucze, certyfikaty, SOCKS5')}
                         </div>
                       </div>
                     </button>
@@ -618,9 +620,9 @@ export const ConnectionModal: React.FC<Props> = ({
                     >
                       <Monitor className="h-5 w-5 text-blue-400" />
                       <div>
-                        <div className="text-xs font-semibold">RDP (Pulpit Zdalny Windows)</div>
+                        <div className="text-xs font-semibold">{t('RDP (Pulpit Zdalny Windows)')}</div>
                         <div className="text-[10px] text-slate-400">
-                          Port 3389, graficzny interfejs, schowek
+                          {t('Port 3389, graficzny interfejs, schowek')}
                         </div>
                       </div>
                     </button>
@@ -631,20 +633,20 @@ export const ConnectionModal: React.FC<Props> = ({
                 <div className="grid grid-cols-3 gap-4">
                   <div className="col-span-2">
                     <label className="block text-xs font-semibold text-slate-300">
-                      Adres Hosta (IP lub domena)
+                      {t('Adres Hosta (IP lub domena)')}
                     </label>
                     <input
                       type="text"
                       value={host}
                       onChange={(e) => setHost(e.target.value)}
-                      placeholder="192.168.1.100 lub server.domain.com"
+                      placeholder={t('192.168.1.100 lub server.domain.com')}
                       required
                       className="mt-1.5 w-full rounded-lg border border-slate-700 bg-slate-800/80 px-3 py-2 text-xs text-white placeholder-slate-500 focus:border-cyan-500 focus:outline-none"
                     />
                   </div>
                   <div>
                     <label className="block text-xs font-semibold text-slate-300">
-                      Port
+                      {t('Port')}
                     </label>
                     <input
                       type="number"
@@ -660,7 +662,7 @@ export const ConnectionModal: React.FC<Props> = ({
                   <div className="flex items-center justify-between">
                     <label className="text-xs font-semibold text-slate-200 flex items-center gap-1.5">
                       <FolderDown className="h-4 w-4 text-emerald-400" />
-                      <span>Domyślny katalog pobierania plików (SFTP)</span>
+                      <span>{t('Domyślny katalog pobierania plików (SFTP)')}</span>
                     </label>
                     {defaultDownloadDir && (
                       <button
@@ -668,7 +670,7 @@ export const ConnectionModal: React.FC<Props> = ({
                         onClick={() => setDefaultDownloadDir('')}
                         className="text-[10px] text-slate-400 hover:text-rose-300 transition-colors"
                       >
-                        Wyczyść (użyj systemowego ~/Downloads)
+                        {t('Wyczyść (użyj systemowego ~/Downloads)')}
                       </button>
                     )}
                   </div>
@@ -677,7 +679,7 @@ export const ConnectionModal: React.FC<Props> = ({
                       type="text"
                       value={defaultDownloadDir}
                       onChange={(e) => setDefaultDownloadDir(e.target.value)}
-                      placeholder="Domyślnie: ~/Downloads (pozostaw puste lub wybierz folder)"
+                      placeholder={t('Domyślnie: ~/Downloads (pozostaw puste lub wybierz folder)')}
                       className="flex-1 rounded-lg border border-slate-700 bg-slate-800/80 px-3 py-1.5 font-mono text-xs text-white placeholder-slate-500 focus:border-cyan-500 focus:outline-none"
                     />
                     <button
@@ -690,7 +692,7 @@ export const ConnectionModal: React.FC<Props> = ({
                       }}
                       className="rounded-lg border border-slate-700 bg-slate-800 px-3 py-1.5 text-xs font-medium text-slate-200 hover:bg-slate-700 hover:text-white transition-colors shrink-0"
                     >
-                      Wybierz folder...
+                      {t('Wybierz folder...')}
                     </button>
                   </div>
                   <label className="flex items-center gap-2 text-[11px] text-slate-400 cursor-pointer pt-0.5">
@@ -700,7 +702,7 @@ export const ConnectionModal: React.FC<Props> = ({
                       onChange={(e) => setSetAsGlobalDownloadDir(e.target.checked)}
                       className="rounded border-slate-700 bg-slate-900 text-cyan-500 focus:ring-0"
                     />
-                    <span>Zapisz ten katalog również jako domyślny globalnie (dla wszystkich połączeń)</span>
+                    <span>{t('Zapisz ten katalog również jako domyślny globalnie (dla wszystkich połączeń)')}</span>
                   </label>
                 </div>
               </div>
@@ -714,7 +716,7 @@ export const ConnectionModal: React.FC<Props> = ({
                   <div className="flex items-center justify-between mb-2">
                     <div className="flex items-center gap-2 text-xs font-semibold text-slate-200">
                       <KeyRound className="h-4 w-4 text-cyan-400" />
-                      <span>Współdzielone poświadczenia</span>
+                      <span>{t('Współdzielone poświadczenia')}</span>
                     </div>
                     {credentialId && (
                       <button
@@ -722,13 +724,13 @@ export const ConnectionModal: React.FC<Props> = ({
                         onClick={() => setCredentialId(null)}
                         className="text-[11px] text-slate-400 hover:text-red-400 transition-colors"
                       >
-                        Odłącz poświadczenie
+                        {t('Odłącz poświadczenie')}
                       </button>
                     )}
                   </div>
 
                   <p className="text-[11px] text-slate-400 mb-3">
-                    Możesz wybrać zdefiniowane poświadczenie i współdzielić je pomiędzy połączeniami lub wprowadzić dane jednorazowo poniżej.
+                    {t('Możesz wybrać zdefiniowane poświadczenie i współdzielić je pomiędzy połączeniami lub wprowadzić dane jednorazowo poniżej.')}
                   </p>
 
                   <select
@@ -748,10 +750,10 @@ export const ConnectionModal: React.FC<Props> = ({
                     }}
                     className="w-full rounded-lg border border-slate-700 bg-slate-800/80 px-3 py-2 text-xs text-white focus:border-cyan-500 focus:outline-none"
                   >
-                    <option value="">(Brak - wprowadź dane jednorazowo poniżej)</option>
+                    <option value="">{t('(Brak - wprowadź dane jednorazowo poniżej)')}</option>
                     {credentials.map((c) => (
                       <option key={c.id} value={c.id}>
-                        {c.name} — {c.username} ({c.authType === 'password' ? 'Hasło' : c.authType === 'key' ? 'Klucz prywatny' : 'Certyfikat'})
+                        {c.name} — {c.username} ({c.authType === 'password' ? t('Hasło') : c.authType === 'key' ? t('Klucz prywatny') : t('Certyfikat')})
                       </option>
                     ))}
                   </select>
@@ -777,19 +779,19 @@ export const ConnectionModal: React.FC<Props> = ({
                 <div className="rounded-xl border border-slate-800 bg-slate-950/40 p-4">
                   <div className="flex items-center gap-2 text-xs font-semibold text-cyan-400 mb-3">
                     <Shield className="h-4 w-4" />
-                    Wszystkie dane uwierzytelniające są szyfrowane AES-256-GCM
+                    {t('Wszystkie dane uwierzytelniające są szyfrowane AES-256-GCM')}
                   </div>
 
                   <div className="grid grid-cols-2 gap-4">
                     <div>
                       <label className="block text-xs font-semibold text-slate-300">
-                        Nazwa użytkownika
+                        {t('Nazwa użytkownika')}
                       </label>
                       <input
                         type="text"
                         value={username}
                         onChange={(e) => setUsername(e.target.value)}
-                        placeholder="np. root, admin, administrator"
+                        placeholder={t('np. root, admin, administrator')}
                         className="mt-1.5 w-full rounded-lg border border-slate-700 bg-slate-800/80 px-3 py-2 text-xs text-white focus:border-cyan-500 focus:outline-none"
                       />
                     </div>
@@ -798,7 +800,7 @@ export const ConnectionModal: React.FC<Props> = ({
                     <div>
                       <div className="flex items-center justify-between">
                         <label className="block text-xs font-semibold text-slate-300">
-                          Hasło
+                          {t('Hasło')}
                         </label>
                         {editingConnection && (
                           <button
@@ -814,7 +816,7 @@ export const ConnectionModal: React.FC<Props> = ({
                             ) : (
                               <Eye className="h-3 w-3" />
                             )}
-                            {showPassword ? 'Ukryj hasło' : 'Pokaż hasło'}
+                            {showPassword ? t('Ukryj hasło') : t('Pokaż hasło')}
                           </button>
                         )}
                       </div>
@@ -825,8 +827,8 @@ export const ConnectionModal: React.FC<Props> = ({
                           onChange={(e) => setPassword(e.target.value)}
                           placeholder={
                             editingConnection?.passwordEncrypted
-                              ? showPassword ? password : '•••••••••••• (Zapisane w sejfie)'
-                              : 'Wprowadź hasło...'
+                              ? showPassword ? password : t('•••••••••••• (Zapisane w sejfie)')
+                              : t('Wprowadź hasło...')
                           }
                           className="w-full rounded-lg border border-slate-700 bg-slate-800/80 px-3 py-2 pr-10 text-xs text-white placeholder-slate-500 focus:border-cyan-500 focus:outline-none"
                         />
@@ -852,25 +854,25 @@ export const ConnectionModal: React.FC<Props> = ({
                     return (
                       <div className="mt-4">
                         <label className="block text-xs font-semibold text-slate-300">
-                          Domena Windows <span className="font-normal text-slate-500">(opcjonalnie)</span>
+                          {t('Domena Windows')} <span className="font-normal text-slate-500">{t('(opcjonalnie)')}</span>
                         </label>
                         <input
                           type="text"
                           value={rdpDomain}
                           onChange={(e) => setRdpDomain(e.target.value)}
-                          placeholder="np. CORP lub corp.local – puste dla konta lokalnego"
+                          placeholder={t('np. CORP lub corp.local – puste dla konta lokalnego')}
                           className="mt-1.5 w-full rounded-lg border border-slate-700 bg-slate-800/80 px-3 py-2 text-xs text-white placeholder-slate-500 focus:border-cyan-500 focus:outline-none"
                         />
                         <p className="mt-1.5 text-[11px] leading-relaxed text-slate-500">
-                          Domenę można też wpisać w nazwie użytkownika: <span className="font-mono text-slate-400">CORP\jan</span> lub{' '}
-                          <span className="font-mono text-slate-400">jan@corp.local</span>. Konto lokalne serwera:{' '}
+                          {t('Domenę można też wpisać w nazwie użytkownika:')} <span className="font-mono text-slate-400">CORP\jan</span> {t('lub')}{' '}
+                          <span className="font-mono text-slate-400">jan@corp.local</span>. {t('Konto lokalne serwera:')}{' '}
                           <span className="font-mono text-slate-400">.\administrator</span>.
                         </p>
                         {login && (
                           <p className="mt-1 text-[11px] text-slate-400">
-                            Logowanie jako: <span className="font-mono text-cyan-300">{login}</span>
+                            {t('Logowanie jako:')} <span className="font-mono text-cyan-300">{login}</span>
                             {ignored && (
-                              <span className="text-amber-300/90"> (pole „Domena” jest pomijane, bo nazwa użytkownika już ją określa)</span>
+                              <span className="text-amber-300/90"> {t('(pole „Domena” jest pomijane, bo nazwa użytkownika już ją określa)')}</span>
                             )}
                           </p>
                         )}
@@ -884,7 +886,7 @@ export const ConnectionModal: React.FC<Props> = ({
                   <div className="space-y-4">
                     <div>
                       <label className="block text-xs font-semibold text-slate-300 mb-1.5">
-                        Metoda logowania SSH
+                        {t('Metoda logowania SSH')}
                       </label>
                       <div className="grid grid-cols-3 gap-2">
                         {(['password', 'key', 'certificate'] as SshAuthType[]).map((type) => (
@@ -899,10 +901,10 @@ export const ConnectionModal: React.FC<Props> = ({
                             }`}
                           >
                             {type === 'password'
-                              ? 'Hasło'
+                              ? t('Hasło')
                               : type === 'key'
-                              ? 'Klucz prywatny'
-                              : 'Certyfikat SSH CA'}
+                              ? t('Klucz prywatny')
+                              : t('Certyfikat SSH CA')}
                           </button>
                         ))}
                       </div>
@@ -923,7 +925,7 @@ export const ConnectionModal: React.FC<Props> = ({
                           <div className="flex items-center justify-between mb-2">
                             <label className="text-xs font-semibold text-slate-300 flex items-center gap-1.5">
                               <FileKey className="h-3.5 w-3.5 text-cyan-400" />
-                              <span>Klucz prywatny SSH</span>
+                              <span>{t('Klucz prywatny SSH')}</span>
                             </label>
                             <div className="flex items-center rounded-lg bg-slate-900 border border-slate-800 p-0.5">
                               <button
@@ -936,7 +938,7 @@ export const ConnectionModal: React.FC<Props> = ({
                                 }`}
                               >
                                 <FolderDown className="h-3 w-3" />
-                                <span>Wskaż plik z dysku</span>
+                                <span>{t('Wskaż plik z dysku')}</span>
                               </button>
                               <button
                                 type="button"
@@ -948,7 +950,7 @@ export const ConnectionModal: React.FC<Props> = ({
                                 }`}
                               >
                                 <KeyRound className="h-3 w-3" />
-                                <span>Wklej treść klucza</span>
+                                <span>{t('Wklej treść klucza')}</span>
                               </button>
                             </div>
                           </div>
@@ -963,7 +965,7 @@ export const ConnectionModal: React.FC<Props> = ({
                                     setKeyFilePath(e.target.value);
                                     setKeyFileSuccess(null);
                                   }}
-                                  placeholder="np. ~/.ssh/id_ed25519 lub C:\Users\user\.ssh\id_rsa"
+                                  placeholder={t('np. ~/.ssh/id_ed25519 lub C:\\Users\\user\\.ssh\\id_rsa')}
                                   className="flex-1 rounded-lg border border-slate-700 bg-slate-800/80 px-3 py-2 font-mono text-xs text-white placeholder-slate-500 focus:border-cyan-500 focus:outline-hidden"
                                 />
                                 <button
@@ -977,7 +979,7 @@ export const ConnectionModal: React.FC<Props> = ({
                                   ) : (
                                     <FolderOpen className="h-3.5 w-3.5" />
                                   )}
-                                  <span>Przeglądaj...</span>
+                                  <span>{t('Przeglądaj...')}</span>
                                 </button>
                               </div>
 
@@ -990,7 +992,7 @@ export const ConnectionModal: React.FC<Props> = ({
 
                               {privateKey && !keyFileSuccess && (
                                 <div className="flex items-center gap-2 rounded-lg bg-slate-800/60 border border-slate-700/60 px-2.5 py-1 text-[11px] text-slate-400">
-                                  <span>Zapisana treść klucza w sejfie: {privateKey.length} bajtów</span>
+                                  <span>{t('Zapisana treść klucza w sejfie: {n} bajtów', { n: privateKey.length })}</span>
                                 </div>
                               )}
                             </div>
@@ -998,7 +1000,7 @@ export const ConnectionModal: React.FC<Props> = ({
                             <div className="space-y-1.5">
                               <div className="flex items-center justify-between">
                                 <span className="text-[11px] text-slate-400">
-                                  Wklej treść klucza (OpenSSH / PEM / Ed25519)
+                                  {t('Wklej treść klucza (OpenSSH / PEM / Ed25519)')}
                                 </span>
                                 <button
                                   type="button"
@@ -1007,7 +1009,7 @@ export const ConnectionModal: React.FC<Props> = ({
                                   className="inline-flex items-center gap-1 text-[11px] text-cyan-400 hover:text-cyan-300 cursor-pointer"
                                 >
                                   <FolderDown className="h-3 w-3" />
-                                  <span>Załaduj z pliku...</span>
+                                  <span>{t('Załaduj z pliku...')}</span>
                                 </button>
                               </div>
                               <textarea
@@ -1028,10 +1030,10 @@ export const ConnectionModal: React.FC<Props> = ({
                         <div className="pt-3 border-t border-slate-800/60 space-y-2.5">
                           <div className="flex items-center justify-between">
                             <label className="text-xs font-semibold text-slate-300">
-                              Hasło do klucza (Passphrase)
+                              {t('Hasło do klucza (Passphrase)')}
                             </label>
                             <span className="text-[11px] text-slate-500">
-                              Opcjonalne, jeśli klucz jest zabezpieczony hasłem
+                              {t('Opcjonalne, jeśli klucz jest zabezpieczony hasłem')}
                             </span>
                           </div>
 
@@ -1048,8 +1050,8 @@ export const ConnectionModal: React.FC<Props> = ({
                             >
                               <KeyRound className="h-4 w-4 shrink-0 text-cyan-400" />
                               <div>
-                                <div className="text-xs font-semibold">Wprowadź hasło od razu</div>
-                                <div className="text-[10px] text-slate-400">Zapisz zaszyfrowane w sejfie</div>
+                                <div className="text-xs font-semibold">{t('Wprowadź hasło od razu')}</div>
+                                <div className="text-[10px] text-slate-400">{t('Zapisz zaszyfrowane w sejfie')}</div>
                               </div>
                             </button>
 
@@ -1067,8 +1069,8 @@ export const ConnectionModal: React.FC<Props> = ({
                             >
                               <Shield className="h-4 w-4 shrink-0 text-amber-400" />
                               <div>
-                                <div className="text-xs font-semibold">Monit przy połączeniu</div>
-                                <div className="text-[10px] text-slate-400">Pytaj o hasło przy próbie połączenia</div>
+                                <div className="text-xs font-semibold">{t('Monit przy połączeniu')}</div>
+                                <div className="text-[10px] text-slate-400">{t('Pytaj o hasło przy próbie połączenia')}</div>
                               </div>
                             </button>
                           </div>
@@ -1081,8 +1083,8 @@ export const ConnectionModal: React.FC<Props> = ({
                                 onChange={(e) => setPassphrase(e.target.value)}
                                 placeholder={
                                   editingConnection?.privateKeyPassphraseEncrypted
-                                    ? '•••••••••••• (Zapisane w sejfie — wpisz nowe aby zmienić)'
-                                    : 'Wprowadź passphrase do klucza...'
+                                    ? t('•••••••••••• (Zapisane w sejfie — wpisz nowe aby zmienić)')
+                                    : t('Wprowadź passphrase do klucza...')
                                 }
                                 className="w-full rounded-lg border border-slate-700 bg-slate-800/80 px-3 py-2 pr-10 text-xs text-white placeholder-slate-500 focus:border-cyan-500 focus:outline-hidden"
                               />
@@ -1098,7 +1100,7 @@ export const ConnectionModal: React.FC<Props> = ({
                             <div className="rounded-lg bg-amber-500/10 border border-amber-500/20 p-2.5 text-xs text-amber-300 flex items-center gap-2">
                               <Shield className="h-4 w-4 shrink-0 text-amber-400" />
                               <span>
-                                Hasło nie będzie przechowywane w programie. Przed otwarciem sesji pojawi się okienko z prośbą o podanie passphrase.
+                                {t('Hasło nie będzie przechowywane w programie. Przed otwarciem sesji pojawi się okienko z prośbą o podanie passphrase.')}
                               </span>
                             </div>
                           )}
@@ -1107,7 +1109,7 @@ export const ConnectionModal: React.FC<Props> = ({
                         {sshAuthType === 'certificate' && (
                           <div className="pt-3 border-t border-slate-800/60">
                             <label className="block text-xs font-semibold text-slate-300 mb-1">
-                              Certyfikat SSH (`id_ed25519-cert.pub`)
+                              {t('Certyfikat SSH (id_ed25519-cert.pub)')}
                             </label>
                             <textarea
                               rows={2}
@@ -1132,10 +1134,10 @@ export const ConnectionModal: React.FC<Props> = ({
                   <div>
                     <h3 className="text-xs font-bold text-white uppercase tracking-wider flex items-center gap-2">
                       <ArrowRightLeft className="h-4 w-4 text-cyan-400" />
-                      Przekierowania Portów (Port Forwarding)
+                      {t('Przekierowania Portów (Port Forwarding)')}
                     </h3>
                     <p className="mt-1 text-xs text-slate-400 leading-relaxed">
-                      Konfiguracja tuneli SSH: ruch lokalny do zdalnego (Local -L), ruch zdalny do lokalnego (Remote -R) oraz dynamiczny serwer proxy (Dynamic SOCKS5 -D).
+                      {t('Konfiguracja tuneli SSH: ruch lokalny do zdalnego (Local -L), ruch zdalny do lokalnego (Remote -R) oraz dynamiczny serwer proxy (Dynamic SOCKS5 -D).')}
                     </p>
                   </div>
 
@@ -1147,7 +1149,7 @@ export const ConnectionModal: React.FC<Props> = ({
                       className="inline-flex items-center gap-1.5 rounded-lg border border-slate-700 bg-slate-800/90 px-3 py-1.5 text-xs font-medium text-slate-200 hover:border-cyan-500/50 hover:bg-slate-700 hover:text-white transition-all shadow-xs cursor-pointer"
                     >
                       <Plus className="h-3.5 w-3.5 text-emerald-400" />
-                      Dodaj Local (-L)
+                      {t('Dodaj Local (-L)')}
                     </button>
                     <button
                       type="button"
@@ -1155,7 +1157,7 @@ export const ConnectionModal: React.FC<Props> = ({
                       className="inline-flex items-center gap-1.5 rounded-lg border border-slate-700 bg-slate-800/90 px-3 py-1.5 text-xs font-medium text-slate-200 hover:border-cyan-500/50 hover:bg-slate-700 hover:text-white transition-all shadow-xs cursor-pointer"
                     >
                       <Plus className="h-3.5 w-3.5 text-amber-400" />
-                      Dodaj Remote (-R)
+                      {t('Dodaj Remote (-R)')}
                     </button>
                     <button
                       type="button"
@@ -1163,14 +1165,14 @@ export const ConnectionModal: React.FC<Props> = ({
                       className="inline-flex items-center gap-1.5 rounded-lg border border-cyan-500/40 bg-cyan-600/20 px-3 py-1.5 text-xs font-medium text-cyan-300 hover:bg-cyan-600/30 hover:border-cyan-400 transition-all shadow-xs cursor-pointer"
                     >
                       <Plus className="h-3.5 w-3.5 text-cyan-400" />
-                      Dodaj Dynamic SOCKS5 (-D)
+                      {t('Dodaj Dynamic SOCKS5 (-D)')}
                     </button>
                   </div>
                 </div>
 
                 {portForwarding.length === 0 ? (
                   <div className="rounded-xl border border-dashed border-slate-800 p-8 text-center text-xs text-slate-500">
-                    Brak skonfigurowanych przekierowań portów. Kliknij przycisk powyżej, aby dodać tunel.
+                    {t('Brak skonfigurowanych przekierowań portów. Kliknij przycisk powyżej, aby dodać tunel.')}
                   </div>
                 ) : (
                   <div className="space-y-2">
@@ -1197,12 +1199,12 @@ export const ConnectionModal: React.FC<Props> = ({
                               : 'bg-cyan-500/10 text-cyan-400 border border-cyan-500/20'
                           }`}
                         >
-                          {rule.forwardType === 'dynamic' ? 'Dynamic SOCKS5' : rule.forwardType}
+                          {rule.forwardType === 'dynamic' ? t('Dynamic SOCKS5') : rule.forwardType}
                         </span>
 
                         {/* Local Port */}
                         <div className="flex items-center gap-1">
-                          <span className="text-[11px] text-slate-400">Port lokalny:</span>
+                          <span className="text-[11px] text-slate-400">{t('Port lokalny:')}</span>
                           <input
                             type="number"
                             value={rule.localPort}
@@ -1216,7 +1218,7 @@ export const ConnectionModal: React.FC<Props> = ({
                           <>
                             <ArrowRightLeft className="h-3.5 w-3.5 text-slate-500" />
                             <div className="flex items-center gap-1 flex-1">
-                              <span className="text-[11px] text-slate-400">Zdalny:</span>
+                              <span className="text-[11px] text-slate-400">{t('Zdalny:')}</span>
                               <input
                                 type="text"
                                 value={rule.remoteHost || '127.0.0.1'}
@@ -1237,7 +1239,7 @@ export const ConnectionModal: React.FC<Props> = ({
 
                         {rule.forwardType === 'dynamic' && (
                           <span className="flex-1 text-[11px] text-slate-500 italic">
-                            Lokalny serwer SOCKS5 proxy dla przeglądarki lub narzędzi
+                            {t('Lokalny serwer SOCKS5 proxy dla przeglądarki lub narzędzi')}
                           </span>
                         )}
 
@@ -1261,7 +1263,7 @@ export const ConnectionModal: React.FC<Props> = ({
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <label className="block text-xs font-semibold text-slate-300">
-                      Szerokość (px)
+                      {t('Szerokość (px)')}
                     </label>
                     <input
                       type="number"
@@ -1272,7 +1274,7 @@ export const ConnectionModal: React.FC<Props> = ({
                   </div>
                   <div>
                     <label className="block text-xs font-semibold text-slate-300">
-                      Wysokość (px)
+                      {t('Wysokość (px)')}
                     </label>
                     <input
                       type="number"
@@ -1292,7 +1294,7 @@ export const ConnectionModal: React.FC<Props> = ({
                       className="h-4 w-4 rounded border-slate-700 bg-slate-800 text-cyan-500 focus:ring-0"
                     />
                     <span className="text-xs text-slate-300">
-                      Synchronizacja schowka (kopiuj / wklej)
+                      {t('Synchronizacja schowka (kopiuj / wklej)')}
                     </span>
                   </label>
 
@@ -1304,7 +1306,7 @@ export const ConnectionModal: React.FC<Props> = ({
                       className="h-4 w-4 rounded border-slate-700 bg-slate-800 text-cyan-500 focus:ring-0"
                     />
                     <span className="text-xs text-slate-300">
-                      Przesyłanie dźwięku z pulpitu zdalnego
+                      {t('Przesyłanie dźwięku z pulpitu zdalnego')}
                     </span>
                   </label>
                 </div>
@@ -1316,26 +1318,26 @@ export const ConnectionModal: React.FC<Props> = ({
               <div className="space-y-4">
                 <div>
                   <label className="block text-xs font-semibold text-slate-300">
-                    Tagi (rozdzielane przecinkami)
+                    {t('Tagi (rozdzielane przecinkami)')}
                   </label>
                   <input
                     type="text"
                     value={tagsInput}
                     onChange={(e) => setTagsInput(e.target.value)}
-                    placeholder="web, staging, nginx, k8s, dmz"
+                    placeholder={t('web, staging, nginx, k8s, dmz')}
                     className="mt-1.5 w-full rounded-lg border border-slate-700 bg-slate-800/80 px-3 py-2 text-xs text-white placeholder-slate-500 focus:border-cyan-500 focus:outline-none"
                   />
                 </div>
 
                 <div>
                   <label className="block text-xs font-semibold text-slate-300">
-                    Notatki administracyjne
+                    {t('Notatki administracyjne')}
                   </label>
                   <textarea
                     rows={6}
                     value={notes}
                     onChange={(e) => setNotes(e.target.value)}
-                    placeholder="Wprowadź instrukcje, procedury serwisowe, dane kontaktowe..."
+                    placeholder={t('Wprowadź instrukcje, procedury serwisowe, dane kontaktowe...')}
                     className="mt-1.5 w-full rounded-lg border border-slate-700 bg-slate-800/80 px-3 py-2 text-xs text-white placeholder-slate-500 focus:border-cyan-500 focus:outline-none"
                   />
                 </div>
@@ -1346,7 +1348,7 @@ export const ConnectionModal: React.FC<Props> = ({
           {/* Modal Footer */}
           <div className="flex items-center justify-between border-t border-slate-800 bg-slate-900 px-6 py-3">
             <span className="text-[11px] text-slate-500">
-              {editingConnection ? `ID: ${editingConnection.id}` : 'Nowy wpis w bazie'}
+              {editingConnection ? `ID: ${editingConnection.id}` : t('Nowy wpis w bazie')}
             </span>
             <div className="flex items-center gap-2">
               <button
@@ -1354,7 +1356,7 @@ export const ConnectionModal: React.FC<Props> = ({
                 onClick={onClose}
                 className="rounded-lg border border-slate-700 px-4 py-2 text-xs font-medium text-slate-300 hover:bg-slate-800 transition-colors"
               >
-                Anuluj
+                {t('Anuluj')}
               </button>
               <button
                 type="submit"
@@ -1362,7 +1364,7 @@ export const ConnectionModal: React.FC<Props> = ({
                 className="flex items-center gap-1.5 rounded-lg bg-gradient-to-r from-cyan-600 to-blue-600 px-5 py-2 text-xs font-semibold text-white shadow-md shadow-cyan-600/25 hover:opacity-95 disabled:opacity-50 transition-all"
               >
                 {saving && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
-                Zapisz połączenie
+                {t('Zapisz połączenie')}
               </button>
             </div>
           </div>

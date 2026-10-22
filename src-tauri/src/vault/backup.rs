@@ -88,10 +88,10 @@ pub fn backup_while_locked(
     if !vault_path.exists() {
         return Ok(None);
     }
-    let current = fs::read(&vault_path).map_err(|e| format!("Błąd odczytu sejfu: {}", e))?;
+    let current = fs::read(&vault_path).map_err(|e| tr!("Błąd odczytu sejfu: {}", "Vault read error: {}", e))?;
 
     let dir = backup_dir(settings);
-    fs::create_dir_all(&dir).map_err(|e| format!("Nie można utworzyć katalogu kopii {:?}: {}", dir, e))?;
+    fs::create_dir_all(&dir).map_err(|e| tr!("Nie można utworzyć katalogu kopii {:?}: {}", "Cannot create the backup folder {:?}: {}", dir, e))?;
 
     if skip_if_unchanged {
         if let Some(newest) = backup_files(&dir).first() {
@@ -128,11 +128,11 @@ pub fn create_backup(settings: &BackupSettings, reason: &str, skip_if_unchanged:
 /// Replaces vault.json with the given backup (the current vault is backed up first).
 pub fn restore_backup(settings: &BackupSettings, name: &str) -> Result<(), String> {
     if !is_backup_name(name) {
-        return Err("Nieprawidłowa nazwa pliku kopii".to_string());
+        return Err(tr!("Nieprawidłowa nazwa pliku kopii", "Invalid backup file name").to_string());
     }
     let path = backup_dir(settings).join(name);
-    let bytes = fs::read(&path).map_err(|e| format!("Nie można odczytać kopii {:?}: {}", path, e))?;
-    serde_json::from_slice::<VaultData>(&bytes).map_err(|e| format!("Plik kopii jest uszkodzony: {}", e))?;
+    let bytes = fs::read(&path).map_err(|e| tr!("Nie można odczytać kopii {:?}: {}", "Cannot read backup {:?}: {}", path, e))?;
+    serde_json::from_slice::<VaultData>(&bytes).map_err(|e| tr!("Plik kopii jest uszkodzony: {}", "The backup file is corrupted: {}", e))?;
 
     let _io = lock_io();
     backup_while_locked(settings, "pre-restore", true)?;

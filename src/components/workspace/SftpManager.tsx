@@ -31,6 +31,7 @@ import { getCurrentWebview } from '@tauri-apps/api/webview';
 import { api, isTauri } from '../../services/api';
 import { SftpFileEntry, TransferProgress, TransferSummary } from '../../types';
 import { ConfirmDialog } from '../dialogs/ConfirmDialog';
+import { locale, useT } from '../../i18n';
 
 type Side = 'local' | 'remote';
 type SortKey = 'name' | 'size' | 'modified';
@@ -86,7 +87,7 @@ const formatBytes = (bytes: number): string => {
 };
 
 const formatDate = (secs: number): string =>
-  secs ? new Date(secs * 1000).toLocaleString('pl-PL', { dateStyle: 'short', timeStyle: 'short' }) : '';
+  secs ? new Date(secs * 1000).toLocaleString(locale(), { dateStyle: 'short', timeStyle: 'short' }) : '';
 
 const baseName = (p: string) => p.split(/[\\/]/).filter(Boolean).pop() || p;
 
@@ -128,6 +129,7 @@ export const SftpManager: React.FC<Props> = ({
   onNotify,
   fullWidth,
 }) => {
+  const t = useT();
   const [local, setLocal] = useState<PaneState>(emptyPane);
   const [remote, setRemote] = useState<PaneState>(emptyPane);
   const [busy, setBusy] = useState<string | null>(null); // transfer description
@@ -144,10 +146,11 @@ export const SftpManager: React.FC<Props> = ({
   const busyRef = useRef<string | null>(null);
   const showBusyNotice = useCallback(() => {
     setConfirm({
-      title: 'Trwa kopiowanie',
-      message:
-        `Aktualnie trwa kopiowanie (${busyRef.current ?? 'transfer'}). ` +
-        'Poczekaj na zakończenie, a następnie ponownie przeciągnij lub wyślij kolejne pliki.',
+      title: t('Trwa kopiowanie'),
+      message: t(
+        'Aktualnie trwa kopiowanie ({what}). Poczekaj na zakończenie, a następnie ponownie przeciągnij lub wyślij kolejne pliki.',
+        { what: busyRef.current ?? 'transfer' }
+      ),
       label: 'OK',
       info: true,
       run: () => {},
@@ -261,8 +264,8 @@ export const SftpManager: React.FC<Props> = ({
       const transferId = Math.random().toString(36).slice(2);
       transferIdRef.current = transferId;
       setProgress(null);
-      const what = paths.length === 1 ? baseName(paths[0]) : `${paths.length} elementów`;
-      const label = from === 'local' ? `Wysyłanie ${what} → ${targetDir}` : `Pobieranie ${what} → ${targetDir}`;
+      const what = paths.length === 1 ? baseName(paths[0]) : t('{length} elementów', { length: paths.length });
+      const label = from === 'local' ? t('Wysyłanie {what} → {targetDir}', { what, targetDir }) : t('Pobieranie {what} → {targetDir}', { what, targetDir });
       busyRef.current = label;
       setBusy(label);
       setStatus(null);
@@ -271,18 +274,18 @@ export const SftpManager: React.FC<Props> = ({
           from === 'local'
             ? await api.sftpTransferUpload(connectionId, paths, targetDir, transferId)
             : await api.sftpTransferDownload(connectionId, paths, targetDir, transferId);
-        const verb = from === 'local' ? 'Wysłano' : 'Pobrano';
+        const verb = from === 'local' ? t('Wysłano') : t('Pobrano');
         const text =
-          `${verb} ${sum.files} plików (${formatBytes(sum.bytes)})` +
-          (sum.folders ? `, katalogów: ${sum.folders}` : '') +
-          (sum.failed ? `. Błędy: ${sum.failed} – ${sum.errors.join('; ')}` : '');
+          t('{verb} {files} plików ({p2})', { verb, files: sum.files, p2: formatBytes(sum.bytes) }) +
+          (sum.folders ? t(', katalogów: {folders}', { folders: sum.folders }) : '') +
+          (sum.failed ? t('. Błędy: {failed} – {p1}', { failed: sum.failed, p1: sum.errors.join('; ') }) : '');
         showStatus(text, sum.failed ? 'error' : 'ok');
         onNotify?.(text);
         if (from === 'local') loadRemote(remote.path === targetDir ? targetDir : remote.path);
         else loadLocal(local.path === targetDir ? targetDir : local.path);
         setters[from]((p) => ({ ...p, selected: [], anchor: null }));
       } catch (err: any) {
-        showStatus(`Błąd transferu: ${err?.message || err}`, 'error');
+        showStatus(t('Błąd transferu: {p0}', { p0: err?.message || err }), 'error');
       } finally {
         busyRef.current = null;
         setBusy(null);
@@ -310,12 +313,12 @@ export const SftpManager: React.FC<Props> = ({
           : [];
       if (existing.length > 0) {
         setConfirm({
-          title: 'Zastąpić istniejące elementy?',
+          title: t('Zastąpić istniejące elementy?'),
           message:
-            `W katalogu docelowym istnieje już: ${existing.slice(0, 6).join(', ')}` +
-            (existing.length > 6 ? ` i ${existing.length - 6} innych` : '') +
-            '. Pliki zostaną nadpisane, a zawartość katalogów połączona.',
-          label: 'Zastąp',
+            t('W katalogu docelowym istnieje już: {p0}', { p0: existing.slice(0, 6).join(', ') }) +
+            (existing.length > 6 ? t(' i {p0} innych', { p0: existing.length - 6 }) : '') +
+            t('. Pliki zostaną nadpisane, a zawartość katalogów połączona.'),
+          label: t('Zastąp'),
           run: () => runTransfer(from, paths, dir),
         });
       } else {
@@ -370,7 +373,7 @@ export const SftpManager: React.FC<Props> = ({
         if (Math.hypot(e.clientX - pending.x, e.clientY - pending.y) < 6) return;
         const pane = pending.from === 'local' ? local : remote;
         const paths = pane.selected.includes(pending.path) ? pane.selected : [pending.path];
-        const label = paths.length === 1 ? baseName(paths[0]) : `${paths.length} elementów`;
+        const label = paths.length === 1 ? baseName(paths[0]) : t('{length} elementów', { length: paths.length });
         setDrag({ from: pending.from, paths, label, x: e.clientX, y: e.clientY, overSide: null, overFolder: null });
         return;
       }
@@ -416,10 +419,10 @@ export const SftpManager: React.FC<Props> = ({
     try {
       if (side === 'local') await api.localMkdir(pane.path, name);
       else await api.sftpMkdir(connectionId, pane.path, name);
-      showStatus(`Utworzono katalog „${name}”`);
+      showStatus(t('Utworzono katalog „{name}”', { name }));
       load(side, pane.path);
     } catch (err: any) {
-      showStatus(`Nie udało się utworzyć katalogu: ${err?.message || err}`, 'error');
+      showStatus(t('Nie udało się utworzyć katalogu: {p0}', { p0: err?.message || err }), 'error');
     }
   };
 
@@ -435,26 +438,26 @@ export const SftpManager: React.FC<Props> = ({
       setters[side]((p) => ({ ...p, searching: false, searchResults: results, searchedFor: query }));
     } catch (err: any) {
       setters[side]((p) => ({ ...p, searching: false }));
-      showStatus(`Błąd wyszukiwania: ${err?.message || err}`, 'error');
+      showStatus(t('Błąd wyszukiwania: {p0}', { p0: err?.message || err }), 'error');
     }
   };
 
   const deleteRemote = (paths: string[]) => {
     if (paths.length === 0) return;
     setConfirm({
-      title: 'Usunąć z serwera?',
+      title: t('Usunąć z serwera?'),
       message:
-        `Zostanie trwale usuniętych ${paths.length} elementów (katalogi razem z zawartością): ` +
+        t('Zostanie trwale usuniętych {length} elementów (katalogi razem z zawartością): ', { length: paths.length }) +
         paths.slice(0, 6).map(baseName).join(', ') +
         (paths.length > 6 ? '…' : ''),
-      label: 'Usuń',
+      label: t('Usuń'),
       run: async () => {
         try {
           await api.sftpDeletePaths(connectionId, paths);
-          showStatus(`Usunięto ${paths.length} elementów`);
+          showStatus(t('Usunięto {length} elementów', { length: paths.length }));
           loadRemote(remote.path);
         } catch (err: any) {
-          showStatus(`Błąd usuwania: ${err?.message || err}`, 'error');
+          showStatus(t('Błąd usuwania: {p0}', { p0: err?.message || err }), 'error');
           loadRemote(remote.path);
         }
       },
@@ -465,18 +468,18 @@ export const SftpManager: React.FC<Props> = ({
     try {
       const paths = await api.clipboardReadFiles();
       if (paths.length > 0) transfer('local', paths);
-      else showStatus('W schowku systemowym nie ma skopiowanych plików ani katalogów', 'error');
+      else showStatus(t('W schowku systemowym nie ma skopiowanych plików ani katalogów'), 'error');
     } catch (err: any) {
-      showStatus(`Błąd odczytu schowka: ${err?.message || err}`, 'error');
+      showStatus(t('Błąd odczytu schowka: {p0}', { p0: err?.message || err }), 'error');
     }
   };
 
   const pinLocalFolder = async () => {
     try {
       await api.setConnectionDownloadDir(connectionId, local.path);
-      showStatus(`Folder „${local.path}” będzie otwierany domyślnie dla tego połączenia`);
+      showStatus(t('Folder „{path}” będzie otwierany domyślnie dla tego połączenia', { path: local.path }));
     } catch (err: any) {
-      showStatus(`Nie udało się zapisać folderu: ${err?.message || err}`, 'error');
+      showStatus(t('Nie udało się zapisać folderu: {p0}', { p0: err?.message || err }), 'error');
     }
   };
 
@@ -502,12 +505,12 @@ export const SftpManager: React.FC<Props> = ({
       <div className="flex h-9 shrink-0 items-center justify-between border-b border-slate-800 bg-slate-900 px-3">
         <div className="flex min-w-0 items-center gap-2">
           <ArrowDownUp className="h-4 w-4 shrink-0 text-cyan-400" />
-          <span className="font-semibold text-white">Menedżer plików SFTP</span>
+          <span className="font-semibold text-white">{t('Menedżer plików SFTP')}</span>
           <span className="truncate font-mono text-[10px] text-slate-400">{connectionTitle}</span>
         </div>
         <button
           onClick={onClose}
-          title="Zamknij (Esc)"
+          title={t('Zamknij (Esc)')}
           className="rounded p-1 text-slate-400 hover:bg-slate-800 hover:text-white"
         >
           <X className="h-4 w-4" />
@@ -518,7 +521,7 @@ export const SftpManager: React.FC<Props> = ({
       <div className="flex min-h-0 flex-1">
         <FilePane
           side="local"
-          title="Komputer lokalny"
+          title={t('Komputer lokalny')}
           icon={<HardDrive className="h-3.5 w-3.5 text-amber-400" />}
           pane={local}
           setPane={setLocal}
@@ -532,14 +535,14 @@ export const SftpManager: React.FC<Props> = ({
           onMkdir={(n) => mkdir('local', n)}
           onSearch={(q) => search('local', q)}
           onTransfer={(paths) => transfer('local', paths)}
-          transferLabel="Wyślij"
+          transferLabel={t('Wyślij')}
           transferIcon={<ArrowRight className="h-3 w-3" />}
           onPin={local.path ? pinLocalFolder : undefined}
           extraTools={
             <button
               onClick={pinLocalFolder}
               disabled={!local.path}
-              title="Otwieraj ten folder domyślnie dla tego połączenia"
+              title={t('Otwieraj ten folder domyślnie dla tego połączenia')}
               className="flex h-6 w-6 items-center justify-center rounded border border-slate-700 bg-slate-800 text-slate-300 hover:bg-slate-700 hover:text-white disabled:opacity-40"
             >
               <Pin className="h-3 w-3" />
@@ -549,7 +552,7 @@ export const SftpManager: React.FC<Props> = ({
         <div className="w-px shrink-0 bg-slate-700" />
         <FilePane
           side="remote"
-          title="Serwer"
+          title={t('Serwer')}
           icon={<Server className="h-3.5 w-3.5 text-cyan-400" />}
           pane={remote}
           setPane={setRemote}
@@ -566,7 +569,7 @@ export const SftpManager: React.FC<Props> = ({
           onSearch={(q) => search('remote', q)}
           onTransfer={(paths) => transfer('remote', paths)}
           onDelete={deleteRemote}
-          transferLabel="Pobierz"
+          transferLabel={t('Pobierz')}
           transferIcon={<ArrowLeft className="h-3 w-3" />}
           onPasteFiles={pasteFromClipboard}
           transferFirst
@@ -574,7 +577,7 @@ export const SftpManager: React.FC<Props> = ({
             <button
               onClick={pasteFromClipboard}
               disabled={!!busy}
-              title="Wyślij pliki i katalogi skopiowane w systemie (Ctrl+C w menedżerze plików)"
+              title={t('Wyślij pliki i katalogi skopiowane w systemie (Ctrl+C w menedżerze plików)')}
               className="flex h-6 w-6 items-center justify-center rounded border border-slate-700 bg-slate-800 text-emerald-400 hover:bg-slate-700 disabled:opacity-40"
             >
               <ClipboardPaste className="h-3 w-3" />
@@ -590,7 +593,7 @@ export const SftpManager: React.FC<Props> = ({
             <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin text-cyan-400" />
             <span className="truncate text-cyan-200">
               {busy}
-              {progress ? ` — ${progress.files} gotowych, teraz: ${progress.current}` : ''}
+              {progress ? t(' — {files} gotowych, teraz: {current}', { files: progress.files, current: progress.current }) : ''}
             </span>
           </>
         ) : status ? (
@@ -599,8 +602,7 @@ export const SftpManager: React.FC<Props> = ({
           </span>
         ) : (
           <span className="truncate text-slate-500">
-            Przeciągnij pliki między panelami lub zaznacz je i użyj „Wyślij” / „Pobierz”. Dwuklik na pliku przenosi go na drugą
-            stronę. Ctrl/Shift – zaznaczanie wielu.
+            {t('Przeciągnij pliki między panelami lub zaznacz je i użyj „Wyślij” / „Pobierz”. Dwuklik na pliku przenosi go na drugą stronę. Ctrl/Shift – zaznaczanie wielu.')}
           </span>
         )}
       </div>
@@ -614,7 +616,7 @@ export const SftpManager: React.FC<Props> = ({
           {drag.from === 'local' ? <ArrowRight className="h-3 w-3" /> : <ArrowLeft className="h-3 w-3" />}
           {drag.label}
           {drag.overSide && drag.overSide !== drag.from && (
-            <span className="text-slate-400">→ {drag.overFolder ? baseName(drag.overFolder) : 'bieżący katalog'}</span>
+            <span className="text-slate-400">→ {drag.overFolder ? baseName(drag.overFolder) : t('bieżący katalog')}</span>
           )}
         </div>
       )}
@@ -696,6 +698,7 @@ const FilePane: React.FC<PaneProps> = ({
   onPasteFiles,
   onPin,
 }) => {
+  const t = useT();
   const [pathInput, setPathInput] = useState(pane.path);
   const [menu, setMenu] = useState<{ x: number; y: number; entry: SftpFileEntry | null; targets: string[] } | null>(null);
   const [newFolder, setNewFolder] = useState<string | null>(null);
@@ -771,7 +774,7 @@ const FilePane: React.FC<PaneProps> = ({
     <button
       onClick={() => onTransfer(pane.selected)}
       disabled={busy || pane.selected.length === 0}
-      title={`${transferLabel} zaznaczone (${pane.selected.length})`}
+      title={t('{transferLabel} zaznaczone ({length})', { transferLabel, length: pane.selected.length })}
       className="flex h-6 items-center gap-1 rounded bg-cyan-600 px-2 font-semibold text-white hover:bg-cyan-500 disabled:opacity-40 disabled:hover:bg-cyan-600"
     >
       {transferFirst && transferIcon}
@@ -839,21 +842,21 @@ const FilePane: React.FC<PaneProps> = ({
         <button
           onClick={() => pane.parent && onOpen(pane.parent)}
           disabled={!pane.parent || pane.loading}
-          title="Katalog nadrzędny (Backspace)"
+          title={t('Katalog nadrzędny (Backspace)')}
           className="flex h-6 w-6 items-center justify-center rounded border border-slate-700 bg-slate-800 text-slate-300 hover:bg-slate-700 disabled:opacity-40"
         >
           <ArrowUp className="h-3 w-3" />
         </button>
         <button
           onClick={onHome}
-          title="Katalog domowy"
+          title={t('Katalog domowy')}
           className="flex h-6 w-6 items-center justify-center rounded border border-slate-700 bg-slate-800 text-slate-300 hover:bg-slate-700"
         >
           <Home className="h-3 w-3" />
         </button>
         <button
           onClick={onRefresh}
-          title="Odśwież"
+          title={t('Odśwież')}
           className="flex h-6 w-6 items-center justify-center rounded border border-slate-700 bg-slate-800 text-slate-300 hover:bg-slate-700"
         >
           <RefreshCw className={`h-3 w-3 ${pane.loading ? 'animate-spin' : ''}`} />
@@ -869,7 +872,7 @@ const FilePane: React.FC<PaneProps> = ({
         />
         <button
           onClick={() => setNewFolder('')}
-          title="Nowy katalog"
+          title={t('Nowy katalog')}
           className="flex h-6 w-6 items-center justify-center rounded border border-slate-700 bg-slate-800 text-amber-300 hover:bg-slate-700"
         >
           <FolderPlus className="h-3 w-3" />
@@ -879,7 +882,7 @@ const FilePane: React.FC<PaneProps> = ({
           <button
             onClick={() => onDelete(pane.selected)}
             disabled={busy || pane.selected.length === 0}
-            title="Usuń zaznaczone z serwera (Delete)"
+            title={t('Usuń zaznaczone z serwera (Delete)')}
             className="flex h-6 w-6 items-center justify-center rounded border border-slate-700 bg-slate-800 text-slate-300 hover:bg-red-500/20 hover:text-red-400 disabled:opacity-40"
           >
             <Trash2 className="h-3 w-3" />
@@ -897,15 +900,15 @@ const FilePane: React.FC<PaneProps> = ({
                 setPane((p) => ({ ...p, filter: '', searchResults: null }));
               }
             }}
-            placeholder="Filtruj… (Enter: szukaj głębiej)"
-            title="Pisanie filtruje bieżący katalog. Enter przeszukuje także podkatalogi."
+            placeholder={t('Filtruj… (Enter: szukaj głębiej)')}
+            title={t('Pisanie filtruje bieżący katalog. Enter przeszukuje także podkatalogi.')}
             className="h-6 w-full rounded border border-slate-700 bg-slate-950 pl-6 pr-6 text-[10.5px] text-slate-200 placeholder-slate-500 focus:border-cyan-500 focus:outline-none"
           />
           {(pane.filter || inSearch) && (
             <button
               onClick={() => setPane((p) => ({ ...p, filter: '', searchResults: null }))}
               className="absolute right-1.5 text-slate-500 hover:text-white"
-              title="Wyczyść"
+              title={t('Wyczyść')}
             >
               <X className="h-3 w-3" />
             </button>
@@ -918,26 +921,26 @@ const FilePane: React.FC<PaneProps> = ({
         <div className="flex shrink-0 items-center justify-between border-b border-slate-800 bg-cyan-950/40 px-2 py-1 text-[10.5px] text-cyan-200">
           {pane.searching ? (
             <span className="flex items-center gap-1.5">
-              <Loader2 className="h-3 w-3 animate-spin" /> Przeszukiwanie podkatalogów…
+              <Loader2 className="h-3 w-3 animate-spin" /> {t('Przeszukiwanie podkatalogów…')}
             </span>
           ) : (
             <span>
-              Wyniki dla „{pane.searchedFor}” w {pane.path}: {pane.searchResults?.length ?? 0}
-              {(pane.searchResults?.length ?? 0) >= 500 ? ' (pokazano pierwsze 500)' : ''}
+              {t('Wyniki dla „{q}” w {path}: {n}', { q: pane.searchedFor, path: pane.path, n: pane.searchResults?.length ?? 0 })}
+              {(pane.searchResults?.length ?? 0) >= 500 ? t(' (pokazano pierwsze 500)') : ''}
             </span>
           )}
           <button
             onClick={() => setPane((p) => ({ ...p, filter: '', searchResults: null }))}
             className="text-cyan-300 hover:text-white"
           >
-            Zamknij wyniki
+            {t('Zamknij wyniki')}
           </button>
         </div>
       )}
 
       {/* Column headers */}
       <div className="grid shrink-0 grid-cols-[22px_1fr_70px] @md:grid-cols-[22px_1fr_70px_110px] items-center border-b border-slate-800 bg-slate-900/40 px-1 py-1 text-[10px] font-semibold text-slate-400">
-        <button onClick={toggleAll} className="flex justify-center text-slate-400 hover:text-cyan-300" title="Zaznacz wszystko (Ctrl+A)">
+        <button onClick={toggleAll} className="flex justify-center text-slate-400 hover:text-cyan-300" title={t('Zaznacz wszystko (Ctrl+A)')}>
           {allSelected ? (
             <CheckSquare className="h-3.5 w-3.5 text-cyan-400" />
           ) : pane.selected.length ? (
@@ -947,13 +950,13 @@ const FilePane: React.FC<PaneProps> = ({
           )}
         </button>
         <button onClick={() => sortBy('name')} className="text-left hover:text-white">
-          Nazwa{sortMark('name')}
+          {t('Nazwa')}{sortMark('name')}
         </button>
         <button onClick={() => sortBy('size')} className="text-right hover:text-white pr-1">
-          Rozmiar{sortMark('size')}
+          {t('Rozmiar')}{sortMark('size')}
         </button>
         <button onClick={() => sortBy('modified')} className="hidden @md:block text-right hover:text-white pr-1">
-          Zmodyfikowano{sortMark('modified')}
+          {t('Zmodyfikowano')}{sortMark('modified')}
         </button>
       </div>
 
@@ -976,7 +979,7 @@ const FilePane: React.FC<PaneProps> = ({
                 }
               }}
               onBlur={() => setNewFolder(null)}
-              placeholder="Nazwa nowego katalogu – Enter, aby utworzyć"
+              placeholder={t('Nazwa nowego katalogu – Enter, aby utworzyć')}
               className="h-6 flex-1 rounded border border-amber-500/50 bg-slate-950 px-2 text-[11px] text-white focus:outline-none"
             />
           </div>
@@ -990,7 +993,7 @@ const FilePane: React.FC<PaneProps> = ({
           </div>
         ) : visible.length === 0 ? (
           <div className="py-8 text-center text-[11px] text-slate-500">
-            {inSearch ? 'Brak wyników' : pane.filter ? 'Brak elementów pasujących do filtra' : 'Katalog jest pusty'}
+            {inSearch ? t('Brak wyników') : pane.filter ? t('Brak elementów pasujących do filtra') : t('Katalog jest pusty')}
           </div>
         ) : (
           visible.map((entry) => {
@@ -1009,7 +1012,11 @@ const FilePane: React.FC<PaneProps> = ({
                 }}
                 onClick={(e) => rowClick(e, entry)}
                 onDoubleClick={() => (entry.isDir ? onOpen(entry.path) : onTransfer([entry.path]))}
-                title={entry.isDir ? `${entry.path}\nDwuklik: otwórz` : `${entry.path}\nDwuklik: ${transferLabel.toLowerCase()}`}
+                title={
+                  entry.isDir
+                    ? t('{path}\nDwuklik: otwórz', { path: entry.path })
+                    : t('{path}\nDwuklik: {action}', { path: entry.path, action: transferLabel.toLowerCase() })
+                }
                 className={`grid cursor-default grid-cols-[22px_1fr_70px] @md:grid-cols-[22px_1fr_70px_110px] items-center px-1 py-[3px] text-[11px] ${
                   isDropFolder
                     ? 'bg-cyan-700/40 ring-1 ring-inset ring-cyan-400'
@@ -1043,27 +1050,28 @@ const FilePane: React.FC<PaneProps> = ({
       {/* Footer */}
       <div className="flex h-6 shrink-0 items-center justify-between border-t border-slate-800 px-2 text-[10px] text-slate-500">
         <span>
-          {visible.length} elementów
-          {pane.selected.length > 0 && ` · zaznaczono ${pane.selected.length}${selectedBytes ? ` (${formatBytes(selectedBytes)})` : ''}`}
+          {t('{n} elementów', { n: visible.length })}
+          {pane.selected.length > 0 &&
+            ' · ' + t('zaznaczono {n}', { n: pane.selected.length }) + (selectedBytes ? ` (${formatBytes(selectedBytes)})` : '')}
         </span>
-        {side === 'remote' && <span className="hidden @md:inline">Upuść tu pliki z systemu, aby je wysłać</span>}
+        {side === 'remote' && <span className="hidden @md:inline">{t('Upuść tu pliki z systemu, aby je wysłać')}</span>}
       </div>
 
       {menu && (
         <PaneContextMenu x={menu.x} y={menu.y} onClose={() => setMenu(null)}>
           {menu.entry?.isDir && (
             <MenuItem icon={<FolderOpen className="h-3.5 w-3.5 text-amber-400" />} onClick={() => onOpen(menu.entry!.path)}>
-              Otwórz
+              {t('Otwórz')}
             </MenuItem>
           )}
           {menu.targets.length > 0 && (
             <MenuItem icon={transferIcon} disabled={busy} onClick={() => onTransfer(menu.targets)}>
-              {transferLabel} {menu.targets.length > 1 ? `zaznaczone (${menu.targets.length})` : `„${baseName(menu.targets[0])}”`}
+              {transferLabel} {menu.targets.length > 1 ? t('zaznaczone ({length})', { length: menu.targets.length }) : t('„{name}”', { name: baseName(menu.targets[0]) })}
             </MenuItem>
           )}
           {onDelete && menu.targets.length > 0 && (
             <MenuItem icon={<Trash2 className="h-3.5 w-3.5 text-red-400" />} danger disabled={busy} onClick={() => onDelete(menu.targets)}>
-              Usuń{menu.targets.length > 1 ? ` (${menu.targets.length})` : ''}
+              {t('Usuń')}{menu.targets.length > 1 ? ` (${menu.targets.length})` : ''}
             </MenuItem>
           )}
           {menu.entry && (
@@ -1071,36 +1079,36 @@ const FilePane: React.FC<PaneProps> = ({
               icon={<Copy className="h-3.5 w-3.5 text-slate-400" />}
               onClick={() => api.clipboardWriteText(menu.entry!.path).catch(() => {})}
             >
-              Kopiuj ścieżkę
+              {t('Kopiuj ścieżkę')}
             </MenuItem>
           )}
           {(menu.entry || menu.targets.length > 0) && <div className="my-1 border-t border-slate-800" />}
           <MenuItem icon={<FolderPlus className="h-3.5 w-3.5 text-amber-300" />} onClick={() => setNewFolder('')}>
-            Nowy katalog
+            {t('Nowy katalog')}
           </MenuItem>
           {onPasteFiles && (
             <MenuItem icon={<ClipboardPaste className="h-3.5 w-3.5 text-emerald-400" />} disabled={busy} onClick={onPasteFiles}>
-              Wyślij pliki ze schowka systemu
+              {t('Wyślij pliki ze schowka systemu')}
             </MenuItem>
           )}
           {onPin && (
             <MenuItem icon={<Pin className="h-3.5 w-3.5 text-slate-400" />} onClick={onPin}>
-              Otwieraj ten folder domyślnie
+              {t('Otwieraj ten folder domyślnie')}
             </MenuItem>
           )}
           {pane.parent && !inSearch && (
             <MenuItem icon={<ArrowUp className="h-3.5 w-3.5 text-slate-400" />} onClick={() => onOpen(pane.parent!)}>
-              Katalog nadrzędny
+              {t('Katalog nadrzędny')}
             </MenuItem>
           )}
           <MenuItem icon={<RefreshCw className="h-3.5 w-3.5 text-slate-400" />} onClick={onRefresh}>
-            Odśwież
+            {t('Odśwież')}
           </MenuItem>
           <MenuItem
             icon={<CheckSquare className="h-3.5 w-3.5 text-slate-400" />}
             onClick={() => setPane((p) => ({ ...p, selected: visible.map((v) => v.path) }))}
           >
-            Zaznacz wszystko
+            {t('Zaznacz wszystko')}
           </MenuItem>
         </PaneContextMenu>
       )}
