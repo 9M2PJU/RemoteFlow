@@ -144,16 +144,19 @@ pub fn spawn_rdp_session(
         let mut cmd = Command::new(&binary);
 
         let (rdp_user, rdp_domain) = normalize_rdp_identity(&config.username, config.domain.as_deref());
+        let mut stdin_password: Option<String> = None;
 
         if binary.contains("freerdp") {
             cmd.arg(format!("/v:{}:{}", config.host, config.port));
             if !rdp_user.is_empty() {
                 cmd.arg(format!("/u:{}", rdp_user));
             }
-            if let Some(pwd) = &config.password {
-                if !pwd.is_empty() {
-                    cmd.arg(format!("/p:{}", pwd));
-                }
+            // The password is never put on the command line (visible to every user via `ps`,
+            // /proc/<pid>/cmdline). FreeRDP 2 and 3 read it from stdin with /from-stdin:force
+            // ("Password:" prompt before connecting); it is written to the pipe after spawn.
+            if config.password.as_deref().is_some_and(|p| !p.is_empty()) {
+                stdin_password = config.password.clone();
+                cmd.arg("/from-stdin:force");
             }
             if let Some(dom) = &rdp_domain {
                 cmd.arg(format!("/d:{}", dom));
@@ -206,6 +209,7 @@ pub fn spawn_rdp_session(
 
         cmd.stdout(Stdio::piped());
         cmd.stderr(Stdio::piped());
+        cmd.stdin(if stdin_password.is_some() { Stdio::piped() } else { Stdio::null() });
 
         let mut child = match cmd.spawn() {
             Ok(c) => {
@@ -219,6 +223,17 @@ pub fn spawn_rdp_session(
                 return;
             }
         };
+
+        // Hand the password to FreeRDP through the pipe, then close it (EOF on any further prompt)
+        if let (Some(password), Some(mut stdin)) = (stdin_password.take(), child.stdin.take()) {
+            std::thread::spawn(move || {
+                use std::io::Write;
+                let mut line = zeroize::Zeroizing::new(password.into_bytes());
+                line.push(b'\n');
+                let _ = stdin.write_all(&line);
+                let _ = stdin.flush();
+            });
+        }
 
         // Pipe stdout to frontend
         let stdout = child.stdout.take();
