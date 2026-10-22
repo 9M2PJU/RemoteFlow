@@ -44,6 +44,7 @@ import {
 } from '@devolutions/iron-remote-desktop-rdp';
 import { SessionInfo, SftpFileEntry } from '../../types';
 import { api, isTauri, isWindowsHost } from '../../services/api';
+import { explainRdpError } from '../../utils/rdpErrors';
 import { listen } from '@tauri-apps/api/event';
 
 let rdpWasmInitPromise: Promise<void> | null = null;
@@ -275,6 +276,9 @@ export const RdpViewer: React.FC<Props> = ({ session, isActive }) => {
 
   const [status, setStatus] = useState<'connecting' | 'connected' | 'error' | 'disconnected'>('connecting');
   const [statusMessage, setStatusMessage] = useState<string>('Nawiązywanie połączenia RDP...');
+  const [errorCopied, setErrorCopied] = useState(false);
+  // Login exactly as sent to the server (user name and domain are normalised by the backend)
+  const rdpLogin = session.rdpDomain ? `${session.rdpDomain}\\${session.username}` : session.username;
   const [copiedPassword, setCopiedPassword] = useState(false);
   const [clipboardFeedback, setClipboardFeedback] = useState<string | null>(null);
   const [isLaunchingExternal, setIsLaunchingExternal] = useState(false);
@@ -1371,7 +1375,7 @@ export const RdpViewer: React.FC<Props> = ({ session, isActive }) => {
     const dim = getDimensionsForPreset(selectedResolution, containerRef.current, session.rdpSettings);
     const rdpContent = [
       `full address:s:${session.host}:${session.port}`,
-      `username:s:${session.username}`,
+      `username:s:${session.rdpDomain ? `${session.rdpDomain}\\${session.username}` : session.username}`,
       `screen mode id:i:2`,
       `use multimon:i:1`,
       `desktopwidth:i:${dim.width}`,
@@ -2533,7 +2537,7 @@ export const RdpViewer: React.FC<Props> = ({ session, isActive }) => {
             </div>
             <h3 className="text-base font-semibold text-white tracking-tight">Łączenie z {session.title}</h3>
             <p className="mt-1 font-mono text-xs text-slate-400">
-              {session.username}@{session.host}:{session.port}
+              {rdpLogin}@{session.host}:{session.port}
             </p>
             <div className="mt-3 inline-flex items-center gap-2 rounded-full bg-slate-900 border border-slate-800 px-3 py-1 text-[11px] text-cyan-300">
               <span className="h-1.5 w-1.5 rounded-full bg-cyan-400 animate-ping" />
@@ -2551,9 +2555,31 @@ export const RdpViewer: React.FC<Props> = ({ session, isActive }) => {
             <h3 className="text-base font-bold text-white tracking-tight">
               {isError ? 'Błąd połączenia z sesją RDP' : 'Sesja RDP zakończona'}
             </h3>
-            <p className="mt-1 max-w-md text-xs text-slate-400 leading-relaxed font-mono bg-slate-900/80 border border-slate-800 p-2.5 rounded-lg my-2">
-              {statusMessage}
-            </p>
+            <div className="relative mt-1 max-w-md my-2">
+              <p className="select-text cursor-text break-words text-xs text-slate-400 leading-relaxed font-mono bg-slate-900/80 border border-slate-800 p-2.5 pr-8 rounded-lg">
+                {statusMessage}
+              </p>
+              <button
+                type="button"
+                title="Kopiuj treść błędu"
+                onClick={() => {
+                  api.clipboardWriteText(statusMessage).catch(() => {});
+                  setErrorCopied(true);
+                  setTimeout(() => setErrorCopied(false), 1500);
+                }}
+                className="absolute right-1.5 top-1.5 rounded p-1 text-slate-500 hover:bg-slate-800 hover:text-white"
+              >
+                {errorCopied ? <Check className="h-3.5 w-3.5 text-emerald-400" /> : <Copy className="h-3.5 w-3.5" />}
+              </button>
+            </div>
+            {isError && explainRdpError(statusMessage) && (
+              <div className="max-w-md rounded-lg border border-amber-500/30 bg-amber-500/10 p-2.5 text-left text-xs leading-relaxed text-amber-200">
+                {explainRdpError(statusMessage)}
+                <div className="mt-1.5 text-amber-300/80">
+                  Wysłany login: <span className="select-text font-mono text-amber-100">{rdpLogin}</span>
+                </div>
+              </div>
+            )}
             <div className="mt-4 flex items-center gap-3">
               <button
                 onClick={() => setConnectionAttempts((c) => c + 1)}

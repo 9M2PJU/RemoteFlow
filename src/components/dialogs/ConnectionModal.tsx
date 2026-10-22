@@ -26,6 +26,7 @@ import {
   SshAuthType,
   ForwardType,
 } from '../../types';
+import { normalizeRdpIdentity, rdpLoginLabel } from '../../utils/rdpIdentity';
 
 interface Props {
   isOpen: boolean;
@@ -839,6 +840,43 @@ export const ConnectionModal: React.FC<Props> = ({
                       </div>
                     </div>
                   </div>
+
+                  {protocol === 'rdp' && (() => {
+                    const cred = credentialId ? credentials.find((c) => c.id === credentialId) : undefined;
+                    const effectiveUser = cred?.username || username;
+                    const login = rdpLoginLabel(effectiveUser, rdpDomain);
+                    const effectiveDomain = normalizeRdpIdentity(effectiveUser, rdpDomain).domain ?? '';
+                    // The separate field is not used when the user name already decides the domain
+                    const ignored =
+                      rdpDomain.trim() !== '' && effectiveDomain.toLowerCase() !== rdpDomain.trim().toLowerCase();
+                    return (
+                      <div className="mt-4">
+                        <label className="block text-xs font-semibold text-slate-300">
+                          Domena Windows <span className="font-normal text-slate-500">(opcjonalnie)</span>
+                        </label>
+                        <input
+                          type="text"
+                          value={rdpDomain}
+                          onChange={(e) => setRdpDomain(e.target.value)}
+                          placeholder="np. CORP lub corp.local – puste dla konta lokalnego"
+                          className="mt-1.5 w-full rounded-lg border border-slate-700 bg-slate-800/80 px-3 py-2 text-xs text-white placeholder-slate-500 focus:border-cyan-500 focus:outline-none"
+                        />
+                        <p className="mt-1.5 text-[11px] leading-relaxed text-slate-500">
+                          Domenę można też wpisać w nazwie użytkownika: <span className="font-mono text-slate-400">CORP\jan</span> lub{' '}
+                          <span className="font-mono text-slate-400">jan@corp.local</span>. Konto lokalne serwera:{' '}
+                          <span className="font-mono text-slate-400">.\administrator</span>.
+                        </p>
+                        {login && (
+                          <p className="mt-1 text-[11px] text-slate-400">
+                            Logowanie jako: <span className="font-mono text-cyan-300">{login}</span>
+                            {ignored && (
+                              <span className="text-amber-300/90"> (pole „Domena” jest pomijane, bo nazwa użytkownika już ją określa)</span>
+                            )}
+                          </p>
+                        )}
+                      </div>
+                    );
+                  })()}
                 </div>
 
                 {/* SSH Specific Auth: Keys & Certs (Założenie 4) */}
@@ -1243,19 +1281,6 @@ export const ConnectionModal: React.FC<Props> = ({
                       className="mt-1.5 w-full rounded-lg border border-slate-700 bg-slate-800/80 px-3 py-2 text-xs text-white focus:border-cyan-500 focus:outline-none"
                     />
                   </div>
-                </div>
-
-                <div>
-                  <label className="block text-xs font-semibold text-slate-300">
-                    Domena Windows (Active Directory / Workgroup)
-                  </label>
-                  <input
-                    type="text"
-                    value={rdpDomain}
-                    onChange={(e) => setRdpDomain(e.target.value)}
-                    placeholder="np. CORP lub DOMAIN"
-                    className="mt-1.5 w-full rounded-lg border border-slate-700 bg-slate-800/80 px-3 py-2 text-xs text-white placeholder-slate-500 focus:border-cyan-500 focus:outline-none"
-                  />
                 </div>
 
                 <div className="space-y-2 pt-2">

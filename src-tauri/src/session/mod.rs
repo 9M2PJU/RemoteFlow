@@ -291,6 +291,11 @@ pub fn session_connect(
             format!("Nie udało się uruchomić lokalnego proxy RDP: {}", e)
         })?;
         let rdp_proxy_port = Some(proxy_handle.port);
+        // "CORP\\jan", "jan@corp.local" and the separate domain field are reduced to one consistent form
+        let (rdp_user, rdp_domain) = rdp::normalize_rdp_identity(
+            &resolved.username,
+            conn.rdp_settings.as_ref().and_then(|s| s.domain.as_deref()),
+        );
 
         let session = SessionInfo {
             session_id: session_id.clone(),
@@ -299,7 +304,7 @@ pub fn session_connect(
             protocol,
             host,
             port,
-            username: resolved.username.clone(),
+            username: rdp_user,
             status: "connected".to_string(),
             status_message: Some("Sesja RDP aktywna w zakładce".to_string()),
             bytes_sent: 0,
@@ -309,7 +314,7 @@ pub fn session_connect(
             rdp_proxy_port,
             rdp_proxy_token: Some(proxy_token),
             rdp_password: resolved.password.clone(),
-            rdp_domain: conn.rdp_settings.as_ref().and_then(|s| s.domain.clone()),
+            rdp_domain,
             rdp_settings: conn.rdp_settings.clone(),
         };
 
