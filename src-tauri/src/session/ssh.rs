@@ -105,6 +105,52 @@ impl Drop for TempKeyFile {
     }
 }
 
+/// Public-key authentication with a key held in memory.
+/// On Unix the `ssh2` crate exposes this (OpenSSL backend). On Windows (WinCNG backend) the
+/// crate hides the method behind its OpenSSL features, although libssh2 itself supports it
+/// (WinCNG + crypt32), so the libssh2 function is called directly.
+fn pubkey_from_memory(sess: &ssh2::Session, username: &str, key: &str, passphrase: Option<&str>) -> bool {
+    #[cfg(not(windows))]
+    {
+        sess.userauth_pubkey_memory(username, None, key, passphrase).is_ok()
+    }
+    #[cfg(windows)]
+    {
+        // NUL-terminated copies for C; the key and passphrase copies are wiped on drop.
+        fn c_bytes(s: &str) -> Option<zeroize::Zeroizing<Vec<u8>>> {
+            if s.as_bytes().contains(&0) {
+                return None;
+            }
+            let mut v = zeroize::Zeroizing::new(Vec::with_capacity(s.len() + 1));
+            v.extend_from_slice(s.as_bytes());
+            v.push(0);
+            Some(v)
+        }
+        let (Some(user), Some(priv_key)) = (c_bytes(username), c_bytes(key)) else {
+            return false;
+        };
+        let pass = match passphrase.map(c_bytes) {
+            Some(Some(p)) => Some(p),
+            Some(None) => return false,
+            None => None,
+        };
+        let mut raw = sess.raw();
+        let rc = unsafe {
+            libssh2_sys::libssh2_userauth_publickey_frommemory(
+                &mut *raw,
+                user.as_ptr() as *const _,
+                username.len() as _,
+                std::ptr::null(),
+                0,
+                priv_key.as_ptr() as *const _,
+                key.len() as _,
+                pass.as_ref().map(|p| p.as_ptr() as *const _).unwrap_or(std::ptr::null()),
+            )
+        };
+        rc == 0
+    }
+}
+
 pub fn ssh_connect_raw(config: &SshConnectionConfig) -> Result<ssh2::Session, String> {
     let addr_str = format!("{}:{}", config.host, config.port);
     let mut tcp_stream = None;
@@ -156,7 +202,7 @@ pub fn ssh_connect_raw(config: &SshConnectionConfig) -> Result<ssh2::Session, St
             } else {
                 // Key stored in the vault: authenticate from memory on every platform
                 // (OpenSSL backend on Unix, WinCNG + crypt32 on Windows).
-                authed = sess.userauth_pubkey_memory(&config.username, None, key_content, passphrase).is_ok();
+                authed = pubkey_from_memory(&sess, &config.username, key_content, passphrase);
 
                 // WinCNG cannot decrypt passphrase-protected PEM keys held in memory, only from a
                 // file. Only in that case a short-lived, owner-only file is used and wiped right away.
