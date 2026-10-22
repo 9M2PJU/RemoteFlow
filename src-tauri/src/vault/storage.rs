@@ -69,14 +69,7 @@ fn resolve_vault_path() -> PathBuf {
 
 /// The vault location is resolved once per process so it cannot change while the app runs.
 pub fn get_vault_path() -> PathBuf {
-    VAULT_PATH
-        .get_or_init(|| {
-            let path = resolve_vault_path();
-            // Vaults written by older versions may be world-readable (0644) – tighten them once
-            restrict_file(&path);
-            path
-        })
-        .clone()
+    VAULT_PATH.get_or_init(resolve_vault_path).clone()
 }
 
 /// Canonical bytes covered by the integrity MAC: the whole vault with the `mac` field cleared.
@@ -100,60 +93,14 @@ fn sign_vault(data: &mut VaultData, key: &[u8; 32]) -> Result<(), String> {
     Ok(())
 }
 
-/// Unix: limits a vault-related file to its owner (0600). Other local users must not be able to
-/// copy vault.json (host list, user names, KDF salt) for an offline attack on the Master Password.
-/// Windows: files live in the per-user profile (%APPDATA%) whose ACL already excludes other users.
-pub(crate) fn restrict_file(path: &Path) {
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        if let Ok(meta) = fs::metadata(path) {
-            if meta.is_file() && meta.permissions().mode() & 0o077 != 0 {
-                let _ = fs::set_permissions(path, fs::Permissions::from_mode(0o600));
-            }
-        }
-    }
-    #[cfg(not(unix))]
-    let _ = path;
-}
-
-/// Creates a directory (and parents); a directory created here is made owner-only (0700) on Unix.
-pub(crate) fn create_private_dir(dir: &Path) -> std::io::Result<()> {
-    let existed = dir.exists();
-    fs::create_dir_all(dir)?;
-    #[cfg(unix)]
-    if !existed {
-        use std::os::unix::fs::PermissionsExt;
-        let _ = fs::set_permissions(dir, fs::Permissions::from_mode(0o700));
-    }
-    #[cfg(not(unix))]
-    let _ = existed;
-    Ok(())
-}
-
-fn create_private_file(path: &Path) -> std::io::Result<fs::File> {
-    let mut opts = fs::OpenOptions::new();
-    opts.write(true).create(true).truncate(true);
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::OpenOptionsExt;
-        opts.mode(0o600);
-    }
-    let f = opts.open(path)?;
-    // A leftover temp file keeps its old mode on truncate – enforce 0600 explicitly
-    restrict_file(path);
-    Ok(f)
-}
-
 /// Writes the file atomically: temp file + fsync + rename, so a crash never leaves a half-written vault.
-/// The file is created with owner-only permissions (0600 on Unix).
 pub(crate) fn write_atomic(path: &Path, bytes: &[u8]) -> Result<(), String> {
     if let Some(parent) = path.parent() {
-        let _ = create_private_dir(parent);
+        let _ = fs::create_dir_all(parent);
     }
     let tmp = path.with_extension("json.tmp");
     {
-        let mut f = create_private_file(&tmp).map_err(|e| tr!("Błąd zapisu do pliku {:?}: {}", "Error writing file {:?}: {}", tmp, e))?;
+        let mut f = fs::File::create(&tmp).map_err(|e| tr!("Błąd zapisu do pliku {:?}: {}", "Error writing file {:?}: {}", tmp, e))?;
         f.write_all(bytes)
             .and_then(|_| f.sync_all())
             .map_err(|e| tr!("Błąd zapisu do pliku {:?}: {}", "Error writing file {:?}: {}", tmp, e))?;
@@ -227,37 +174,4 @@ pub fn delete_vault() -> Result<(), String> {
         fs::rename(&path, &backup_path).map_err(|e| tr!("Nie udało się utworzyć kopii sejfu: {}", "Could not back up the vault: {}", e))?;
     }
     Ok(())
-}
-
-#[cfg(all(test, unix))]
-mod tests {
-    use super::*;
-    use std::os::unix::fs::PermissionsExt;
-
-    #[test]
-    fn vault_files_are_owner_only() {
-        let dir = std::env::temp_dir().join(format!("rf-perm-{}", std::process::id()));
-        let _ = fs::remove_dir_all(&dir);
-        let file = dir.join("sub").join("vault.json");
-        // Simulate a leftover world-readable temp file
-        fs::create_dir_all(dir.join("sub")).unwrap();
-        fs::write(file.with_extension("json.tmp"), b"old").unwrap();
-        fs::set_permissions(file.with_extension("json.tmp"), fs::Permissions::from_mode(0o644)).unwrap();
-
-        write_atomic(&file, b"{}").unwrap();
-        assert_eq!(fs::metadata(&file).unwrap().permissions().mode() & 0o777, 0o600);
-
-        // An existing 0644 file is tightened
-        let other = dir.join("old.json");
-        fs::write(&other, b"x").unwrap();
-        fs::set_permissions(&other, fs::Permissions::from_mode(0o644)).unwrap();
-        restrict_file(&other);
-        assert_eq!(fs::metadata(&other).unwrap().permissions().mode() & 0o777, 0o600);
-
-        // A directory created by us is 0700
-        let new_dir = dir.join("backups");
-        create_private_dir(&new_dir).unwrap();
-        assert_eq!(fs::metadata(&new_dir).unwrap().permissions().mode() & 0o777, 0o700);
-        let _ = fs::remove_dir_all(&dir);
-    }
 }

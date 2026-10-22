@@ -782,12 +782,18 @@ export const api = {
     return null;
   },
 
-  /** Native file dialog; the backend reads ONLY the file chosen there (and only if it is a private key). */
-  async pickPrivateKeyFile(title?: string): Promise<{ path: string; content: string } | null> {
+  async pickLocalFile(title?: string): Promise<string | null> {
     if (isTauri()) {
-      return await invoke<{ path: string; content: string } | null>('pick_private_key_file', { title: title || null });
+      return await invoke<string | null>('pick_local_file', { title: title || null });
     }
     return null;
+  },
+
+  async readLocalTextFile(path: string): Promise<string> {
+    if (isTauri()) {
+      return await invoke<string>('read_local_text_file', { path });
+    }
+    return '';
   },
 
   async readLocalPathsForRdpClipboard(localPaths: string[]): Promise<import('../types').RdpClipboardFileEntry[]> {

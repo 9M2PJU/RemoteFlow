@@ -4,7 +4,7 @@
 //! protected (secrets need the Master Password that was valid when the backup was made).
 
 use crate::vault::models::{BackupEntry, BackupSettings, VaultData};
-use crate::vault::storage::{create_private_dir, get_vault_path, load_vault, lock_io, restrict_file, write_atomic};
+use crate::vault::storage::{get_vault_path, load_vault, lock_io, write_atomic};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime};
@@ -91,7 +91,7 @@ pub fn backup_while_locked(
     let current = fs::read(&vault_path).map_err(|e| tr!("Błąd odczytu sejfu: {}", "Vault read error: {}", e))?;
 
     let dir = backup_dir(settings);
-    create_private_dir(&dir).map_err(|e| tr!("Nie można utworzyć katalogu kopii {:?}: {}", "Cannot create the backup folder {:?}: {}", dir, e))?;
+    fs::create_dir_all(&dir).map_err(|e| tr!("Nie można utworzyć katalogu kopii {:?}: {}", "Cannot create the backup folder {:?}: {}", dir, e))?;
 
     if skip_if_unchanged {
         if let Some(newest) = backup_files(&dir).first() {
@@ -114,10 +114,6 @@ pub fn backup_while_locked(
     }
 
     write_atomic(&target, &current)?;
-    // Backups made by older versions may be world-readable
-    for older in backup_files(&dir) {
-        restrict_file(&older);
-    }
     rotate(&dir, settings.keep);
     eprintln!("[RemoteFlow] Utworzono kopię zapasową sejfu: {:?}", target);
     Ok(Some(target))

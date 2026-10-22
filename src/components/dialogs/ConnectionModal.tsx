@@ -214,14 +214,18 @@ export const ConnectionModal: React.FC<Props> = ({
     try {
       setKeyFileLoading(true);
       setError(null);
-      const picked = await api.pickPrivateKeyFile(t('Wybierz plik klucza prywatnego SSH'));
-      if (picked) {
-        const { path: filePath, content } = picked;
+      const filePath = await api.pickLocalFile(t('Wybierz plik klucza prywatnego SSH'));
+      if (filePath) {
         setKeyFilePath(filePath);
-        if (content.trim()) {
-          setPrivateKey(content);
-          const fileName = filePath.split('/').pop()?.split('\\').pop() || filePath;
-          setKeyFileSuccess(t('Wczytano klucz ({length} bajtów) z pliku: {fileName}', { length: content.length, fileName }));
+        try {
+          const content = await api.readLocalTextFile(filePath);
+          if (content && content.trim()) {
+            setPrivateKey(content);
+            const fileName = filePath.split('/').pop()?.split('\\').pop() || filePath;
+            setKeyFileSuccess(t('Wczytano klucz ({length} bajtów) z pliku: {fileName}', { length: content.length, fileName }));
+          }
+        } catch {
+          setKeyFileSuccess(t('Wybrano plik: {filePath}', { filePath }));
         }
       }
     } catch (err: unknown) {
