@@ -5,6 +5,8 @@ export interface MRemoteNGParseResult {
   groups: Group[];
   connections: Connection[];
   totalParsed: number;
+  /** Connections with protocols RemoteFlow does not support (VNC, Telnet, HTTP, ...) – not imported. */
+  skipped: { name: string; protocol: string }[];
 }
 
 /** Encryption settings stored on the root <Connections> element of confCons.xml. */
@@ -46,6 +48,7 @@ export function parseMRemoteNGXml(xmlString: string): MRemoteNGParseResult {
 
   const groups: Group[] = [];
   const connections: Connection[] = [];
+  const skipped: { name: string; protocol: string }[] = [];
 
   // Traverse nodes recursively
   function traverseNode(node: Element, parentGroupId: string | null, parentPath: string[]) {
@@ -84,9 +87,13 @@ export function parseMRemoteNGXml(xmlString: string): MRemoteNGParseResult {
       } else if (rawProtocol.includes('SSH')) {
         protocol = 'ssh';
         defaultPort = 22;
-      } else if (rawProtocol.includes('VNC')) {
-        protocol = 'rdp';
-        defaultPort = 5900;
+      } else {
+        // VNC, Telnet, Rlogin, RAW, HTTP(S), ICA, PowerShell... are not supported. Importing them
+        // as SSH/RDP would only produce connections that fail with confusing errors.
+        skipped.push({ name: name.trim(), protocol: rawProtocol });
+        const children = node.querySelectorAll(':scope > Node');
+        children.forEach((child) => traverseNode(child, parentGroupId, parentPath));
+        return;
       }
 
       const portAttr = node.getAttribute('Port');
@@ -146,5 +153,6 @@ export function parseMRemoteNGXml(xmlString: string): MRemoteNGParseResult {
     groups,
     connections,
     totalParsed: connections.length,
+    skipped,
   };
 }

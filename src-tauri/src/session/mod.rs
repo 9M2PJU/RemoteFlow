@@ -50,8 +50,6 @@ pub struct SessionInfo {
     /// Random per-session secret the WebAssembly client must present to the local proxy.
     #[serde(rename = "rdpProxyToken")]
     pub rdp_proxy_token: Option<String>,
-    #[serde(rename = "rdpPassword")]
-    pub rdp_password: Option<String>,
     #[serde(rename = "rdpDomain")]
     pub rdp_domain: Option<String>,
     #[serde(rename = "rdpSettings")]
@@ -90,6 +88,27 @@ pub(crate) fn winproc_where(bin: &str) -> std::io::Result<std::process::Output> 
     {
         std::process::Command::new("where").arg(bin).output()
     }
+}
+
+/// RDP password for the embedded client, read from the vault at the moment of (re)connecting.
+/// It is not kept in `SessionInfo` (returned by `session_list`), so once the vault is locked it
+/// can no longer be obtained – a reconnect then needs an unlocked vault.
+#[tauri::command]
+pub fn session_rdp_password(
+    session_id: String,
+    session_state: tauri::State<'_, SessionState>,
+    auth_state: tauri::State<'_, AuthState>,
+) -> Result<Option<String>, String> {
+    let connection_id = {
+        let mgr = session_state.lock().map_err(|e| e.to_string())?;
+        let session = mgr
+            .sessions
+            .get(&session_id)
+            .filter(|s| s.protocol == "rdp")
+            .ok_or_else(|| tr!("Nie znaleziono sesji RDP", "RDP session not found").to_string())?;
+        session.connection_id.clone()
+    };
+    Ok(resolve_connection(&auth_state, &connection_id)?.password)
 }
 
 #[tauri::command]
@@ -244,7 +263,6 @@ pub fn session_connect(
             active_port_forwards: port_forwards_desc,
             rdp_proxy_port: None,
             rdp_proxy_token: None,
-            rdp_password: None,
             rdp_domain: None,
             rdp_settings: None,
         };
@@ -262,7 +280,15 @@ pub fn session_connect(
 
         spawn_ssh_session(session_id.clone(), config.clone(), rx, app.clone());
 
-        let tunnel_handle = start_tunnels(session_id.clone(), config, conn.port_forwarding.clone(), app);
+        let tunnel_app = app.clone();
+        let tunnel_sid = session_id.clone();
+        let tunnel_handle = start_tunnels(
+            config,
+            conn.port_forwarding.clone(),
+            Arc::new(move |msg: String| {
+                let _ = tunnel_app.emit(&format!("ssh-data-{}", tunnel_sid), msg);
+            }),
+        );
 
         let mut mgr = session_state.lock().map_err(|e| e.to_string())?;
         mgr.sessions.insert(session_id.clone(), session.clone());
@@ -313,7 +339,6 @@ pub fn session_connect(
             active_port_forwards: port_forwards_desc,
             rdp_proxy_port,
             rdp_proxy_token: Some(proxy_token),
-            rdp_password: resolved.password.clone(),
             rdp_domain,
             rdp_settings: conn.rdp_settings.clone(),
         };
@@ -936,27 +961,11 @@ pub async fn local_list_dir(local_path: String) -> Result<SftpListResponse, Stri
             if name.is_empty() || name == "." || name == ".." {
                 continue;
             }
-            let meta = std::fs::symlink_metadata(&p).ok();
-            if meta.as_ref().map(|m| m.file_type().is_symlink()).unwrap_or(false) {
-                continue;
+            // Symbolic links are shown (with the data of their target); hidden system entries
+            // on Windows (legacy profile junctions) are not.
+            if let Some(entry) = transfer::local_entry(&p) {
+                entries.push(entry);
             }
-            let is_dir = meta.as_ref().map(|m| m.is_dir()).unwrap_or(false);
-            let size = meta.as_ref().map(|m| m.len()).unwrap_or(0);
-            let modified = meta
-                .as_ref()
-                .and_then(|m| m.modified().ok())
-                .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
-                .map(|d| d.as_secs())
-                .unwrap_or(0);
-
-            entries.push(sftp::SftpFileEntry {
-                name,
-                path: transfer::display_path(&p),
-                is_dir,
-                size,
-                modified,
-                permissions: 0o755,
-            });
         }
 
         entries.sort_by(|a, b| {

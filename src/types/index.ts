@@ -121,7 +121,6 @@ export interface SessionInfo {
   activePortForwards: string[];
   rdpProxyPort?: number | null;
   rdpProxyToken?: string | null;
-  rdpPassword?: string | null;
   rdpDomain?: string | null;
   rdpSettings?: RdpSettings | null;
 }
@@ -180,6 +179,8 @@ export interface SftpFileEntry {
   size: number;
   modified: number;
   permissions: number;
+  /** Symbolic link (type / size are those of its target). */
+  isLink?: boolean;
 }
 
 export interface SftpListResponse {
@@ -195,6 +196,8 @@ export interface TransferSummary {
   bytes: number;
   failed: number;
   errors: string[];
+  /** Links to folders inside transferred folders that were not followed. */
+  skippedLinks?: number;
 }
 
 export interface TransferProgress {

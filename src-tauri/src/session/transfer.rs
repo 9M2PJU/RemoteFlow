@@ -112,18 +112,27 @@ pub fn remote_path_string(p: &Path) -> String {
     if cfg!(windows) { s.replace('\\', "/") } else { s.into_owned() }
 }
 
-fn remote_entry(path: &Path, stat: &ssh2::FileStat) -> Option<SftpFileEntry> {
+/// `follow`: a symbolic link is shown with the type / size of its target (one extra `stat`
+/// round trip per link); without it (recursive search) the link's own data is used.
+fn remote_entry(sftp: Option<&ssh2::Sftp>, path: &Path, stat: &ssh2::FileStat) -> Option<SftpFileEntry> {
     let name = path.file_name()?.to_str()?.to_string();
     if name == "." || name == ".." {
         return None;
     }
+    let is_link = is_remote_symlink(stat);
+    let target = match (is_link, sftp) {
+        (true, Some(sftp)) => sftp.stat(path).ok(), // None = broken link
+        _ => None,
+    };
+    let st = target.as_ref().unwrap_or(stat);
     Some(SftpFileEntry {
         name,
         path: remote_path_string(path),
-        is_dir: stat.is_dir(),
-        size: stat.size.unwrap_or(0),
-        modified: stat.mtime.unwrap_or(0),
-        permissions: stat.perm.unwrap_or(0),
+        is_dir: st.is_dir(),
+        size: if st.is_dir() { 0 } else { st.size.unwrap_or(0) },
+        modified: st.mtime.unwrap_or(0),
+        permissions: st.perm.unwrap_or(0),
+        is_link,
     })
 }
 
@@ -131,11 +140,34 @@ fn is_remote_symlink(stat: &ssh2::FileStat) -> bool {
     stat.file_type() == ssh2::FileType::Symlink
 }
 
-fn local_entry(path: &Path) -> Option<SftpFileEntry> {
-    let meta = std::fs::symlink_metadata(path).ok()?;
-    if meta.file_type().is_symlink() {
+/// Windows: entries that are both hidden and system – e.g. the legacy junctions in the user
+/// profile ("Application Data", "Moje dokumenty"...), which Explorer hides and which cannot be
+/// opened anyway.
+fn is_hidden_system(meta: &std::fs::Metadata) -> bool {
+    #[cfg(windows)]
+    {
+        use std::os::windows::fs::MetadataExt;
+        const HIDDEN: u32 = 0x2;
+        const SYSTEM: u32 = 0x4;
+        let a = meta.file_attributes();
+        a & HIDDEN != 0 && a & SYSTEM != 0
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = meta;
+        false
+    }
+}
+
+/// One entry of a local folder. Symbolic links are shown with the type / size of their target
+/// (a broken link as an empty file) and marked `is_link`.
+pub(crate) fn local_entry(path: &Path) -> Option<SftpFileEntry> {
+    let link_meta = std::fs::symlink_metadata(path).ok()?;
+    if is_hidden_system(&link_meta) {
         return None;
     }
+    let is_link = link_meta.file_type().is_symlink();
+    let meta = if is_link { std::fs::metadata(path).unwrap_or(link_meta) } else { link_meta };
     let name = path.file_name()?.to_string_lossy().to_string();
     Some(SftpFileEntry {
         name,
@@ -149,6 +181,7 @@ fn local_entry(path: &Path) -> Option<SftpFileEntry> {
             .map(|d| d.as_secs())
             .unwrap_or(0),
         permissions: 0,
+        is_link,
     })
 }
 
@@ -204,7 +237,7 @@ pub fn remote_list(sftp: &ssh2::Sftp, remote_path: &str) -> Result<(String, Vec<
     let entries = sftp
         .readdir(&target)
         .map_err(|e| tr!("Błąd odczytu katalogu '{}': {}", "Error reading folder '{}': {}", current, e))?;
-    let mut result: Vec<SftpFileEntry> = entries.iter().filter_map(|(p, st)| remote_entry(p, st)).collect();
+    let mut result: Vec<SftpFileEntry> = entries.iter().filter_map(|(p, st)| remote_entry(Some(sftp), p, st)).collect();
     result.sort_by(|a, b| b.is_dir.cmp(&a.is_dir).then_with(|| a.name.to_lowercase().cmp(&b.name.to_lowercase())));
     Ok((current, result))
 }
@@ -281,11 +314,9 @@ pub fn remote_search(sftp: &ssh2::Sftp, root: &str, query: &str) -> Result<Vec<S
         }
         let Ok(entries) = sftp.readdir(&dir) else { continue };
         for (path, stat) in entries {
-            if is_remote_symlink(&stat) {
-                continue;
-            }
-            let Some(entry) = remote_entry(&path, &stat) else { continue };
-            if entry.is_dir && depth < SEARCH_MAX_DEPTH {
+            // Links are listed but never followed while searching (loops, huge trees)
+            let Some(entry) = remote_entry(None, &path, &stat) else { continue };
+            if entry.is_dir && !entry.is_link && depth < SEARCH_MAX_DEPTH {
                 queue.push_back((path.clone(), depth + 1));
             }
             if entry.name.to_lowercase().contains(&q) {
@@ -321,7 +352,7 @@ pub fn local_search(root: &str, query: &str) -> Result<Vec<SftpFileEntry>, Strin
         for item in rd.flatten() {
             let path = item.path();
             let Some(entry) = local_entry(&path) else { continue };
-            if entry.is_dir && depth < SEARCH_MAX_DEPTH {
+            if entry.is_dir && !entry.is_link && depth < SEARCH_MAX_DEPTH {
                 queue.push_back((path.clone(), depth + 1));
             }
             if entry.name.to_lowercase().contains(&q) {
@@ -347,6 +378,10 @@ pub struct TransferSummary {
     pub failed: u32,
     /// First few error messages (for the UI).
     pub errors: Vec<String>,
+    /// Links to folders inside a transferred folder – not followed (could loop or pull in a huge
+    /// tree). Links to files, and a link selected directly, are transferred with their content.
+    #[serde(rename = "skippedLinks")]
+    pub skipped_links: u32,
 }
 
 impl TransferSummary {
@@ -391,13 +426,27 @@ fn upload_one(
         sum.fail(tr!("Zbyt głębokie zagnieżdżenie: {}", "Nesting too deep: {}", display_path(local)));
         return;
     }
-    let Ok(meta) = std::fs::symlink_metadata(local) else {
+    let Ok(link_meta) = std::fs::symlink_metadata(local) else {
         sum.fail(tr!("Nie można odczytać: {}", "Cannot read: {}", display_path(local)));
         return;
     };
-    if meta.file_type().is_symlink() {
-        return; // links are skipped (could point outside the selection / create loops)
-    }
+    // Symbolic links are transferred with the content of their target. A link to a folder
+    // inside a transferred folder is not followed (loops / huge trees) – it is counted instead.
+    let meta = if link_meta.file_type().is_symlink() {
+        match std::fs::metadata(local) {
+            Ok(m) if m.is_dir() && depth > 0 => {
+                sum.skipped_links += 1;
+                return;
+            }
+            Ok(m) => m,
+            Err(_) => {
+                sum.fail(tr!("Uszkodzone dowiązanie: {}", "Broken link: {}", display_path(local)));
+                return;
+            }
+        }
+    } else {
+        link_meta
+    };
     let name = match local.file_name() {
         Some(n) => n.to_string_lossy().to_string(),
         None => {
@@ -474,9 +523,27 @@ fn download_one(
         sum.fail(tr!("Zbyt głębokie zagnieżdżenie: {}", "Nesting too deep: {}", remote_path_string(remote)));
         return;
     }
-    if is_remote_symlink(stat) {
-        return;
-    }
+    // Symbolic links: downloaded with the content of their target; a link to a folder inside a
+    // downloaded folder is not followed (loops / huge trees) – it is counted instead.
+    let target_stat;
+    let stat = if is_remote_symlink(stat) {
+        match sftp.stat(remote) {
+            Ok(t) if t.is_dir() && depth > 0 => {
+                sum.skipped_links += 1;
+                return;
+            }
+            Ok(t) => {
+                target_stat = t;
+                &target_stat
+            }
+            Err(_) => {
+                sum.fail(tr!("Uszkodzone dowiązanie: {}", "Broken link: {}", remote_path_string(remote)));
+                return;
+            }
+        }
+    } else {
+        stat
+    };
     let raw_name = remote.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
     // Names come from the server – never let them escape the target folder.
     let name = match sanitize_name(&raw_name) {
@@ -685,6 +752,69 @@ mod sftp_e2e {
 
         with_pooled_sftp("k", &cfg, |sftp| remote_delete(sftp, &remote_root)).unwrap();
         release_pooled("k");
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    #[ignore]
+    fn symlinks_are_listed_and_followed() {
+        use std::os::unix::fs::symlink;
+        let cfg = config();
+        let base = std::env::temp_dir().join(format!("rf-links-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&base);
+        let src = base.join("src");
+        std::fs::create_dir_all(src.join("sub")).unwrap();
+        std::fs::write(src.join("a.txt"), b"hello").unwrap();
+        std::fs::write(src.join("sub").join("b.txt"), b"bb").unwrap();
+        symlink(src.join("a.txt"), src.join("la")).unwrap(); // link to a file
+        symlink(src.join("sub"), src.join("ld")).unwrap(); // link to a folder
+        symlink(src.join("missing"), src.join("lb")).unwrap(); // broken link
+        symlink("..", src.join("sub").join("loop")).unwrap(); // loop
+
+        // Local listing shows links with the type / size of the target
+        let la = local_entry(&src.join("la")).unwrap();
+        assert!(la.is_link && !la.is_dir && la.size == 5);
+        let ld = local_entry(&src.join("ld")).unwrap();
+        assert!(ld.is_link && ld.is_dir);
+        let lb = local_entry(&src.join("lb")).unwrap();
+        assert!(lb.is_link && !lb.is_dir);
+
+        let remote_root = with_pooled_sftp("links", &cfg, |sftp| {
+            let home = sftp.realpath(Path::new(".")).unwrap();
+            let _ = remote_delete(sftp, &home.join("e2e-links").to_string_lossy());
+            remote_mkdir(sftp, &home.to_string_lossy(), "e2e-links")
+        })
+        .unwrap();
+
+        // Upload of the folder: file links copied with content, folder links inside not followed
+        let up = upload_paths(&cfg, &[src.to_string_lossy().to_string()], &remote_root, &mut |_, _| {}).unwrap();
+        assert_eq!(up.files, 3, "a.txt, la, sub/b.txt: {:?}", up.errors);
+        assert_eq!(up.skipped_links, 2, "ld and sub/loop");
+        assert_eq!(up.failed, 1, "broken link reported");
+        // A folder link chosen directly is followed
+        let up2 = upload_paths(&cfg, &[src.join("ld").to_string_lossy().to_string()], &remote_root, &mut |_, _| {}).unwrap();
+        assert_eq!((up2.files, up2.skipped_links, up2.failed), (1, 1, 0));
+
+        // Remote links (the test server runs on this machine): listed and downloaded the same way
+        let remote_src = PathBuf::from(format!("{}/src", remote_root));
+        symlink("a.txt", remote_src.join("rl")).unwrap();
+        symlink("sub", remote_src.join("rd")).unwrap();
+        let (_, listing) = with_pooled_sftp("links", &cfg, |sftp| remote_list(sftp, &remote_src.to_string_lossy())).unwrap();
+        let rl = listing.iter().find(|e| e.name == "rl").unwrap();
+        assert!(rl.is_link && !rl.is_dir && rl.size == 5);
+        let rd = listing.iter().find(|e| e.name == "rd").unwrap();
+        assert!(rd.is_link && rd.is_dir);
+
+        let dst = base.join("dst");
+        std::fs::create_dir_all(&dst).unwrap();
+        let down = download_paths(&cfg, &[remote_src.to_string_lossy().to_string()], dst.to_str().unwrap(), &mut |_, _| {}).unwrap();
+        assert_eq!(down.failed, 0, "{:?}", down.errors);
+        assert_eq!(std::fs::read(dst.join("src").join("rl")).unwrap(), b"hello");
+        assert_eq!(down.skipped_links, 1, "rd not followed inside a folder");
+
+        with_pooled_sftp("links", &cfg, |sftp| remote_delete(sftp, &remote_root)).unwrap();
+        release_pooled("links");
         let _ = std::fs::remove_dir_all(&base);
     }
 }

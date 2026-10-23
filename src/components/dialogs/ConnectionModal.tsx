@@ -1245,9 +1245,18 @@ export const ConnectionModal: React.FC<Props> = ({
                           {rule.forwardType === 'dynamic' ? t('Dynamic SOCKS5') : rule.forwardType}
                         </span>
 
-                        {/* Local Port */}
-                        <div className="flex items-center gap-1">
-                          <span className="text-[11px] text-slate-400">{t('Port lokalny:')}</span>
+                        {/* Listening port: on this computer for -L / -D, on the server for -R */}
+                        <div
+                          className="flex items-center gap-1"
+                          title={
+                            rule.forwardType === 'remote'
+                              ? t('Port, na którym serwer SSH nasłuchuje (ssh -R port:cel)')
+                              : t('Port na tym komputerze (127.0.0.1), z którym łączą się programy')
+                          }
+                        >
+                          <span className="whitespace-nowrap text-[11px] text-slate-400">
+                            {rule.forwardType === 'remote' ? t('Port na serwerze:') : t('Port lokalny:')}
+                          </span>
                           <input
                             type="number"
                             value={rule.localPort}
@@ -1260,8 +1269,17 @@ export const ConnectionModal: React.FC<Props> = ({
                         {rule.forwardType !== 'dynamic' && (
                           <>
                             <ArrowRightLeft className="h-3.5 w-3.5 text-slate-500" />
-                            <div className="flex items-center gap-1 flex-1">
-                              <span className="text-[11px] text-slate-400">{t('Zdalny:')}</span>
+                            <div
+                              className="flex items-center gap-1 flex-1"
+                              title={
+                                rule.forwardType === 'remote'
+                                  ? t('Dokąd przekazać połączenia z serwera – adres widziany z tego komputera')
+                                  : t('Dokąd serwer SSH ma przekazać połączenie – adres widziany z serwera')
+                              }
+                            >
+                              <span className="whitespace-nowrap text-[11px] text-slate-400">
+                                {rule.forwardType === 'remote' ? t('Cel na tym komputerze:') : t('Cel (z serwera):')}
+                              </span>
                               <input
                                 type="text"
                                 value={rule.remoteHost || '127.0.0.1'}

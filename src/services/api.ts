@@ -264,6 +264,14 @@ export const api = {
     };
   },
 
+  /** RDP password for the embedded client, read from the vault when (re)connecting. */
+  async getRdpSessionPassword(sessionId: string): Promise<string> {
+    if (isTauri()) {
+      return (await invoke<string | null>('session_rdp_password', { sessionId })) || '';
+    }
+    return '';
+  },
+
   async revealPassword(connectionId: string): Promise<string> {
     if (isTauri()) {
       return await invoke<string>('vault_reveal_password', { connectionId });
@@ -677,6 +685,7 @@ export const api = {
       entries: [
         { name: 'app', path: '/home/user/app', isDir: true, size: 4096, modified: Math.floor((Date.now() - 3600000) / 1000), permissions: 16877 },
         { name: 'backup', path: '/home/user/backup', isDir: true, size: 4096, modified: Math.floor((Date.now() - 7200000) / 1000), permissions: 16877 },
+        { name: 'current', path: '/home/user/current', isDir: true, size: 0, modified: Math.floor((Date.now() - 7200000) / 1000), permissions: 16877, isLink: true },
         { name: 'config.json', path: '/home/user/config.json', isDir: false, size: 1420, modified: Math.floor((Date.now() - 600000) / 1000), permissions: 33188 },
         { name: 'server.log', path: '/home/user/server.log', isDir: false, size: 52428, modified: Math.floor((Date.now() - 120000) / 1000), permissions: 33188 },
       ],
@@ -795,6 +804,25 @@ export const api = {
       return await invoke<import('../types').RdpClipboardFileEntry[]>('read_local_paths_for_rdp_clipboard', { localPaths });
     }
     return [];
+  },
+
+  /** Display settings applied at start-up (Linux: GPU / compatible rendering). */
+  async getDisplaySettings(): Promise<{
+    supported: boolean;
+    safeRendering: boolean;
+    activeSafeRendering: boolean;
+    forcedByEnv: boolean;
+  }> {
+    if (isTauri()) {
+      return await invoke('display_get_settings');
+    }
+    return { supported: false, safeRendering: false, activeSafeRendering: false, forcedByEnv: false };
+  },
+
+  async setSafeRendering(enabled: boolean): Promise<void> {
+    if (isTauri()) {
+      await invoke<void>('display_set_safe_rendering', { enabled });
+    }
   },
 
   /** Saves (or clears with null) the SFTP start folders of a connection. */

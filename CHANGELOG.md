@@ -4,6 +4,23 @@ Numer wersji: `MAJOR.MINOR.PATCH`. Każda zmiana podnosi co najmniej numer PATCH
 Wersja jest zapisana w trzech plikach, które muszą być zgodne (pilnuje tego test `version_tests` w `src-tauri/src/lib.rs`):
 `package.json` (wyświetlana w aplikacji), `src-tauri/tauri.conf.json` (instalator) i `src-tauri/Cargo.toml`.
 
+## 1.5.0 – tunele SSH, terminal, SFTP i poprawki z przeglądu kodu
+- **Tunele SSH na nowo (`session/tunnels.rs`).** Wszystkie tunele połączenia (-L, -D, -R) używają jednej wspólnej sesji SSH; każde połączenie TCP to tylko nowy kanał w tej sesji. Wcześniej każde połączenie przez tunel lokalny lub SOCKS5 zestawiało osobne połączenie SSH z pełnym logowaniem – przeglądarka otwierająca kilkadziesiąt połączeń naraz trafiała na limit `MaxStartups` serwera (zrywane połączenia, timeouty). Test: 60 równoległych połączeń SOCKS5 = 1 logowanie na serwerze.
+- Tunele obsługują półzamknięcie TCP (half-close): gdy klient skończy wysyłać (np. zapytanie HTTP/SQL), odpowiedź serwera jest dalej przekazywana do końca – wcześniej kanał był zamykany i odpowiedź ucinana. Działa w obu kierunkach.
+- Jeden wątek obsługuje wszystkie przekierowane połączenia sesji (tryb nieblokujący); limity: 256 jednoczesnych połączeń, 32 wątki pomocnicze (negocjacja SOCKS, łączenie celu -R). Skaner portów nie wyczerpie już wątków i deskryptorów. Po utracie łączności tunele łączą się ponownie przy następnym połączeniu.
+- Terminal SSH: usunięto sztywne odpowiedzi backendu na zapytania terminala (DA, pozycja kursora, kolor tła) – odpowiada na nie xterm.js. Wcześniej serwer dostawał dwie odpowiedzi (druga pojawiała się jako przypadkowe znaki, np. `1;2c`), a kolor tła zawsze był „ciemny”, także w jasnym motywie. Polskie znaki rozdzielone między dwa odczyty z kanału nie zamieniają się już w `�`.
+- Okno połączenia → Tunele: dla tunelu zdalnego (-R) pola opisane są „Port na serwerze” i „Cel na tym komputerze” (wcześniej mylące „Port lokalny” / „Zdalny”); podpowiedzi wyjaśniają kierunek każdego typu. Opis tuneli na zakładce pokazuje typ (`-L`, `-R`, `-D`).
+- SFTP: dowiązania symboliczne są widoczne na liście (ikona łańcucha, kursywa, typ i rozmiar celu) – lokalnie i na serwerze. Przy kopiowaniu dowiązanie do pliku jest kopiowane z zawartością; dowiązanie do katalogu jest śledzone, gdy zaznaczysz je bezpośrednio, a wewnątrz kopiowanego katalogu jest pomijane (pętle) i liczone w podsumowaniu („pominięto dowiązań do katalogów”). Uszkodzone dowiązania są zgłaszane jako błąd. Na Windows ukryte elementy systemowe (stare skróty-junction w profilu, np. „Application Data”) nie są pokazywane.
+- Import z mRemoteNG: połączenia VNC, Telnet, HTTP i inne nieobsługiwane protokoły są pomijane z komunikatem (np. „VNC × 3”) – wcześniej VNC stawało się połączeniem RDP na porcie 5900.
+- Hasło RDP nie jest już przechowywane w danych sesji (`session_list`). Wbudowany klient pobiera je z sejfu w chwili łączenia (`session_rdp_password`), więc po zablokowaniu sejfu nie da się go odczytać.
+- Menu kontekstowe otwierane w nowym miejscu nie miga już przez chwilę w poprzednim.
+
+## 1.4.4
+- Linux: domyślnie znów szybkie renderowanie przez GPU (DMA-BUF). Tryb zgodny (wolniejszy, bez błędu `DRM_IOCTL_MODE_CREATE_DUMB` / `GBM buffer`) wybiera się w Ustawieniach → Motyw kolorystyczny → „Renderowanie okna (Linux)”; działa po ponownym uruchomieniu. Wybór jest zapisany w `display.json` obok `vault.json` (musi być znany przed otwarciem okna, więc nie jest w zaszyfrowanym sejfie). Jednorazowo można go wymusić zmienną `REMOTEFLOW_SAFE_RENDERING=1` – przydatne, gdy okno w ogóle się nie rysuje.
+
+## 1.4.3
+- Linux (Ubuntu): błąd `KMS: DRM_IOCTL_MODE_CREATE_DUMB failed: Brak dostępu` / `Failed to create GBM buffer` (pusty lub migający ekran). WebKitGTK 2.42+ próbuje rysować przez bufory DMA-BUF karty graficznej, co nie działa m.in. ze sterownikami NVIDIA, w maszynach wirtualnych i bez dostępu do `/dev/dri`. Aplikacja wyłącza teraz ten tryb przy starcie (`WEBKIT_DISABLE_DMABUF_RENDERER=1`), chyba że zmienna jest już ustawiona. Kto chce wrócić do renderowania przez GPU, uruchamia program z `REMOTEFLOW_WEBKIT_DMABUF=1`.
+
 ## 1.4.2
 - Menu kontekstowe (prawy przycisk myszy) mieszczą się zawsze w oknie: gdy pod kursorem brakuje miejsca, menu otwiera się nad kursorem, a przy prawej krawędzi – na lewo od niego. Dotyczy drzewa „Struktura połączeń” (np. połączenie na samym dole listy), zakładek, terminala SSH i okna SFTP (wspólny hook `src/utils/useMenuPosition.ts`).
 

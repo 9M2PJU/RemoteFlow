@@ -240,6 +240,46 @@ pub fn ssh_connect_raw(config: &SshConnectionConfig) -> Result<ssh2::Session, St
     Ok(sess)
 }
 
+/// Converts the complete UTF-8 prefix of `pending` to text and keeps an incomplete trailing
+/// character (at most 3 bytes) for the next read. Invalid bytes are replaced (lossy).
+fn take_utf8(pending: &mut Vec<u8>) -> String {
+    match std::str::from_utf8(pending) {
+        Ok(s) => {
+            let out = s.to_string();
+            pending.clear();
+            out
+        }
+        Err(e) if e.error_len().is_none() && pending.len() - e.valid_up_to() < 4 => {
+            // Incomplete character at the end – wait for the rest of it
+            let valid = e.valid_up_to();
+            let out = String::from_utf8_lossy(&pending[..valid]).to_string();
+            pending.drain(..valid);
+            out
+        }
+        Err(_) => {
+            // Invalid bytes in the middle: convert everything except a possible incomplete tail
+            let cut = incomplete_tail_start(pending);
+            let out = String::from_utf8_lossy(&pending[..cut]).to_string();
+            pending.drain(..cut);
+            out
+        }
+    }
+}
+
+/// Index where a possibly incomplete UTF-8 sequence starts at the end of `bytes` (or len).
+fn incomplete_tail_start(bytes: &[u8]) -> usize {
+    let len = bytes.len();
+    for back in 1..=3.min(len) {
+        let b = bytes[len - back];
+        if b & 0b1100_0000 == 0b1000_0000 {
+            continue; // continuation byte – look further back
+        }
+        let needed = if b >= 0xF0 { 4 } else if b >= 0xE0 { 3 } else if b >= 0xC0 { 2 } else { 1 };
+        return if needed > back { len - back } else { len };
+    }
+    len
+}
+
 pub fn spawn_ssh_session(
     session_id: String,
     config: SshConnectionConfig,
@@ -288,6 +328,8 @@ pub fn spawn_ssh_session(
         // 5. Main bidirectional loop
         let mut last_keepalive = std::time::Instant::now();
         let mut buffer = [0u8; 4096];
+        // Bytes of a UTF-8 character split between two reads (e.g. "ż" = 2 bytes)
+        let mut utf8_pending: Vec<u8> = Vec::new();
         loop {
             // Periodically send SSH keepalive packet to maintain active state through NAT/firewalls
             if last_keepalive.elapsed() >= std::time::Duration::from_secs(5) {
@@ -323,23 +365,15 @@ pub fn spawn_ssh_session(
                     break;
                 }
                 Ok(n) => {
-                    let text = String::from_utf8_lossy(&buffer[..n]).to_string();
-
-                    // Instantly answer terminal capability queries (DA1, cursor position, background query)
-                    // so shells like fish do not wait 10 seconds for capability handshake.
-                    if text.contains("\x1b[0c") || text.contains("\x1b[c") {
-                        let _ = channel.write_all(b"\x1b[?62;1;2;6;7;8;9c");
-                        let _ = channel.flush();
+                    // Terminal queries (DA, cursor position, colour queries) are answered by xterm.js
+                    // itself – answering them here too sent a second, wrong reply that showed up
+                    // as stray text (e.g. "1;2c", "24;80R") and reported a dark background in the
+                    // light theme.
+                    utf8_pending.extend_from_slice(&buffer[..n]);
+                    let text = take_utf8(&mut utf8_pending);
+                    if text.is_empty() {
+                        continue;
                     }
-                    if text.contains("\x1b[6n") {
-                        let _ = channel.write_all(b"\x1b[1;1R");
-                        let _ = channel.flush();
-                    }
-                    if text.contains("\x1b]11;?\x1b\\") {
-                        let _ = channel.write_all(b"\x1b]11;rgb:0909/0d0d/1616\x1b\\");
-                        let _ = channel.flush();
-                    }
-
                     let _ = app.emit(&format!("ssh-data-{}", sid), text);
                 }
                 Err(ref e) if e.kind() == std::io::ErrorKind::TimedOut || e.kind() == std::io::ErrorKind::WouldBlock => {
@@ -401,6 +435,34 @@ pub fn spawn_ssh_session(
             }
         }
     });
+}
+
+#[cfg(test)]
+mod utf8_tests {
+    use super::*;
+
+    #[test]
+    fn split_characters_are_joined() {
+        let bytes = "zażółć".as_bytes();
+        let mut pending = Vec::new();
+        let mut out = String::new();
+        for chunk in bytes.chunks(1) {
+            pending.extend_from_slice(chunk);
+            out.push_str(&take_utf8(&mut pending));
+        }
+        assert_eq!(out, "zażółć");
+        assert!(pending.is_empty());
+    }
+
+    #[test]
+    fn invalid_bytes_do_not_block_output() {
+        let mut pending = vec![b'a', 0xff, b'b', 0xC5];
+        let out = take_utf8(&mut pending);
+        assert_eq!(out, "a\u{fffd}b");
+        assert_eq!(pending, vec![0xC5]);
+        pending.push(0xBC);
+        assert_eq!(take_utf8(&mut pending), "ż");
+    }
 }
 
 #[cfg(test)]

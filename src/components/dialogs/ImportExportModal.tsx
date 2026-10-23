@@ -621,6 +621,25 @@ export const ImportExportModal: React.FC<Props> = ({
                     </span>
                   </div>
 
+                  {mrngParseResult.skipped.length > 0 && (
+                    <div
+                      className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-[11px] text-amber-200"
+                      title={mrngParseResult.skipped.map((x) => `${x.name} (${x.protocol})`).join('\n')}
+                    >
+                      {t('Pominięto połączenia z nieobsługiwanymi protokołami ({n}): {list}. RemoteFlow obsługuje SSH i RDP.', {
+                        n: mrngParseResult.skipped.length,
+                        list: Object.entries(
+                          mrngParseResult.skipped.reduce<Record<string, number>>((acc, x) => {
+                            acc[x.protocol] = (acc[x.protocol] || 0) + 1;
+                            return acc;
+                          }, {})
+                        )
+                          .map(([proto, count]) => `${proto} × ${count}`)
+                          .join(', '),
+                      })}
+                    </div>
+                  )}
+
                   {/* Sample preview list */}
                   <div className="max-h-48 overflow-y-auto space-y-1 rounded-lg border border-slate-800 p-2 bg-slate-900/50">
                     {mrngParseResult.connections.slice(0, 15).map((c) => (

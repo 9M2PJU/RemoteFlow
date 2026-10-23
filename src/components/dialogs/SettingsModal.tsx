@@ -23,7 +23,7 @@ import { BackupEntry, BackupSettings, KnownHostEntry, UiSettings, VaultStatus } 
 import { ConfirmDialog } from './ConfirmDialog';
 import { locale, useT } from '../../i18n';
 import { LanguageSegmented } from '../../i18n/LanguageSwitcher';
-import { TerminalDarkToggle, ThemeSegmented } from '../../theme/ThemeSwitcher';
+import { LinuxRenderingSetting, TerminalDarkToggle, ThemeSegmented } from '../../theme/ThemeSwitcher';
 
 interface Props {
   isOpen: boolean;
@@ -532,6 +532,7 @@ export const SettingsModal: React.FC<Props> = ({
                 <ThemeSegmented />
               </div>
               <TerminalDarkToggle />
+              <LinuxRenderingSetting />
             </div>
 
             {/* Confirmations */}

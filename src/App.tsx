@@ -198,8 +198,10 @@ const t = useT();
       .filter((p) => p.enabled)
       .map((p) =>
         p.forwardType === 'dynamic'
-          ? `:${p.localPort} (SOCKS5)`
-          : `${p.localPort} -> ${p.remoteHost}:${p.remotePort}`
+          ? `-D :${p.localPort} (SOCKS5)`
+          : p.forwardType === 'remote'
+            ? `-R ${t('serwer')}:${p.localPort} -> ${p.remoteHost || '127.0.0.1'}:${p.remotePort}`
+            : `-L ${p.localPort} -> ${p.remoteHost || '127.0.0.1'}:${p.remotePort}`
       );
 
     const initialSession: SessionInfo = {

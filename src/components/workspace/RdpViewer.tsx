@@ -1040,6 +1040,9 @@ export const RdpViewer: React.FC<Props> = ({ session, isActive }) => {
         }
 
         try {
+          // Read from the vault only now – the password is not kept in the session data
+          const rdpPassword = await api.getRdpSessionPassword(session.sessionId);
+          if (!isSubscribed) return;
           const targetDimensions = getDimensionsForPreset(
             selectedResolution,
             containerRef.current,
@@ -1051,7 +1054,7 @@ export const RdpViewer: React.FC<Props> = ({ session, isActive }) => {
             .withProxyAddress(`ws://127.0.0.1:${proxyPort}`)
             .withAuthToken(session.rdpProxyToken || '')
             .withUsername(session.username || '')
-            .withPassword(session.rdpPassword || '')
+            .withPassword(rdpPassword)
             .withServerDomain(session.rdpDomain || '')
             .withDesktopSize(targetDimensions);
 

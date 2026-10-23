@@ -16,6 +16,7 @@ import {
   FolderPlus,
   FolderUp,
   HardDrive,
+  Link2,
   Home,
   Loader2,
   MinusSquare,
@@ -302,6 +303,9 @@ export const SftpManager: React.FC<Props> = ({
         const text =
           t('{verb} {files} plików ({p2})', { verb, files: sum.files, p2: formatBytes(sum.bytes) }) +
           (sum.folders ? t(', katalogów: {folders}', { folders: sum.folders }) : '') +
+          (sum.skippedLinks
+            ? t(', pominięto dowiązań do katalogów: {n}', { n: sum.skippedLinks })
+            : '') +
           (sum.failed ? t('. Błędy: {failed} – {p1}', { failed: sum.failed, p1: sum.errors.join('; ') }) : '');
         showStatus(text, sum.failed ? 'error' : 'ok');
         onNotify?.(text);
@@ -1120,7 +1124,14 @@ const FilePane: React.FC<PaneProps> = ({
                 </button>
                 <div className="flex min-w-0 items-center gap-1.5">
                   {fileIcon(entry)}
-                  <span className={`truncate ${entry.isDir ? 'font-medium text-amber-100' : ''}`}>{entry.name}</span>
+                  <span className={`truncate ${entry.isDir ? 'font-medium text-amber-100' : ''} ${entry.isLink ? 'italic' : ''}`}>
+                    {entry.name}
+                  </span>
+                  {entry.isLink && (
+                    <span title={t('Dowiązanie symboliczne')} className="shrink-0">
+                      <Link2 className="h-3 w-3 text-cyan-400/80" />
+                    </span>
+                  )}
                   {inSearch && <span className="truncate font-mono text-[9.5px] text-slate-500">{relPath(entry)}</span>}
                 </div>
                 <div className="pr-1 text-right font-mono text-[10px] text-slate-500">{entry.isDir ? '' : formatBytes(entry.size)}</div>

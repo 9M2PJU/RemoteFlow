@@ -13,6 +13,9 @@ pub struct SftpFileEntry {
     pub size: u64,
     pub modified: u64,
     pub permissions: u32,
+    /// Symbolic link (shown with the type / size of its target).
+    #[serde(rename = "isLink", default, skip_serializing_if = "std::ops::Not::not")]
+    pub is_link: bool,
 }
 
 pub fn sftp_connect(config: &SshConnectionConfig) -> Result<(ssh2::Session, ssh2::Sftp), String> {
@@ -115,13 +118,20 @@ fn upload_path_recursive(
         return Ok(0);
     }
 
-    let sym_meta = match std::fs::symlink_metadata(local) {
+    let link_meta = match std::fs::symlink_metadata(local) {
         Ok(m) => m,
         Err(_) => return Ok(0),
     };
-    if sym_meta.file_type().is_symlink() {
-        return Ok(0);
-    }
+    // Links: content of the target; links to folders are followed only when chosen directly.
+    let sym_meta = if link_meta.file_type().is_symlink() {
+        match std::fs::metadata(local) {
+            Ok(m) if m.is_dir() && depth > 0 => return Ok(0),
+            Ok(m) => m,
+            Err(_) => return Ok(0),
+        }
+    } else {
+        link_meta
+    };
 
     let name = local.file_name().and_then(|n| n.to_str()).unwrap_or("item");
     if depth > 0 && (name == ".cache" || name == "node_modules" || name == "target" || name == ".git") {

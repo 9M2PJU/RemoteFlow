@@ -59,6 +59,8 @@ All connections, passwords and keys are kept in a local, encrypted vault. The ap
 Ready-made builds are published on the [Releases](https://github.com/jacek-nikiel/RemoteFlow/releases) page (when available).
 Requirements: Windows 10/11 x64 (WebView2 is included in the system) or a Linux distribution with WebKitGTK 4.1.
 
+Linux: if the window flickers, stays blank or the console shows `DRM_IOCTL_MODE_CREATE_DUMB failed` / `Failed to create GBM buffer`, switch *Settings → Colour theme → Window rendering (Linux)* to *Compatible* (or start once with `REMOTEFLOW_SAFE_RENDERING=1 remoteflow`).
+
 ## Building from source
 
 ### Requirements

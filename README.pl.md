@@ -59,6 +59,8 @@ Wszystkie połączenia, hasła i klucze są przechowywane w lokalnym, zaszyfrowa
 Gotowe wersje są publikowane na stronie [Releases](https://github.com/jacek-nikiel/RemoteFlow/releases) (gdy będą dostępne).
 Wymagania: Windows 10/11 x64 (WebView2 jest wbudowany w system) lub dystrybucja Linuksa z WebKitGTK 4.1.
 
+Linux: jeśli okno miga, jest puste albo w konsoli pojawia się `DRM_IOCTL_MODE_CREATE_DUMB failed` / `Failed to create GBM buffer`, przełącz *Ustawienia → Motyw kolorystyczny → Renderowanie okna (Linux)* na *Zgodne* (albo uruchom raz `REMOTEFLOW_SAFE_RENDERING=1 remoteflow`).
+
 ## Budowanie ze źródeł
 
 ### Wymagania

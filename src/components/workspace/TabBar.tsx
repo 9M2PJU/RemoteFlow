@@ -96,10 +96,7 @@ export const TabBar: React.FC<Props> = ({
 
   const handleCopyPassword = async (session: SessionInfo) => {
     try {
-      let password = session.rdpPassword || '';
-      if (!password && session.connectionId) {
-        password = await api.revealPassword(session.connectionId);
-      }
+      const password = session.connectionId ? await api.revealPassword(session.connectionId) : '';
 
       if (!password) {
         setCopyToast({
