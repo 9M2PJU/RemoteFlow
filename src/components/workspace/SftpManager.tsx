@@ -88,8 +88,19 @@ const formatBytes = (bytes: number): string => {
   return `${parseFloat((bytes / Math.pow(k, i)).toFixed(1))} ${sizes[i]}`;
 };
 
+/** Compact modification time for the list (e.g. 23.10.26, 14:05); full date with seconds in the tooltip. */
 const formatDate = (secs: number): string =>
-  secs ? new Date(secs * 1000).toLocaleString(locale(), { dateStyle: 'short', timeStyle: 'short' }) : '';
+  secs
+    ? new Date(secs * 1000).toLocaleString(locale(), {
+        year: '2-digit',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+      })
+    : '';
+const formatDateFull = (secs: number): string =>
+  secs ? new Date(secs * 1000).toLocaleString(locale(), { dateStyle: 'medium', timeStyle: 'medium' }) : '';
 
 const baseName = (p: string) => p.split(/[\\/]/).filter(Boolean).pop() || p;
 
@@ -988,7 +999,7 @@ const FilePane: React.FC<PaneProps> = ({
       )}
 
       {/* Column headers */}
-      <div className="grid shrink-0 grid-cols-[22px_1fr_70px] @md:grid-cols-[22px_1fr_70px_110px] items-center border-b border-slate-800 bg-slate-900/40 px-1 py-1 text-[10px] font-semibold text-slate-400">
+      <div className="grid shrink-0 grid-cols-[22px_1fr_58px_94px] @md:grid-cols-[22px_1fr_70px_112px] items-center border-b border-slate-800 bg-slate-900/40 px-1 py-1 text-[10px] font-semibold text-slate-400">
         <button onClick={toggleAll} className="flex justify-center text-slate-400 hover:text-cyan-300" title={t('Zaznacz wszystko (Ctrl+A)')}>
           {allSelected ? (
             <CheckSquare className="h-3.5 w-3.5 text-cyan-400" />
@@ -1004,7 +1015,7 @@ const FilePane: React.FC<PaneProps> = ({
         <button onClick={() => sortBy('size')} className="text-right hover:text-white pr-1">
           {t('Rozmiar')}{sortMark('size')}
         </button>
-        <button onClick={() => sortBy('modified')} className="hidden @md:block text-right hover:text-white pr-1">
+        <button onClick={() => sortBy('modified')} className="truncate text-right hover:text-white pr-1">
           {t('Zmodyfikowano')}{sortMark('modified')}
         </button>
       </div>
@@ -1041,7 +1052,7 @@ const FilePane: React.FC<PaneProps> = ({
             data-sftp-side={side}
             onDoubleClick={() => onOpen(pane.parent!)}
             title={t('Katalog nadrzędny: {path}\nDwuklik: otwórz (Backspace)', { path: pane.parent })}
-            className={`grid cursor-default grid-cols-[22px_1fr_70px] @md:grid-cols-[22px_1fr_70px_110px] items-center px-1 py-[3px] text-[11px] ${
+            className={`grid cursor-default grid-cols-[22px_1fr_58px_94px] @md:grid-cols-[22px_1fr_70px_112px] items-center px-1 py-[3px] text-[11px] ${
               drag && drag.from !== side && drag.overFolder === pane.parent
                 ? 'bg-cyan-700/40 ring-1 ring-inset ring-cyan-400'
                 : 'text-slate-300 hover:bg-slate-800/60'
@@ -1052,6 +1063,7 @@ const FilePane: React.FC<PaneProps> = ({
               <FolderUp className="h-3.5 w-3.5 shrink-0 text-amber-400" />
               <span className="font-mono font-medium text-amber-100">..</span>
             </div>
+            <span />
             <span />
           </div>
         )}
@@ -1088,7 +1100,7 @@ const FilePane: React.FC<PaneProps> = ({
                     ? t('{path}\nDwuklik: otwórz', { path: entry.path })
                     : t('{path}\nDwuklik: {action}', { path: entry.path, action: transferLabel.toLowerCase() })
                 }
-                className={`grid cursor-default grid-cols-[22px_1fr_70px] @md:grid-cols-[22px_1fr_70px_110px] items-center px-1 py-[3px] text-[11px] ${
+                className={`grid cursor-default grid-cols-[22px_1fr_58px_94px] @md:grid-cols-[22px_1fr_70px_112px] items-center px-1 py-[3px] text-[11px] ${
                   isDropFolder
                     ? 'bg-cyan-700/40 ring-1 ring-inset ring-cyan-400'
                     : selected
@@ -1111,7 +1123,9 @@ const FilePane: React.FC<PaneProps> = ({
                   {inSearch && <span className="truncate font-mono text-[9.5px] text-slate-500">{relPath(entry)}</span>}
                 </div>
                 <div className="pr-1 text-right font-mono text-[10px] text-slate-500">{entry.isDir ? '' : formatBytes(entry.size)}</div>
-                <div className="hidden @md:block pr-1 text-right text-[10px] text-slate-500">{formatDate(entry.modified)}</div>
+                <div className="truncate pl-2 pr-1 text-right font-mono text-[10px] text-slate-500" title={formatDateFull(entry.modified)}>
+                  {formatDate(entry.modified)}
+                </div>
               </div>
             );
           })

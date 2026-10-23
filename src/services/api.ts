@@ -675,10 +675,10 @@ export const api = {
     return {
       currentPath: remotePath || '/home/user',
       entries: [
-        { name: 'app', path: '/home/user/app', isDir: true, size: 4096, modified: Date.now() - 3600000, permissions: 16877 },
-        { name: 'backup', path: '/home/user/backup', isDir: true, size: 4096, modified: Date.now() - 7200000, permissions: 16877 },
-        { name: 'config.json', path: '/home/user/config.json', isDir: false, size: 1420, modified: Date.now() - 600000, permissions: 33188 },
-        { name: 'server.log', path: '/home/user/server.log', isDir: false, size: 52428, modified: Date.now() - 120000, permissions: 33188 },
+        { name: 'app', path: '/home/user/app', isDir: true, size: 4096, modified: Math.floor((Date.now() - 3600000) / 1000), permissions: 16877 },
+        { name: 'backup', path: '/home/user/backup', isDir: true, size: 4096, modified: Math.floor((Date.now() - 7200000) / 1000), permissions: 16877 },
+        { name: 'config.json', path: '/home/user/config.json', isDir: false, size: 1420, modified: Math.floor((Date.now() - 600000) / 1000), permissions: 33188 },
+        { name: 'server.log', path: '/home/user/server.log', isDir: false, size: 52428, modified: Math.floor((Date.now() - 120000) / 1000), permissions: 33188 },
       ],
     };
   },
