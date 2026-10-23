@@ -720,5 +720,11 @@
   "Zapamiętaj katalogi": "Save folders",
   "Zapomnij zapamiętane katalogi (otwieraj katalogi domowe)": "Forget the saved folders (open the home folders)",
   "Zapamiętaj bieżące katalogi dla połączenia": "Save current folders for this connection",
-  "Katalog nadrzędny: {path}\nDwuklik: otwórz (Backspace)": "Parent folder: {path}\nDouble-click: open (Backspace)"
+  "Katalog nadrzędny: {path}\nDwuklik: otwórz (Backspace)": "Parent folder: {path}\nDouble-click: open (Backspace)",
+  "Ciemny": "Dark",
+  "Jasny": "Light",
+  "Ciemny terminal SSH w jasnym motywie": "Dark SSH terminal in the light theme",
+  "Terminal zostaje ciemny, a reszta aplikacji jest jasna.": "The terminal stays dark while the rest of the application is light.",
+  "Motyw kolorystyczny": "Colour theme",
+  "Jasny lub ciemny wygląd aplikacji. Zmiana działa od razu.": "Light or dark look of the application. Applied instantly."
 }

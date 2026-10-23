@@ -261,8 +261,8 @@ export const Sidebar: React.FC<Props> = ({
           onClick={() => toggleGroupCollapse(group.id)}
           className={`group relative flex items-center gap-1 pr-1.5 h-6 cursor-pointer select-none transition-colors ${
             depth === 0
-              ? 'bg-[#16223a] hover:bg-[#1d2d4a] border-y border-slate-800/80'
-              : 'hover:bg-[#16223a]'
+              ? 'bg-side-hover hover:bg-side-hover2 border-y border-slate-800/80'
+              : 'hover:bg-side-hover'
           }`}
         >
           <span className="w-3 shrink-0 text-slate-500 group-hover:text-cyan-400 transition-colors">
@@ -286,7 +286,7 @@ export const Sidebar: React.FC<Props> = ({
 
           {/* Actions appear over the counter on hover */}
           <div
-            className="absolute right-1 top-1/2 -translate-y-1/2 flex items-center gap-0.5 rounded bg-[#1d2d4a] pl-1 opacity-0 pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto transition-opacity"
+            className="absolute right-1 top-1/2 -translate-y-1/2 flex items-center gap-0.5 rounded bg-side-hover2 pl-1 opacity-0 pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto transition-opacity"
             onClick={(e) => e.stopPropagation()}
           >
             <button
@@ -355,10 +355,10 @@ export const Sidebar: React.FC<Props> = ({
   return (
     <aside
       style={{ width: `${sidebarWidth}px` }}
-      className="relative flex h-full shrink-0 flex-col border-r border-slate-800/90 bg-[#0c1222] select-none overflow-hidden"
+      className="relative flex h-full shrink-0 flex-col border-r border-slate-800/90 bg-side-bg select-none overflow-hidden"
     >
       {/* Search Bar directly above Connection Tree */}
-      <div className="p-2.5 border-b border-slate-800/80 bg-[#090e1c]">
+      <div className="p-2.5 border-b border-slate-800/80 bg-side-head">
         <div className="relative">
           <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
           <input
@@ -366,7 +366,7 @@ export const Sidebar: React.FC<Props> = ({
             value={searchQuery}
             onChange={(e) => onSearchChange(e.target.value)}
             placeholder={t('Szukaj (host, nazwa, IP, tagi)...')}
-            className="w-full rounded-md border border-slate-800 bg-[#121c2e] py-1.5 pl-8 pr-7 text-xs text-white placeholder-slate-500 focus:border-cyan-500 focus:outline-none focus:ring-1 focus:ring-cyan-500"
+            className="w-full rounded-md border border-slate-800 bg-side-input py-1.5 pl-8 pr-7 text-xs text-white placeholder-slate-500 focus:border-cyan-500 focus:outline-none focus:ring-1 focus:ring-cyan-500"
           />
           {searchQuery && (
             <button
@@ -381,7 +381,7 @@ export const Sidebar: React.FC<Props> = ({
       </div>
 
       {/* Sidebar Header / Quick Action with Nowy Folder & Nowe Połączenie */}
-      <div className="border-b border-slate-800/80 bg-[#0e162a]/95 px-2.5 py-2">
+      <div className="border-b border-slate-800/80 bg-side-bar/95 px-2.5 py-2">
         <div className="flex items-center justify-between mb-1.5">
           <span className="flex items-center gap-1.5 uppercase tracking-wider text-[11px] font-bold text-slate-300 min-w-0">
             <Layers className="h-3.5 w-3.5 text-cyan-400 shrink-0" />
@@ -444,7 +444,7 @@ export const Sidebar: React.FC<Props> = ({
           className={`rounded-none transition-all p-2 mb-2 ${
             dragOverGroupId === 'root'
               ? 'border-2 border-dashed border-cyan-400 bg-cyan-950/40 shadow-lg shadow-cyan-500/20'
-              : 'bg-[#111929] border border-slate-800/80'
+              : 'bg-side-card border border-slate-800/80'
           }`}
         >
           <div className="flex items-center justify-between px-2 py-1 text-[10px] font-bold text-slate-400 uppercase tracking-wider border-b border-slate-800/80 mb-1.5">
@@ -495,7 +495,7 @@ export const Sidebar: React.FC<Props> = ({
       </div>
 
       {/* Footer Info */}
-      <div className="border-t border-slate-800/80 bg-[#080d1a] p-2 text-center text-[10px] text-slate-500">
+      <div className="border-t border-slate-800/80 bg-side-foot p-2 text-center text-[10px] text-slate-500">
         {t('Przeciągaj myszką, aby przenieść • Dwuklik: połącz')}
       </div>
 
@@ -577,7 +577,7 @@ const ConnectionItem: React.FC<ConnectionItemProps> = ({
         className={`group relative flex items-center justify-between rounded-md px-1.5 py-[3px] transition-colors cursor-grab active:cursor-grabbing border ${
           isDragging
             ? 'opacity-40 border-cyan-500 bg-cyan-950/40'
-            : 'border-transparent hover:border-slate-700/80 hover:bg-[#16223a]'
+            : 'border-transparent hover:border-slate-700/80 hover:bg-side-hover'
         }`}
       >
         <div className="flex items-center gap-1.5 min-w-0 flex-1">
@@ -614,7 +614,7 @@ const ConnectionItem: React.FC<ConnectionItemProps> = ({
 
         {/* Action buttons – overlay on hover, so they do not take width from the name */}
         <div
-          className="absolute right-1 top-1/2 -translate-y-1/2 flex items-center gap-0.5 rounded bg-[#16223a] pl-1 opacity-0 pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto transition-opacity"
+          className="absolute right-1 top-1/2 -translate-y-1/2 flex items-center gap-0.5 rounded bg-side-hover pl-1 opacity-0 pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto transition-opacity"
           onClick={(e) => e.stopPropagation()}
         >
           {/* Direct Connect */}

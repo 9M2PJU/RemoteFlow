@@ -4,6 +4,12 @@ Numer wersji: `MAJOR.MINOR.PATCH`. Każda zmiana podnosi co najmniej numer PATCH
 Wersja jest zapisana w trzech plikach, które muszą być zgodne (pilnuje tego test `version_tests` w `src-tauri/src/lib.rs`):
 `package.json` (wyświetlana w aplikacji), `src-tauri/tauri.conf.json` (instalator) i `src-tauri/Cargo.toml`.
 
+## 1.4.0
+- **Jasny motyw.** W Ustawieniach → „Motyw kolorystyczny” można wybrać wygląd Ciemny (domyślny) lub Jasny; zmiana działa od razu, bez restartu, także na ekranie logowania, a pasek tytułu okna (Windows/Linux) przyjmuje ten sam motyw. Wybór jest zapamiętywany na komputerze, podobnie jak język.
+- Terminal SSH w jasnym motywie dostaje jasną paletę 16 kolorów (przełączaną na żywo, bez ponownego łączenia). Opcja „Ciemny terminal SSH w jasnym motywie” zostawia ciemny terminal przy jasnej reszcie aplikacji.
+- Technicznie: jasny motyw przemapowuje paletę Tailwind (zmienne CSS `--color-*`) pod klasą `html.light` w `src/index.css`; kolory panelu połączeń i obszaru RDP są nazwanymi tokenami (`side-*`, `rdp-bg`) zamiast stałych `#hex`. Logika w `src/theme/`.
+- SFTP: szersza kolumna czasu modyfikacji (pełna godzina bez obcinania).
+
 ## 1.3.1
 - SFTP: kolumna „Zmodyfikowano” (data i godzina modyfikacji) jest widoczna zawsze, także gdy okno SFTP zajmuje połowę panelu – wcześniej pokazywała się tylko w szerokim panelu. Format skrócony (np. `23.10.26, 14:05`), pełna data z sekundami w podpowiedzi; sortowanie po kliknięciu nagłówka.
 

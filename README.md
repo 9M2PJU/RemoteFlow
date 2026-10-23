@@ -12,6 +12,7 @@ All connections, passwords and keys are kept in a local, encrypted vault. The ap
 
 ### Connections and workspace
 - Polish and English user interface – switch the language in the header, on the login screen or in Settings (applied instantly).
+- Dark or light theme (Settings), optionally with a dark terminal in the light theme.
 - Connection tree with nested folders, colours, search (name, host, IP, tags) and drag & drop.
 - Tabs and split-screen layouts: single, horizontal, vertical, 3 columns and 2×2 grid.
 - Reusable credential profiles shared by many connections.

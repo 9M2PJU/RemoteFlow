@@ -16,6 +16,56 @@ import { api, isTauri } from '../../services/api';
 import { SessionInfo } from '../../types';
 import { SftpManager } from './SftpManager';
 import { useT } from '../../i18n';
+import { useLightTerminal } from '../../theme';
+
+// Full 16-colour palettes. The dark one is the original RemoteFlow terminal; the light one is used
+// with the light application theme (unless "keep the terminal dark" is set in Settings).
+const TERMINAL_DARK = {
+  background: '#090d16',
+  foreground: '#d4d8e0',
+  cursor: '#38bdf8',
+  cursorAccent: '#090d16',
+  selectionBackground: '#33415580',
+  black: '#151b26',
+  red: '#c94444',
+  green: '#4c9f53',
+  yellow: '#c6a02b',
+  blue: '#2f5ea8',
+  magenta: '#9b55c2',
+  cyan: '#2f97ad',
+  white: '#c5cad3',
+  brightBlack: '#5f6878',
+  brightRed: '#ef6b6b',
+  brightGreen: '#72d27a',
+  brightYellow: '#f0d566',
+  brightBlue: '#6593e3',
+  brightMagenta: '#c48ae3',
+  brightCyan: '#62cfe4',
+  brightWhite: '#f3f5f9',
+};
+const TERMINAL_LIGHT = {
+  background: '#fbfcfd',
+  foreground: '#1f2937',
+  cursor: '#0891b2',
+  cursorAccent: '#fbfcfd',
+  selectionBackground: '#94a3b866',
+  black: '#1f2430',
+  red: '#c0362c',
+  green: '#2f8a3a',
+  yellow: '#986f0b',
+  blue: '#2f5ea8',
+  magenta: '#9b3fb5',
+  cyan: '#1d8aa0',
+  white: '#b8bec9',
+  brightBlack: '#6b7280',
+  brightRed: '#e05555',
+  brightGreen: '#3c9e4a',
+  brightYellow: '#b8920f',
+  brightBlue: '#4677d0',
+  brightMagenta: '#b45ccc',
+  brightCyan: '#2aa3b8',
+  brightWhite: '#e5e7eb',
+};
 
 interface Props {
   session: SessionInfo;
@@ -26,6 +76,9 @@ interface Props {
 
 export const SshTerminal: React.FC<Props> = ({ session, isActive, splitLayout = false }) => {
   const t = useT();
+  const lightTerminal = useLightTerminal();
+  const lightTerminalRef = useRef(lightTerminal);
+  lightTerminalRef.current = lightTerminal;
   const containerRef = useRef<HTMLDivElement>(null);
   // xterm is mounted in a padding-free inner element: FitAddon measures the parent's CSS height
   // (border-box with Tailwind) but only subtracts the terminal's own padding, so a padded parent
@@ -167,6 +220,12 @@ export const SshTerminal: React.FC<Props> = ({ session, isActive, splitLayout = 
     };
   }, [triggerFitAndResize]);
 
+  // Switch the terminal colours when the theme changes (no reconnect needed)
+  useEffect(() => {
+    const term = termRef.current;
+    if (term) term.options.theme = lightTerminal ? TERMINAL_LIGHT : TERMINAL_DARK;
+  }, [lightTerminal]);
+
   useEffect(() => {
     if (!containerRef.current) return;
 
@@ -179,29 +238,7 @@ export const SshTerminal: React.FC<Props> = ({ session, isActive, splitLayout = 
       // Full 16-colour palette. Previously only the 8 base colours were set (and very light ones,
       // e.g. sky-blue as "blue"), while the bright variants fell back to xterm.js defaults – full-
       // screen apps such as Midnight Commander (blue panels, bright text) looked garish.
-      theme: {
-        background: '#090d16',
-        foreground: '#d4d8e0',
-        cursor: '#38bdf8',
-        cursorAccent: '#090d16',
-        selectionBackground: '#33415580',
-        black: '#151b26',
-        red: '#c94444',
-        green: '#4c9f53',
-        yellow: '#c6a02b',
-        blue: '#2f5ea8',
-        magenta: '#9b55c2',
-        cyan: '#2f97ad',
-        white: '#c5cad3',
-        brightBlack: '#5f6878',
-        brightRed: '#ef6b6b',
-        brightGreen: '#72d27a',
-        brightYellow: '#f0d566',
-        brightBlue: '#6593e3',
-        brightMagenta: '#c48ae3',
-        brightCyan: '#62cfe4',
-        brightWhite: '#f3f5f9',
-      },
+      theme: lightTerminalRef.current ? TERMINAL_LIGHT : TERMINAL_DARK,
     });
 
     const fitAddon = new FitAddon();
@@ -543,7 +580,8 @@ export const SshTerminal: React.FC<Props> = ({ session, isActive, splitLayout = 
         e.preventDefault();
         setContextMenu({ x: e.clientX, y: e.clientY });
       }}
-      className={`relative h-full w-full bg-[#090d16] select-none ${isActive ? 'block' : 'hidden'}`}
+      className={`relative h-full w-full select-none ${isActive ? 'block' : 'hidden'}`}
+      style={{ backgroundColor: (lightTerminal ? TERMINAL_LIGHT : TERMINAL_DARK).background }}
     >
       {/* Top Floating Action Toolbar */}
       <div className="absolute top-2 right-3 flex items-center gap-1.5 z-20">

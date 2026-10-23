@@ -16,12 +16,14 @@ import {
   RotateCcw,
   MessageSquareWarning,
   Languages,
+  Palette,
 } from 'lucide-react';
 import { api } from '../../services/api';
 import { BackupEntry, BackupSettings, KnownHostEntry, UiSettings, VaultStatus } from '../../types';
 import { ConfirmDialog } from './ConfirmDialog';
 import { locale, useT } from '../../i18n';
 import { LanguageSegmented } from '../../i18n/LanguageSwitcher';
+import { TerminalDarkToggle, ThemeSegmented } from '../../theme/ThemeSwitcher';
 
 interface Props {
   isOpen: boolean;
@@ -515,6 +517,21 @@ export const SettingsModal: React.FC<Props> = ({
                 </div>
                 <LanguageSegmented />
               </div>
+            </div>
+
+            {/* Colour theme */}
+            <div className="rounded-xl border border-slate-800 bg-slate-950/40 p-4 space-y-3">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <div className="text-xs font-bold text-white uppercase tracking-wider flex items-center gap-1.5">
+                    <Palette className="h-3.5 w-3.5 text-cyan-400" />
+                    {t('Motyw kolorystyczny')}
+                  </div>
+                  <p className="text-[11px] text-slate-400 mt-0.5">{t('Jasny lub ciemny wygląd aplikacji. Zmiana działa od razu.')}</p>
+                </div>
+                <ThemeSegmented />
+              </div>
+              <TerminalDarkToggle />
             </div>
 
             {/* Confirmations */}

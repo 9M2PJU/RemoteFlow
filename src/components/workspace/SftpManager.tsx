@@ -999,7 +999,7 @@ const FilePane: React.FC<PaneProps> = ({
       )}
 
       {/* Column headers */}
-      <div className="grid shrink-0 grid-cols-[22px_1fr_58px_94px] @md:grid-cols-[22px_1fr_70px_112px] items-center border-b border-slate-800 bg-slate-900/40 px-1 py-1 text-[10px] font-semibold text-slate-400">
+      <div className="grid shrink-0 grid-cols-[22px_1fr_58px_104px] @md:grid-cols-[22px_1fr_70px_120px] items-center border-b border-slate-800 bg-slate-900/40 px-1 py-1 text-[10px] font-semibold text-slate-400">
         <button onClick={toggleAll} className="flex justify-center text-slate-400 hover:text-cyan-300" title={t('Zaznacz wszystko (Ctrl+A)')}>
           {allSelected ? (
             <CheckSquare className="h-3.5 w-3.5 text-cyan-400" />
@@ -1052,7 +1052,7 @@ const FilePane: React.FC<PaneProps> = ({
             data-sftp-side={side}
             onDoubleClick={() => onOpen(pane.parent!)}
             title={t('Katalog nadrzędny: {path}\nDwuklik: otwórz (Backspace)', { path: pane.parent })}
-            className={`grid cursor-default grid-cols-[22px_1fr_58px_94px] @md:grid-cols-[22px_1fr_70px_112px] items-center px-1 py-[3px] text-[11px] ${
+            className={`grid cursor-default grid-cols-[22px_1fr_58px_104px] @md:grid-cols-[22px_1fr_70px_120px] items-center px-1 py-[3px] text-[11px] ${
               drag && drag.from !== side && drag.overFolder === pane.parent
                 ? 'bg-cyan-700/40 ring-1 ring-inset ring-cyan-400'
                 : 'text-slate-300 hover:bg-slate-800/60'
@@ -1100,7 +1100,7 @@ const FilePane: React.FC<PaneProps> = ({
                     ? t('{path}\nDwuklik: otwórz', { path: entry.path })
                     : t('{path}\nDwuklik: {action}', { path: entry.path, action: transferLabel.toLowerCase() })
                 }
-                className={`grid cursor-default grid-cols-[22px_1fr_58px_94px] @md:grid-cols-[22px_1fr_70px_112px] items-center px-1 py-[3px] text-[11px] ${
+                className={`grid cursor-default grid-cols-[22px_1fr_58px_104px] @md:grid-cols-[22px_1fr_70px_120px] items-center px-1 py-[3px] text-[11px] ${
                   isDropFolder
                     ? 'bg-cyan-700/40 ring-1 ring-inset ring-cyan-400'
                     : selected
@@ -1123,7 +1123,7 @@ const FilePane: React.FC<PaneProps> = ({
                   {inSearch && <span className="truncate font-mono text-[9.5px] text-slate-500">{relPath(entry)}</span>}
                 </div>
                 <div className="pr-1 text-right font-mono text-[10px] text-slate-500">{entry.isDir ? '' : formatBytes(entry.size)}</div>
-                <div className="truncate pl-2 pr-1 text-right font-mono text-[10px] text-slate-500" title={formatDateFull(entry.modified)}>
+                <div className="truncate pl-1.5 pr-1 text-right font-mono text-[10px] text-slate-500" title={formatDateFull(entry.modified)}>
                   {formatDate(entry.modified)}
                 </div>
               </div>

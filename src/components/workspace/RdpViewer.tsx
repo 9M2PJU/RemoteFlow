@@ -2152,7 +2152,7 @@ export const RdpViewer: React.FC<Props> = ({ session, isActive }) => {
         onDragOver={handleDragOver}
         onDragLeave={handleDragLeave}
         onDrop={handleDrop}
-        className={`relative flex-1 min-h-0 min-w-0 w-full bg-[#05070c] flex items-center justify-center ${
+        className={`relative flex-1 min-h-0 min-w-0 w-full bg-rdp-bg flex items-center justify-center ${
           scaleMode === 'real' ? 'overflow-auto' : 'overflow-hidden'
         }`}
       >

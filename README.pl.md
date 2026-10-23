@@ -12,6 +12,7 @@ Wszystkie połączenia, hasła i klucze są przechowywane w lokalnym, zaszyfrowa
 
 ### Połączenia i obszar roboczy
 - Interfejs po polsku i angielsku – zmiana języka w nagłówku, na ekranie logowania lub w Ustawieniach (działa od razu).
+- Ciemny lub jasny motyw (Ustawienia), opcjonalnie z ciemnym terminalem w jasnym motywie.
 - Drzewo połączeń z zagnieżdżonymi folderami, kolorami, wyszukiwaniem (nazwa, host, IP, tagi) i przeciąganiem.
 - Zakładki i podział ekranu: pojedynczy, poziomy, pionowy, 3 kolumny i siatka 2×2.
 - Wspólne profile poświadczeń używane przez wiele połączeń.
