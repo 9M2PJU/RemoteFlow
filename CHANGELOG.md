@@ -4,6 +4,10 @@ Numer wersji: `MAJOR.MINOR.PATCH`. Każda zmiana podnosi co najmniej numer PATCH
 Wersja jest zapisana w trzech plikach, które muszą być zgodne (pilnuje tego test `version_tests` w `src-tauri/src/lib.rs`):
 `package.json` (wyświetlana w aplikacji), `src-tauri/tauri.conf.json` (instalator) i `src-tauri/Cargo.toml`.
 
+## 1.4.1
+- Jasny motyw z ciemnym terminalem: przyciski nad terminalem („Pliki (SFTP)”, „Tunele”, powiadomienia) były prawie niewidoczne (ciemny tekst na ciemnym terminalu). Pasek nad terminalem używa teraz kolorów terminalu – ciemnych, gdy terminal jest ciemny, i jasnych przy jasnym terminalu. Przycisk „Pliki (SFTP)” ma też własne tło (wcześniej przezroczyste).
+- Blok kolorów jasnego motywu w `src/index.css` jest generowany skryptem `scripts/gen-theme-css.py`; nowa klasa `rf-dark` przywraca ciemną paletę wewnątrz jasnego motywu.
+
 ## 1.4.0
 - **Jasny motyw.** W Ustawieniach → „Motyw kolorystyczny” można wybrać wygląd Ciemny (domyślny) lub Jasny; zmiana działa od razu, bez restartu, także na ekranie logowania, a pasek tytułu okna (Windows/Linux) przyjmuje ten sam motyw. Wybór jest zapamiętywany na komputerze, podobnie jak język.
 - Terminal SSH w jasnym motywie dostaje jasną paletę 16 kolorów (przełączaną na żywo, bez ponownego łączenia). Opcja „Ciemny terminal SSH w jasnym motywie” zostawia ciemny terminal przy jasnej reszcie aplikacji.

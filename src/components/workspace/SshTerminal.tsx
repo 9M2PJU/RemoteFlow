@@ -583,8 +583,9 @@ export const SshTerminal: React.FC<Props> = ({ session, isActive, splitLayout = 
       className={`relative h-full w-full select-none ${isActive ? 'block' : 'hidden'}`}
       style={{ backgroundColor: (lightTerminal ? TERMINAL_LIGHT : TERMINAL_DARK).background }}
     >
-      {/* Top Floating Action Toolbar */}
-      <div className="absolute top-2 right-3 flex items-center gap-1.5 z-20">
+      {/* Top Floating Action Toolbar – drawn over the terminal, so it uses the terminal's colours
+          (dark palette when the terminal stays dark in the light theme) */}
+      <div className={`absolute top-2 right-3 flex items-center gap-1.5 z-20 ${lightTerminal ? '' : 'rf-dark'}`}>
         {/* Real-time Feedback Toast */}
         {feedback && (
           <div className="flex items-center gap-1 rounded-full bg-cyan-950/90 border border-cyan-500/50 px-2.5 py-0.5 text-[11px] text-cyan-300 shadow-md animate-fadeIn">
@@ -619,7 +620,7 @@ export const SshTerminal: React.FC<Props> = ({ session, isActive, splitLayout = 
           className={`flex items-center gap-1 rounded-lg border px-2.5 py-1 text-[11px] font-medium transition-colors shadow-sm ${
             isSftpOpen
               ? 'border-cyan-500 bg-cyan-950/80 text-cyan-200 shadow-cyan-950/50'
-              : 'border-slate-700/80 bg-slate-850/90 text-slate-300 hover:bg-slate-700 hover:text-white'
+              : 'border-slate-700/80 bg-slate-900/90 text-slate-200 hover:bg-slate-700 hover:text-white'
           }`}
         >
           <FolderUp className="h-3.5 w-3.5 text-amber-400" />
