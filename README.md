@@ -30,6 +30,7 @@ All connections, passwords and keys are kept in a local, encrypted vault. The ap
 - Drag & drop between the panes, onto folders and from the system file manager.
 - Filtering and recursive search on both sides, creating folders on both sides, deleting on the server.
 - Progress in the status bar, overwrite confirmation, right-click context menu.
+- Start folders saved per connection (local and server); by default the home folders are opened.
 
 ### RDP
 - Embedded RDP client (IronRDP compiled to WebAssembly) through a local proxy – the resolution automatically follows the window size.

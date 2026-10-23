@@ -103,6 +103,15 @@ pub fn with_pooled_sftp<T>(
 // Helpers
 // ---------------------------------------------------------------------------------------------
 
+/// Server paths are always Unix-style. On Windows `Path::join` (used by `ssh2::Sftp::readdir`
+/// and by us) inserts `\` – e.g. `/etc\apport` – so the separators are normalised before a
+/// remote path is shown or sent back to the UI. (ssh2 itself already converts `\` to `/` when
+/// it sends a path to the server, so a `\` can never be part of a remote name on Windows.)
+pub fn remote_path_string(p: &Path) -> String {
+    let s = p.to_string_lossy();
+    if cfg!(windows) { s.replace('\\', "/") } else { s.into_owned() }
+}
+
 fn remote_entry(path: &Path, stat: &ssh2::FileStat) -> Option<SftpFileEntry> {
     let name = path.file_name()?.to_str()?.to_string();
     if name == "." || name == ".." {
@@ -110,7 +119,7 @@ fn remote_entry(path: &Path, stat: &ssh2::FileStat) -> Option<SftpFileEntry> {
     }
     Some(SftpFileEntry {
         name,
-        path: path.to_string_lossy().to_string(),
+        path: remote_path_string(path),
         is_dir: stat.is_dir(),
         size: stat.size.unwrap_or(0),
         modified: stat.mtime.unwrap_or(0),
@@ -191,7 +200,7 @@ pub fn remote_list(sftp: &ssh2::Sftp, remote_path: &str) -> Result<(String, Vec<
     } else {
         PathBuf::from(remote_path)
     };
-    let current = target.to_string_lossy().to_string();
+    let current = remote_path_string(&target);
     let entries = sftp
         .readdir(&target)
         .map_err(|e| tr!("Błąd odczytu katalogu '{}': {}", "Error reading folder '{}': {}", current, e))?;
@@ -212,9 +221,9 @@ pub fn remote_delete(sftp: &ssh2::Sftp, remote_path: &str) -> Result<(), String>
 
 fn delete_remote_dir(sftp: &ssh2::Sftp, dir: &Path, depth: u32) -> Result<(), String> {
     if depth > MAX_DEPTH {
-        return Err(tr!("Zbyt głębokie zagnieżdżenie: {}", "Nesting too deep: {}", dir.display()));
+        return Err(tr!("Zbyt głębokie zagnieżdżenie: {}", "Nesting too deep: {}", remote_path_string(dir)));
     }
-    let entries = sftp.readdir(dir).map_err(|e| tr!("Błąd odczytu '{}': {}", "Error reading '{}': {}", dir.display(), e))?;
+    let entries = sftp.readdir(dir).map_err(|e| tr!("Błąd odczytu '{}': {}", "Error reading '{}': {}", remote_path_string(dir), e))?;
     for (path, stat) in entries {
         let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
         if name == "." || name == ".." {
@@ -223,18 +232,18 @@ fn delete_remote_dir(sftp: &ssh2::Sftp, dir: &Path, depth: u32) -> Result<(), St
         if stat.is_dir() && !is_remote_symlink(&stat) {
             delete_remote_dir(sftp, &path, depth + 1)?;
         } else {
-            sftp.unlink(&path).map_err(|e| tr!("Błąd usuwania '{}': {}", "Error deleting '{}': {}", path.display(), e))?;
+            sftp.unlink(&path).map_err(|e| tr!("Błąd usuwania '{}': {}", "Error deleting '{}': {}", remote_path_string(&path), e))?;
         }
     }
-    sftp.rmdir(dir).map_err(|e| tr!("Błąd usuwania katalogu '{}': {}", "Error deleting folder '{}': {}", dir.display(), e))
+    sftp.rmdir(dir).map_err(|e| tr!("Błąd usuwania katalogu '{}': {}", "Error deleting folder '{}': {}", remote_path_string(dir), e))
 }
 
 pub fn remote_mkdir(sftp: &ssh2::Sftp, parent: &str, name: &str) -> Result<String, String> {
     let name = sanitize_name(name)?;
     let target = remote_join(parent, &name);
     sftp.mkdir(&target, 0o755)
-        .map_err(|e| tr!("Błąd tworzenia katalogu '{}': {}", "Error creating folder '{}': {}", target.display(), e))?;
-    Ok(target.to_string_lossy().to_string())
+        .map_err(|e| tr!("Błąd tworzenia katalogu '{}': {}", "Error creating folder '{}': {}", remote_path_string(&target), e))?;
+    Ok(remote_path_string(&target))
 }
 
 pub fn local_mkdir(parent: &str, name: &str) -> Result<String, String> {
@@ -402,7 +411,7 @@ fn upload_one(
         if sftp.stat(&target).map(|s| s.is_dir()).unwrap_or(false) || sftp.mkdir(&target, 0o755).is_ok() {
             sum.folders += 1;
         } else {
-            sum.fail(tr!("Nie można utworzyć katalogu zdalnego {}", "Cannot create remote folder {}", target.display()));
+            sum.fail(tr!("Nie można utworzyć katalogu zdalnego {}", "Cannot create remote folder {}", remote_path_string(&target)));
             return;
         }
         match std::fs::read_dir(local) {
@@ -420,7 +429,7 @@ fn upload_one(
             .and_then(|mut src| {
                 let mut dst = sftp
                     .create(&target)
-                    .map_err(|e| tr!("Błąd tworzenia pliku zdalnego {}: {}", "Error creating remote file {}: {}", target.display(), e))?;
+                    .map_err(|e| tr!("Błąd tworzenia pliku zdalnego {}: {}", "Error creating remote file {}: {}", remote_path_string(&target), e))?;
                 copy_with_progress(&mut src, &mut dst).map_err(|e| tr!("Błąd przesyłania {}: {}", "Error uploading {}: {}", name, e))
             });
         match result {
@@ -462,7 +471,7 @@ fn download_one(
     progress: Progress,
 ) {
     if depth > MAX_DEPTH {
-        sum.fail(tr!("Zbyt głębokie zagnieżdżenie: {}", "Nesting too deep: {}", remote.display()));
+        sum.fail(tr!("Zbyt głębokie zagnieżdżenie: {}", "Nesting too deep: {}", remote_path_string(remote)));
         return;
     }
     if is_remote_symlink(stat) {
@@ -495,13 +504,13 @@ fn download_one(
                     download_one(sftp, &path, &child_stat, &target, depth + 1, sum, progress);
                 }
             }
-            Err(e) => sum.fail(tr!("Błąd odczytu katalogu zdalnego {}: {}", "Error reading remote folder {}: {}", remote.display(), e)),
+            Err(e) => sum.fail(tr!("Błąd odczytu katalogu zdalnego {}: {}", "Error reading remote folder {}: {}", remote_path_string(remote), e)),
         }
     } else {
         progress(sum.files, &name);
         let result = sftp
             .open(remote)
-            .map_err(|e| tr!("Nie można otworzyć {}: {}", "Cannot open {}: {}", remote.display(), e))
+            .map_err(|e| tr!("Nie można otworzyć {}: {}", "Cannot open {}: {}", remote_path_string(remote), e))
             .and_then(|mut src| {
                 let mut dst = File::create(&target)
                     .map_err(|e| tr!("Błąd tworzenia pliku {}: {}", "Error creating file {}: {}", display_path(&target), e))?;
@@ -555,6 +564,13 @@ mod tests {
         assert!(sanitize_name("a/b").is_err());
         assert!(sanitize_name("a\\b").is_err());
         assert!(sanitize_name("").is_err());
+    }
+
+    #[test]
+    fn remote_paths_use_forward_slashes() {
+        let joined = Path::new("/etc").join("apport");
+        assert_eq!(remote_path_string(&joined), "/etc/apport");
+        assert_eq!(remote_path_string(Path::new("/")), "/");
     }
 
     #[test]

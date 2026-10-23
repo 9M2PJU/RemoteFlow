@@ -797,26 +797,14 @@ export const api = {
     return [];
   },
 
-  async getGlobalDownloadDir(): Promise<string | null> {
+  /** Saves (or clears with null) the SFTP start folders of a connection. */
+  async setConnectionSftpDirs(connectionId: string, localDir: string | null, remoteDir: string | null): Promise<void> {
     if (isTauri()) {
-      try {
-        return await invoke<string | null>('vault_get_global_download_dir');
-      } catch {
-        return null;
-      }
-    }
-    return null;
-  },
-
-  async setGlobalDownloadDir(dir: string | null): Promise<void> {
-    if (isTauri()) {
-      await invoke<void>('vault_set_global_download_dir', { dir: dir || null });
-    }
-  },
-
-  async setConnectionDownloadDir(connectionId: string, dir: string | null): Promise<void> {
-    if (isTauri()) {
-      await invoke<void>('vault_set_connection_download_dir', { connectionId, dir: dir || null });
+      await invoke<void>('vault_set_connection_sftp_dirs', {
+        connectionId,
+        localDir: localDir || null,
+        remoteDir: remoteDir || null,
+      });
     }
   }
 };

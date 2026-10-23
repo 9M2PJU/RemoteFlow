@@ -528,8 +528,6 @@ export const RdpViewer: React.FC<Props> = ({ session, isActive }) => {
         const conn = vault.connections.find((c) => c.id === session.connectionId);
         if (conn?.defaultDownloadDir) {
           exchangeDir = conn.defaultDownloadDir;
-        } else if (vault.metadata?.globalDownloadDir) {
-          exchangeDir = vault.metadata.globalDownloadDir;
         }
       } catch (err) {
         console.warn('Nie udało się pobrać konfiguracji katalogu wymiany:', err);
@@ -571,7 +569,7 @@ export const RdpViewer: React.FC<Props> = ({ session, isActive }) => {
       try {
         const vault = await api.getVaultData();
         const conn = vault.connections.find((c) => c.id === session.connectionId);
-        exchangeDir = conn?.defaultDownloadDir || vault.metadata?.globalDownloadDir || undefined;
+        exchangeDir = conn?.defaultDownloadDir || undefined;
       } catch {}
       const path = await api.openSharedFolder(exchangeDir);
       showToast(t('Otwarto folder lokalny: {path}', { path }), 3500);

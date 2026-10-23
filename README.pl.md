@@ -30,6 +30,7 @@ Wszystkie połączenia, hasła i klucze są przechowywane w lokalnym, zaszyfrowa
 - Przeciąganie między panelami, na katalogi oraz z systemowego menedżera plików.
 - Filtrowanie i wyszukiwanie w podkatalogach po obu stronach, tworzenie katalogów po obu stronach, usuwanie na serwerze.
 - Postęp na pasku stanu, pytanie o nadpisanie, menu pod prawym przyciskiem myszy.
+- Katalogi startowe zapamiętywane osobno dla każdego połączenia (lokalny i na serwerze); domyślnie otwierane są katalogi domowe.
 
 ### RDP
 - Wbudowany klient RDP (IronRDP skompilowany do WebAssembly) działający przez lokalne proxy – rozdzielczość automatycznie dopasowuje się do okna.

@@ -1,6 +1,5 @@
 import React from 'react';
 import {
-  Shield,
   Lock,
   Settings,
   Activity,
@@ -13,6 +12,7 @@ import { APP_VERSION } from '../../version';
 import { VaultStatus } from '../../types';
 import { useT } from '../../i18n';
 import { LanguageSwitcher } from '../../i18n/LanguageSwitcher';
+import { AppLogo } from '../common/AppLogo';
 
 interface Props {
   isSidebarCollapsed: boolean;
@@ -58,9 +58,7 @@ export const Header: React.FC<Props> = ({
         </button>
 
         <div className="flex items-center gap-1.5">
-          <div className="flex h-6 w-6 items-center justify-center rounded-md bg-gradient-to-tr from-cyan-500 to-blue-600 shadow-sm shadow-cyan-500/20">
-            <Shield className="h-3.5 w-3.5 text-white" />
-          </div>
+          <AppLogo className="h-6 w-6 drop-shadow-[0_1px_2px_rgba(6,182,212,0.25)]" />
           <span className="text-xs font-bold tracking-tight text-white">
             Remote<span className="text-cyan-400">Flow</span>
           </span>

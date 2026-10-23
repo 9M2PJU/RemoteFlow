@@ -1,10 +1,11 @@
 import React, { useState } from 'react';
-import { Shield, KeyRound, Lock, ArrowRight, Loader2, Cpu, AlertTriangle, RotateCcw } from 'lucide-react';
+import { KeyRound, Lock, ArrowRight, Loader2, Cpu, AlertTriangle, RotateCcw } from 'lucide-react';
 import { APP_VERSION } from '../../version';
 import { api } from '../../services/api';
 import { VaultStatus } from '../../types';
 import { useT } from '../../i18n';
 import { LanguageSwitcher } from '../../i18n/LanguageSwitcher';
+import { AppLogo } from '../common/AppLogo';
 
 interface Props {
   status: VaultStatus;
@@ -76,9 +77,7 @@ export const MasterPasswordScreen: React.FC<Props> = ({ status, onUnlocked, onRe
       <div className="w-full max-w-md rounded-2xl border border-slate-800 bg-slate-900/90 p-8 shadow-2xl backdrop-blur-xl">
         {/* Logo / Header */}
         <div className="mb-8 text-center">
-          <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-tr from-cyan-500 to-blue-600 shadow-lg shadow-cyan-500/20">
-            <Shield className="h-8 w-8 text-white" />
-          </div>
+          <AppLogo className="mx-auto mb-4 h-16 w-16 drop-shadow-[0_6px_14px_rgba(6,182,212,0.25)]" />
           <h1 className="text-2xl font-bold tracking-tight text-white">
             RemoteFlow
           </h1>

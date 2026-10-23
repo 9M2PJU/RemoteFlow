@@ -55,7 +55,12 @@ export interface Connection {
   rdpSettings?: RdpSettings;
   tags: string[];
   notes?: string;
+  /** RDP: local folder for exchanged files (empty = Downloads). Legacy SFTP start folder for SSH. */
   defaultDownloadDir?: string | null;
+  /** SFTP start folder on this computer (empty = home folder). */
+  sftpLocalDir?: string | null;
+  /** SFTP start folder on the server (empty = home of the connection's user). */
+  sftpRemoteDir?: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -77,7 +82,6 @@ export interface VaultMetadata {
   auto_lock_screen: boolean;
   auto_lock_timeout_mins: number;
   max_pin_attempts: number;
-  globalDownloadDir?: string | null;
 }
 
 export interface VaultData {

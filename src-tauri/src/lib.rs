@@ -8,11 +8,11 @@ pub mod vault;
 use auth::{
     vault_batch_import, vault_change_master_password, vault_delete_connection,
     vault_delete_credential, vault_delete_group, vault_export, vault_get_credentials,
-    vault_get_data, vault_get_global_download_dir, vault_get_path, vault_get_status, vault_import,
+    vault_get_data, vault_get_path, vault_get_status, vault_import,
     vault_backup_now, vault_forget_known_host, vault_touch_activity, vault_get_backup_settings, vault_get_ui_settings, vault_set_ui_settings, vault_init, vault_list_backups,
     vault_restore_backup, vault_set_backup_settings, vault_list_known_hosts, vault_lock, vault_lock_to_pin, vault_reset, vault_reveal_credential_password,
     vault_reveal_password, vault_save_connection, vault_save_credential, vault_save_group,
-    vault_set_connection_download_dir, vault_set_global_download_dir, vault_set_pin,
+    vault_set_connection_sftp_dirs, vault_set_pin,
     vault_unlock_master, vault_unlock_pin, vault_update_security_settings, AuthManager,
 };
 use session::{
@@ -56,9 +56,7 @@ pub fn run() {
             vault_reset,
             vault_update_security_settings,
             vault_get_data,
-            vault_get_global_download_dir,
-            vault_set_global_download_dir,
-            vault_set_connection_download_dir,
+            vault_set_connection_sftp_dirs,
             vault_reveal_password,
             vault_save_connection,
             vault_delete_connection,

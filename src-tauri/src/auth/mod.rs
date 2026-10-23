@@ -1016,29 +1016,15 @@ pub fn vault_reveal_credential_password(
     Ok(decrypt_opt(key, &cred.password_encrypted)?.unwrap_or_default())
 }
 
+/// Saves (or clears with `None`) the SFTP start folders of one connection.
 #[tauri::command]
-pub fn vault_get_global_download_dir(state: tauri::State<'_, AuthState>) -> Result<Option<String>, String> {
-    let mgr = lock_auth(&state)?;
-    let key = mgr.unlocked_key()?;
-    Ok(load_vault_verified(key)?.metadata.global_download_dir)
-}
-
-#[tauri::command]
-pub fn vault_set_global_download_dir(dir: Option<String>, state: tauri::State<'_, AuthState>) -> Result<(), String> {
-    let mgr = lock_auth(&state)?;
-    let key = mgr.unlocked_key()?;
-    update_vault(key, |v| {
-        v.metadata.global_download_dir = dir;
-        Ok(())
-    })
-}
-
-#[tauri::command]
-pub fn vault_set_connection_download_dir(
+pub fn vault_set_connection_sftp_dirs(
     connection_id: String,
-    dir: Option<String>,
+    local_dir: Option<String>,
+    remote_dir: Option<String>,
     state: tauri::State<'_, AuthState>,
 ) -> Result<(), String> {
+    let clean = |d: Option<String>| d.map(|s| s.trim().to_string()).filter(|s| !s.is_empty());
     let mgr = lock_auth(&state)?;
     let key = mgr.unlocked_key()?;
     update_vault(key, |v| {
@@ -1047,7 +1033,12 @@ pub fn vault_set_connection_download_dir(
             .iter_mut()
             .find(|c| c.id == connection_id)
             .ok_or(tr!("Nie znaleziono połączenia", "Connection not found"))?;
-        conn.default_download_dir = dir;
+        conn.sftp_local_dir = clean(local_dir);
+        conn.sftp_remote_dir = clean(remote_dir);
+        if conn.protocol == "ssh" {
+            // The legacy SFTP folder is replaced by the new fields.
+            conn.default_download_dir = None;
+        }
         conn.updated_at = chrono::Utc::now().to_rfc3339();
         Ok(())
     })

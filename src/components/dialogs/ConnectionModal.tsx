@@ -99,8 +99,9 @@ export const ConnectionModal: React.FC<Props> = ({
   // Tags & notes
   const [tagsInput, setTagsInput] = useState('');
   const [notes, setNotes] = useState('');
-  const [defaultDownloadDir, setDefaultDownloadDir] = useState('');
-  const [setAsGlobalDownloadDir, setSetAsGlobalDownloadDir] = useState(false);
+  const [defaultDownloadDir, setDefaultDownloadDir] = useState(''); // RDP exchange folder
+  const [sftpLocalDir, setSftpLocalDir] = useState('');
+  const [sftpRemoteDir, setSftpRemoteDir] = useState('');
 
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -134,8 +135,11 @@ export const ConnectionModal: React.FC<Props> = ({
       }
       setTagsInput(editingConnection.tags.join(', '));
       setNotes(editingConnection.notes || '');
-      setDefaultDownloadDir(editingConnection.defaultDownloadDir || '');
-      setSetAsGlobalDownloadDir(false);
+      const isSsh = editingConnection.protocol === 'ssh';
+      setDefaultDownloadDir(isSsh ? '' : editingConnection.defaultDownloadDir || '');
+      // Up to 1.1.3 the SFTP local start folder was kept in defaultDownloadDir
+      setSftpLocalDir(editingConnection.sftpLocalDir || (isSsh ? editingConnection.defaultDownloadDir || '' : ''));
+      setSftpRemoteDir(editingConnection.sftpRemoteDir || '');
     } else {
       // New connection defaults
       setName('');
@@ -164,7 +168,8 @@ export const ConnectionModal: React.FC<Props> = ({
       setTagsInput('');
       setNotes('');
       setDefaultDownloadDir('');
-      setSetAsGlobalDownloadDir(false);
+      setSftpLocalDir('');
+      setSftpRemoteDir('');
     }
     setActiveTab('general');
     setError(null);
@@ -342,7 +347,9 @@ export const ConnectionModal: React.FC<Props> = ({
         } : undefined,
         tags: tagsInput.split(',').map(t => t.trim()).filter(Boolean),
         notes: notes.trim() || undefined,
-        defaultDownloadDir: defaultDownloadDir.trim() || undefined,
+        defaultDownloadDir: protocol === 'rdp' ? defaultDownloadDir.trim() || undefined : undefined,
+        sftpLocalDir: protocol === 'ssh' ? sftpLocalDir.trim() || undefined : undefined,
+        sftpRemoteDir: protocol === 'ssh' ? sftpRemoteDir.trim() || undefined : undefined,
         createdAt: editingConnection ? editingConnection.createdAt : new Date().toISOString(),
         updatedAt: new Date().toISOString(),
       };
@@ -353,14 +360,6 @@ export const ConnectionModal: React.FC<Props> = ({
         privateKey ? privateKey : undefined,
         promptKeyPassphrase ? '' : (passphrase ? passphrase : undefined)
       );
-
-      if (setAsGlobalDownloadDir && defaultDownloadDir.trim()) {
-        try {
-          await api.setGlobalDownloadDir(defaultDownloadDir.trim());
-        } catch (e) {
-          console.warn('Błąd zapisu globalnego katalogu pobierania:', e);
-        }
-      }
 
       onClose();
     } catch (err: unknown) {
@@ -653,54 +652,102 @@ export const ConnectionModal: React.FC<Props> = ({
                   </div>
                 </div>
 
-                {/* Default Download Directory for SFTP */}
-                <div className="rounded-xl border border-slate-800 bg-slate-950/60 p-3.5 space-y-2.5">
-                  <div className="flex items-center justify-between">
-                    <label className="text-xs font-semibold text-slate-200 flex items-center gap-1.5">
-                      <FolderDown className="h-4 w-4 text-emerald-400" />
-                      <span>{t('Domyślny katalog pobierania plików (SFTP)')}</span>
-                    </label>
-                    {defaultDownloadDir && (
+                {protocol === 'ssh' ? (
+                  /* SFTP start folders (per connection) */
+                  <div className="rounded-xl border border-slate-800 bg-slate-950/60 p-3.5 space-y-2.5">
+                    <div className="flex items-center justify-between">
+                      <label className="text-xs font-semibold text-slate-200 flex items-center gap-1.5">
+                        <FolderDown className="h-4 w-4 text-emerald-400" />
+                        <span>{t('Katalogi startowe SFTP')}</span>
+                      </label>
+                      {(sftpLocalDir || sftpRemoteDir) && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setSftpLocalDir('');
+                            setSftpRemoteDir('');
+                          }}
+                          className="text-[10px] text-slate-400 hover:text-rose-300 transition-colors"
+                        >
+                          {t('Przywróć katalogi domowe')}
+                        </button>
+                      )}
+                    </div>
+                    <div className="space-y-1">
+                      <div className="text-[11px] text-slate-400">{t('Ten komputer')}</div>
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="text"
+                          value={sftpLocalDir}
+                          onChange={(e) => setSftpLocalDir(e.target.value)}
+                          placeholder={t('Domyślnie: katalog domowy')}
+                          className="flex-1 rounded-lg border border-slate-700 bg-slate-800/80 px-3 py-1.5 font-mono text-xs text-white placeholder-slate-500 focus:border-cyan-500 focus:outline-none"
+                        />
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            const folder = await api.pickLocalFolder();
+                            if (folder) setSftpLocalDir(folder);
+                          }}
+                          className="rounded-lg border border-slate-700 bg-slate-800 px-3 py-1.5 text-xs font-medium text-slate-200 hover:bg-slate-700 hover:text-white transition-colors shrink-0"
+                        >
+                          {t('Wybierz folder...')}
+                        </button>
+                      </div>
+                    </div>
+                    <div className="space-y-1">
+                      <div className="text-[11px] text-slate-400">{t('Serwer')}</div>
+                      <input
+                        type="text"
+                        value={sftpRemoteDir}
+                        onChange={(e) => setSftpRemoteDir(e.target.value)}
+                        placeholder={t('Domyślnie: katalog domowy użytkownika połączenia')}
+                        className="w-full flex-1 rounded-lg border border-slate-700 bg-slate-800/80 px-3 py-1.5 font-mono text-xs text-white placeholder-slate-500 focus:border-cyan-500 focus:outline-none"
+                      />
+                    </div>
+                    <p className="text-[10px] leading-relaxed text-slate-500">
+                      {t('Bieżące katalogi można też zapamiętać przyciskiem z pinezką w oknie SFTP.')}
+                    </p>
+                  </div>
+                ) : (
+                  /* RDP: local folder for files exchanged with the remote session */
+                  <div className="rounded-xl border border-slate-800 bg-slate-950/60 p-3.5 space-y-2.5">
+                    <div className="flex items-center justify-between">
+                      <label className="text-xs font-semibold text-slate-200 flex items-center gap-1.5">
+                        <FolderDown className="h-4 w-4 text-emerald-400" />
+                        <span>{t('Folder wymiany plików (RDP)')}</span>
+                      </label>
+                      {defaultDownloadDir && (
+                        <button
+                          type="button"
+                          onClick={() => setDefaultDownloadDir('')}
+                          className="text-[10px] text-slate-400 hover:text-rose-300 transition-colors"
+                        >
+                          {t('Wyczyść (użyj systemowego ~/Downloads)')}
+                        </button>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="text"
+                        value={defaultDownloadDir}
+                        onChange={(e) => setDefaultDownloadDir(e.target.value)}
+                        placeholder={t('Domyślnie: ~/Downloads (pozostaw puste lub wybierz folder)')}
+                        className="flex-1 rounded-lg border border-slate-700 bg-slate-800/80 px-3 py-1.5 font-mono text-xs text-white placeholder-slate-500 focus:border-cyan-500 focus:outline-none"
+                      />
                       <button
                         type="button"
-                        onClick={() => setDefaultDownloadDir('')}
-                        className="text-[10px] text-slate-400 hover:text-rose-300 transition-colors"
+                        onClick={async () => {
+                          const folder = await api.pickLocalFolder();
+                          if (folder) setDefaultDownloadDir(folder);
+                        }}
+                        className="rounded-lg border border-slate-700 bg-slate-800 px-3 py-1.5 text-xs font-medium text-slate-200 hover:bg-slate-700 hover:text-white transition-colors shrink-0"
                       >
-                        {t('Wyczyść (użyj systemowego ~/Downloads)')}
+                        {t('Wybierz folder...')}
                       </button>
-                    )}
+                    </div>
                   </div>
-                  <div className="flex items-center gap-2">
-                    <input
-                      type="text"
-                      value={defaultDownloadDir}
-                      onChange={(e) => setDefaultDownloadDir(e.target.value)}
-                      placeholder={t('Domyślnie: ~/Downloads (pozostaw puste lub wybierz folder)')}
-                      className="flex-1 rounded-lg border border-slate-700 bg-slate-800/80 px-3 py-1.5 font-mono text-xs text-white placeholder-slate-500 focus:border-cyan-500 focus:outline-none"
-                    />
-                    <button
-                      type="button"
-                      onClick={async () => {
-                        const folder = await api.pickLocalFolder();
-                        if (folder) {
-                          setDefaultDownloadDir(folder);
-                        }
-                      }}
-                      className="rounded-lg border border-slate-700 bg-slate-800 px-3 py-1.5 text-xs font-medium text-slate-200 hover:bg-slate-700 hover:text-white transition-colors shrink-0"
-                    >
-                      {t('Wybierz folder...')}
-                    </button>
-                  </div>
-                  <label className="flex items-center gap-2 text-[11px] text-slate-400 cursor-pointer pt-0.5">
-                    <input
-                      type="checkbox"
-                      checked={setAsGlobalDownloadDir}
-                      onChange={(e) => setSetAsGlobalDownloadDir(e.target.checked)}
-                      className="rounded border-slate-700 bg-slate-900 text-cyan-500 focus:ring-0"
-                    />
-                    <span>{t('Zapisz ten katalog również jako domyślny globalnie (dla wszystkich połączeń)')}</span>
-                  </label>
-                </div>
+                )}
               </div>
             )}
 

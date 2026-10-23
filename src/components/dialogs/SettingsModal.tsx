@@ -6,7 +6,6 @@ import {
   Clock,
   CheckCircle2,
   Loader2,
-  FolderDown,
   KeyRound,
   Eye,
   EyeOff,
@@ -44,7 +43,6 @@ export const SettingsModal: React.FC<Props> = ({
   const [confirmPinCode, setConfirmPinCode] = useState('');
   const [autoLockScreen, setAutoLockScreen] = useState(status.autoLockScreen);
   const [autoLockTimeout, setAutoLockTimeout] = useState(status.autoLockTimeoutMins);
-  const [globalDownloadDir, setGlobalDownloadDir] = useState('');
   const [uiSettings, setUiSettings] = useState<UiSettings>({ confirmCloseSessions: true, confirmAppExit: true });
 
   const [saving, setSaving] = useState(false);
@@ -78,10 +76,6 @@ export const SettingsModal: React.FC<Props> = ({
 
   useEffect(() => {
     (async () => {
-      try {
-        const d = await api.getGlobalDownloadDir();
-        if (d) setGlobalDownloadDir(d);
-      } catch {}
       try {
         const p = await api.getVaultPath();
         if (p) setVaultPath(p);
@@ -172,13 +166,10 @@ export const SettingsModal: React.FC<Props> = ({
       // 2. Update auto-lock policies
       await api.updateSecuritySettings(autoLockScreen, autoLockTimeout);
 
-      // 3. Update global download directory
-      await api.setGlobalDownloadDir(globalDownloadDir.trim() || null);
-
-      // 4. Backup policy
+      // 3. Backup policy
       await api.setBackupSettings(backupSettings);
 
-      // 5. Confirmations (closing connections / exiting the application)
+      // 4. Confirmations (closing connections / exiting the application)
       await api.setUiSettings(uiSettings);
       window.dispatchEvent(new CustomEvent<UiSettings>('remoteflow-ui-settings', { detail: uiSettings }));
 
@@ -559,47 +550,6 @@ export const SettingsModal: React.FC<Props> = ({
                   className="h-4 w-4 rounded border-slate-700 bg-slate-800 text-cyan-500 focus:ring-0"
                 />
               </label>
-            </div>
-
-            {/* Global Download Directory Setting */}
-            <div className="rounded-xl border border-slate-800 bg-slate-950/60 p-4 space-y-2.5">
-              <div className="flex items-center justify-between">
-                <label className="text-xs font-semibold text-slate-200 flex items-center gap-2">
-                  <FolderDown className="h-4 w-4 text-emerald-400" />
-                  <span>{t('Globalny katalog pobierania plików (SFTP)')}</span>
-                </label>
-                {globalDownloadDir && (
-                  <button
-                    type="button"
-                    onClick={() => setGlobalDownloadDir('')}
-                    className="text-[10px] text-slate-400 hover:text-rose-300 transition-colors"
-                  >
-                    {t('Wyczyść (użyj systemowego ~/Downloads)')}
-                  </button>
-                )}
-              </div>
-              <div className="flex items-center gap-2">
-                <input
-                  type="text"
-                  value={globalDownloadDir}
-                  onChange={(e) => setGlobalDownloadDir(e.target.value)}
-                  placeholder={t('Domyślnie: ~/Downloads (pozostaw puste dla systemowego)')}
-                  className="flex-1 rounded-lg border border-slate-700 bg-slate-800/80 px-3 py-1.5 font-mono text-xs text-white placeholder-slate-500 focus:border-cyan-500 focus:outline-none"
-                />
-                <button
-                  type="button"
-                  onClick={async () => {
-                    const folder = await api.pickLocalFolder();
-                    if (folder) setGlobalDownloadDir(folder);
-                  }}
-                  className="rounded-lg border border-slate-700 bg-slate-800 px-3 py-1.5 text-xs font-medium text-slate-200 hover:bg-slate-700 hover:text-white transition-colors shrink-0"
-                >
-                  {t('Wybierz folder...')}
-                </button>
-              </div>
-              <p className="text-[10px] text-slate-500 leading-relaxed">
-                {t('Używany jako domyślny folder zapisu pobieranych plików SFTP dla wszystkich połączeń, o ile dane połączenie nie ma skonfigurowanego własnego katalogu.')}
-              </p>
             </div>
 
             {/* Periodic vault backups */}

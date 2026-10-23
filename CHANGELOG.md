@@ -4,6 +4,16 @@ Numer wersji: `MAJOR.MINOR.PATCH`. Każda zmiana podnosi co najmniej numer PATCH
 Wersja jest zapisana w trzech plikach, które muszą być zgodne (pilnuje tego test `version_tests` w `src-tauri/src/lib.rs`):
 `package.json` (wyświetlana w aplikacji), `src-tauri/tauri.conf.json` (instalator) i `src-tauri/Cargo.toml`.
 
+## 1.3.0
+- **Własna ikona aplikacji** (znak zachęty terminala `>` i fala „flow” na kafelku w kolorach aplikacji) zamiast domyślnej ikony Tauri – w pasku zadań, pliku `.exe`, instalatorach i pakietach Linux. Ten sam znak jest logo w nagłówku i na ekranie logowania oraz ikoną karty w trybie przeglądarkowym. Źródło: `src-tauri/icons/icon.svg` (pozostałe rozmiary: `npx tauri icon`).
+- SFTP: na początku listy plików jest wpis `..` prowadzący do katalogu nadrzędnego (dwuklik), tak jak w FileZilli i WinSCP – po obu stronach. Można też na niego upuścić pliki, aby skopiować je do katalogu nadrzędnego.
+
+## 1.2.0
+- **Katalogi startowe SFTP są właściwością połączenia.** W oknie SFTP przycisk „Zapamiętaj katalogi” (pinezka w nagłówku lub menu pod prawym przyciskiem) zapisuje bieżący katalog lokalny i katalog na serwerze dla tego połączenia; obok jest przycisk, który je zapomina. Oba katalogi można też wpisać w oknie edycji połączenia SSH („Katalogi startowe SFTP”). Bez konfiguracji SFTP otwiera katalog domowy na komputerze i katalog domowy użytkownika połączenia na serwerze; zapamiętany katalog, który już nie istnieje, również kończy się katalogiem domowym. Folder przypięty we wcześniejszych wersjach jest nadal używany jako katalog lokalny.
+- Usunięto globalną opcję „Globalny katalog pobierania plików (SFTP)” z Ustawień i z okna połączenia. Dla połączeń RDP pozostaje własny „Folder wymiany plików (RDP)” (domyślnie systemowy folder Pobrane).
+- Naprawiono ścieżki na serwerze w SFTP na Windows: po wejściu do podkatalogu ścieżka wyglądała jak `/etc\apport` (Windows łączył ścieżki znakiem `\`). Ścieżki zdalne zawsze używają `/`, także w komunikatach błędów.
+- Wklejanie tekstu do terminala SSH zamienia windowsowe końce linii (CRLF) na pojedynczy Enter i używa trybu „bracketed paste”, jeśli program na serwerze go włączył (vim, nano, bash). Wcześniej tekst skopiowany na Windows wklejał się z dodatkowymi pustymi liniami.
+
 ## 1.1.3
 - Naprawiono kompilację na Windows: logowanie kluczem SSH z pamięci używa bezpośrednio funkcji libssh2 (`libssh2_userauth_publickey_frommemory`), bo biblioteka `ssh2` udostępnia ją na Windows tylko z backendem OpenSSL. Zachowanie bez zmian względem 1.1.2.
 

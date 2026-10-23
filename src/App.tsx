@@ -318,6 +318,14 @@ const t = useT();
     return () => window.removeEventListener('remoteflow-ui-settings', onChanged);
   }, []);
 
+  // Vault changed outside the main forms (e.g. SFTP start folders saved from the SFTP window)
+  useEffect(() => {
+    const onVaultChanged = () => void loadData();
+    window.addEventListener('remoteflow-vault-changed', onVaultChanged);
+    return () => window.removeEventListener('remoteflow-vault-changed', onVaultChanged);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const handleCloseSession = (sessionId: string) => {
     if (!sessions.some((s) => s.sessionId === sessionId)) return;
     if (!uiSettings.confirmCloseSessions) return closeSessionNow(sessionId);

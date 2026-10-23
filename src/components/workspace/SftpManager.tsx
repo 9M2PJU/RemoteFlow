@@ -14,11 +14,13 @@ import {
   Folder,
   FolderOpen,
   FolderPlus,
+  FolderUp,
   HardDrive,
   Home,
   Loader2,
   MinusSquare,
   Pin,
+  PinOff,
   RefreshCw,
   Search,
   Server,
@@ -171,7 +173,7 @@ export const SftpManager: React.FC<Props> = ({
   }, []);
 
   // --- Loading ----------------------------------------------------------------------------------
-  const loadLocal = useCallback(async (path: string) => {
+  const loadLocal = useCallback(async (path: string): Promise<boolean> => {
     setLocal((p) => ({ ...p, loading: true, error: null }));
     try {
       const res = await api.localListDir(path);
@@ -186,13 +188,15 @@ export const SftpManager: React.FC<Props> = ({
         searchResults: null,
         filter: res.currentPath === p.path ? p.filter : '',
       }));
+      return true;
     } catch (err: any) {
       setLocal((p) => ({ ...p, loading: false, error: String(err?.message || err) }));
+      return false;
     }
   }, []);
 
   const loadRemote = useCallback(
-    async (path: string) => {
+    async (path: string): Promise<boolean> => {
       setRemote((p) => ({ ...p, loading: true, error: null }));
       try {
         const res = await api.sftpList(connectionId, path);
@@ -207,8 +211,10 @@ export const SftpManager: React.FC<Props> = ({
           searchResults: null,
           filter: res.currentPath === p.path ? p.filter : '',
         }));
+        return true;
       } catch (err: any) {
         setRemote((p) => ({ ...p, loading: false, error: String(err?.message || err) }));
+        return false;
       }
     },
     [connectionId]
@@ -216,19 +222,25 @@ export const SftpManager: React.FC<Props> = ({
 
   const load = (side: Side, path: string) => (side === 'local' ? loadLocal(path) : loadRemote(path));
 
-  // Initial folders: local = connection / global download folder (or home), remote = home
+  // Start folders saved for this connection; nothing saved = home folders (local user / server user)
+  const [savedDirs, setSavedDirs] = useState<{ local: string; remote: string }>({ local: '', remote: '' });
   useEffect(() => {
     if (!isOpen || initializedRef.current) return;
     initializedRef.current = true;
     (async () => {
       let localStart = '';
+      let remoteStart = '';
       try {
         const vault = await api.getVaultData();
         const conn = vault.connections.find((c) => c.id === connectionId);
-        localStart = conn?.defaultDownloadDir || vault.metadata?.globalDownloadDir || '';
+        // defaultDownloadDir = SFTP folder pinned in versions up to 1.1.3
+        localStart = conn?.sftpLocalDir || conn?.defaultDownloadDir || '';
+        remoteStart = conn?.sftpRemoteDir || '';
+        setSavedDirs({ local: localStart, remote: remoteStart });
       } catch {}
-      loadLocal(localStart);
-      loadRemote('');
+      // A saved folder that no longer exists falls back to the home folder
+      if (!(await loadLocal(localStart)) && localStart) loadLocal('');
+      if (!(await loadRemote(remoteStart)) && remoteStart) loadRemote('');
     })();
   }, [isOpen, connectionId, loadLocal, loadRemote]);
 
@@ -474,14 +486,31 @@ export const SftpManager: React.FC<Props> = ({
     }
   };
 
-  const pinLocalFolder = async () => {
+  const saveStartDirs = async () => {
     try {
-      await api.setConnectionDownloadDir(connectionId, local.path);
-      showStatus(t('Folder „{path}” będzie otwierany domyślnie dla tego połączenia', { path: local.path }));
+      await api.setConnectionSftpDirs(connectionId, local.path, remote.path);
+      setSavedDirs({ local: local.path, remote: remote.path });
+      window.dispatchEvent(new Event('remoteflow-vault-changed'));
+      showStatus(
+        t('Zapamiętano katalogi dla tego połączenia: {local} ↔ {remote}', { local: local.path, remote: remote.path })
+      );
     } catch (err: any) {
-      showStatus(t('Nie udało się zapisać folderu: {p0}', { p0: err?.message || err }), 'error');
+      showStatus(t('Nie udało się zapisać katalogów: {p0}', { p0: err?.message || err }), 'error');
     }
   };
+
+  const clearStartDirs = async () => {
+    try {
+      await api.setConnectionSftpDirs(connectionId, null, null);
+      setSavedDirs({ local: '', remote: '' });
+      window.dispatchEvent(new Event('remoteflow-vault-changed'));
+      showStatus(t('Usunięto zapamiętane katalogi – SFTP będzie otwierać katalogi domowe'));
+    } catch (err: any) {
+      showStatus(t('Nie udało się zapisać katalogów: {p0}', { p0: err?.message || err }), 'error');
+    }
+  };
+  const hasSavedDirs = !!(savedDirs.local || savedDirs.remote);
+  const canSaveDirs = !!(local.path && remote.path);
 
   if (!isOpen) return null;
 
@@ -508,6 +537,34 @@ export const SftpManager: React.FC<Props> = ({
           <span className="font-semibold text-white">{t('Menedżer plików SFTP')}</span>
           <span className="truncate font-mono text-[10px] text-slate-400">{connectionTitle}</span>
         </div>
+        <div className="flex shrink-0 items-center gap-1">
+          <button
+            onClick={saveStartDirs}
+            disabled={!canSaveDirs}
+            title={
+              hasSavedDirs
+                ? t('Zapamiętane katalogi: {local} ↔ {remote}. Kliknij, aby zapisać bieżące.', {
+                    local: savedDirs.local || '~',
+                    remote: savedDirs.remote || '~',
+                  })
+                : t('Zapamiętaj bieżące katalogi (lokalny i na serwerze) dla tego połączenia')
+            }
+            className={`flex items-center gap-1 rounded px-1.5 py-1 text-[11px] hover:bg-slate-800 disabled:opacity-40 ${
+              hasSavedDirs ? 'text-cyan-300' : 'text-slate-400 hover:text-white'
+            }`}
+          >
+            <Pin className="h-3.5 w-3.5" />
+            <span className="hidden sm:inline">{t('Zapamiętaj katalogi')}</span>
+          </button>
+          {hasSavedDirs && (
+            <button
+              onClick={clearStartDirs}
+              title={t('Zapomnij zapamiętane katalogi (otwieraj katalogi domowe)')}
+              className="rounded p-1 text-slate-400 hover:bg-slate-800 hover:text-rose-300"
+            >
+              <PinOff className="h-3.5 w-3.5" />
+            </button>
+          )}
         <button
           onClick={onClose}
           title={t('Zamknij (Esc)')}
@@ -515,6 +572,7 @@ export const SftpManager: React.FC<Props> = ({
         >
           <X className="h-4 w-4" />
         </button>
+        </div>
       </div>
 
       {/* Two panes */}
@@ -537,17 +595,7 @@ export const SftpManager: React.FC<Props> = ({
           onTransfer={(paths) => transfer('local', paths)}
           transferLabel={t('Wyślij')}
           transferIcon={<ArrowRight className="h-3 w-3" />}
-          onPin={local.path ? pinLocalFolder : undefined}
-          extraTools={
-            <button
-              onClick={pinLocalFolder}
-              disabled={!local.path}
-              title={t('Otwieraj ten folder domyślnie dla tego połączenia')}
-              className="flex h-6 w-6 items-center justify-center rounded border border-slate-700 bg-slate-800 text-slate-300 hover:bg-slate-700 hover:text-white disabled:opacity-40"
-            >
-              <Pin className="h-3 w-3" />
-            </button>
-          }
+          onPin={canSaveDirs ? saveStartDirs : undefined}
         />
         <div className="w-px shrink-0 bg-slate-700" />
         <FilePane
@@ -572,6 +620,7 @@ export const SftpManager: React.FC<Props> = ({
           transferLabel={t('Pobierz')}
           transferIcon={<ArrowLeft className="h-3 w-3" />}
           onPasteFiles={pasteFromClipboard}
+          onPin={canSaveDirs ? saveStartDirs : undefined}
           transferFirst
           extraTools={
             <button
@@ -985,6 +1034,28 @@ const FilePane: React.FC<PaneProps> = ({
           </div>
         )}
 
+        {/* ".." – parent folder entry (like FileZilla / WinSCP); also a drop target */}
+        {pane.parent && !inSearch && !(pane.loading && pane.entries.length === 0) && (
+          <div
+            data-sftp-dir={pane.parent}
+            data-sftp-side={side}
+            onDoubleClick={() => onOpen(pane.parent!)}
+            title={t('Katalog nadrzędny: {path}\nDwuklik: otwórz (Backspace)', { path: pane.parent })}
+            className={`grid cursor-default grid-cols-[22px_1fr_70px] @md:grid-cols-[22px_1fr_70px_110px] items-center px-1 py-[3px] text-[11px] ${
+              drag && drag.from !== side && drag.overFolder === pane.parent
+                ? 'bg-cyan-700/40 ring-1 ring-inset ring-cyan-400'
+                : 'text-slate-300 hover:bg-slate-800/60'
+            }`}
+          >
+            <span />
+            <div className="flex min-w-0 items-center gap-1.5">
+              <FolderUp className="h-3.5 w-3.5 shrink-0 text-amber-400" />
+              <span className="font-mono font-medium text-amber-100">..</span>
+            </div>
+            <span />
+          </div>
+        )}
+
         {pane.error ? (
           <div className="m-2 rounded border border-red-500/30 bg-red-500/10 p-2 text-[11px] text-red-300">{pane.error}</div>
         ) : pane.loading && pane.entries.length === 0 ? (
@@ -1093,7 +1164,7 @@ const FilePane: React.FC<PaneProps> = ({
           )}
           {onPin && (
             <MenuItem icon={<Pin className="h-3.5 w-3.5 text-slate-400" />} onClick={onPin}>
-              {t('Otwieraj ten folder domyślnie')}
+              {t('Zapamiętaj bieżące katalogi dla połączenia')}
             </MenuItem>
           )}
           {pane.parent && !inSearch && (

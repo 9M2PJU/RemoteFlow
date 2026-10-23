@@ -632,12 +632,6 @@ pub async fn sftp_upload_paths(
 pub fn open_shared_folder(target_dir: Option<String>) -> Result<String, String> {
     let resolved_dir = if let Some(dir) = target_dir.filter(|s| !s.trim().is_empty()) {
         std::path::PathBuf::from(dir)
-    } else if let Ok(Some(vault)) = crate::vault::storage::load_vault() {
-        if let Some(global_dir) = vault.metadata.global_download_dir.filter(|s| !s.trim().is_empty()) {
-            std::path::PathBuf::from(global_dir)
-        } else {
-            dirs::download_dir().or_else(dirs::home_dir).unwrap_or_else(|| std::path::PathBuf::from("/tmp"))
-        }
     } else {
         dirs::download_dir().or_else(dirs::home_dir).unwrap_or_else(|| std::path::PathBuf::from("/tmp"))
     };
@@ -669,12 +663,6 @@ pub async fn save_dropped_file_to_shared(
 
         let save_dir = if let Some(dir) = target_dir.filter(|s| !s.trim().is_empty()) {
             std::path::PathBuf::from(dir)
-        } else if let Ok(Some(vault)) = crate::vault::storage::load_vault() {
-            if let Some(global_dir) = vault.metadata.global_download_dir.filter(|s| !s.trim().is_empty()) {
-                std::path::PathBuf::from(global_dir)
-            } else {
-                dirs::download_dir().or_else(dirs::home_dir).unwrap_or_else(|| std::path::PathBuf::from("/tmp"))
-            }
         } else {
             dirs::download_dir().or_else(dirs::home_dir).unwrap_or_else(|| std::path::PathBuf::from("/tmp"))
         };

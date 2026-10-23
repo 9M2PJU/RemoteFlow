@@ -106,8 +106,16 @@ pub struct Connection {
     pub rdp_settings: Option<RdpSettings>,
     pub tags: Vec<String>,
     pub notes: Option<String>,
+    /// RDP: local folder for files exchanged with the remote session (empty = system Downloads).
+    /// Older versions also used it as the SFTP start folder – still read as a fallback for that.
     #[serde(rename = "defaultDownloadDir", default, skip_serializing_if = "Option::is_none")]
     pub default_download_dir: Option<String>,
+    /// SFTP: local folder opened in the left pane (empty = user's home folder).
+    #[serde(rename = "sftpLocalDir", default, skip_serializing_if = "Option::is_none")]
+    pub sftp_local_dir: Option<String>,
+    /// SFTP: server folder opened in the right pane (empty = home of the connection's user).
+    #[serde(rename = "sftpRemoteDir", default, skip_serializing_if = "Option::is_none")]
+    pub sftp_remote_dir: Option<String>,
     #[serde(rename = "createdAt")]
     pub created_at: String,
     #[serde(rename = "updatedAt")]
@@ -137,6 +145,8 @@ pub struct VaultMetadata {
     pub auto_lock_screen: bool,
     pub auto_lock_timeout_mins: u32, // 0 = disabled
     pub max_pin_attempts: u32,
+    /// Legacy (up to 1.1.3): global SFTP download folder. No longer used, but kept so that the
+    /// integrity MAC (computed over the re-serialised vault) of existing files still matches.
     #[serde(rename = "globalDownloadDir", default, skip_serializing_if = "Option::is_none")]
     pub global_download_dir: Option<String>,
     /// Trusted server identities (TOFU): "ssh:host:port" / "rdp:host:port" -> "SHA256:..." fingerprint.

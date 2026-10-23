@@ -105,7 +105,15 @@ export const SshTerminal: React.FC<Props> = ({ session, isActive, splitLayout = 
 
       const text = await api.clipboardReadText();
       if (text) {
-        api.sendInput(session.sessionId, text);
+        const term = termRef.current;
+        if (term) {
+          // xterm's paste() turns CRLF / LF into CR (what a terminal sends for Enter) and wraps the
+          // text in bracketed-paste markers when the remote program (vim, nano, bash) asked for
+          // them. Sending raw Windows CRLF text produced an extra empty line after every line.
+          term.paste(text);
+        } else {
+          api.sendInput(session.sessionId, text.replace(/\r\n?|\n/g, '\r'));
+        }
         showNotification(t('Wklejono tekst ze schowka'));
       }
     } catch (err) {
