@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ArrowDownUp,
   ArrowLeft,
@@ -34,6 +34,7 @@ import { api, isTauri } from '../../services/api';
 import { SftpFileEntry, TransferProgress, TransferSummary } from '../../types';
 import { ConfirmDialog } from '../dialogs/ConfirmDialog';
 import { locale, useT } from '../../i18n';
+import { useMenuPosition } from '../../utils/useMenuPosition';
 
 type Side = 'local' | 'remote';
 type SortKey = 'name' | 'size' | 'modified';
@@ -1212,15 +1213,7 @@ const PaneContextMenu: React.FC<{ x: number; y: number; onClose: () => void; chi
   children,
 }) => {
   const ref = useRef<HTMLDivElement>(null);
-  const [pos, setPos] = useState<{ left: number; top: number } | null>(null);
-
-  useLayoutEffect(() => {
-    const el = ref.current;
-    if (!el) return;
-    const left = Math.min(x, window.innerWidth - el.offsetWidth - 6);
-    const top = Math.min(y, window.innerHeight - el.offsetHeight - 6);
-    setPos({ left: Math.max(6, left), top: Math.max(6, top) });
-  }, [x, y]);
+  const menuStyle = useMenuPosition(ref, { x, y });
 
   useEffect(() => {
     const onDown = (e: MouseEvent) => {
@@ -1257,7 +1250,7 @@ const PaneContextMenu: React.FC<{ x: number; y: number; onClose: () => void; chi
         e.stopPropagation();
       }}
       onClick={onClose}
-      style={{ left: pos?.left ?? x, top: pos?.top ?? y, visibility: pos ? 'visible' : 'hidden' }}
+      style={menuStyle}
       className="fixed z-[75] min-w-52 rounded-lg border border-slate-700 bg-slate-900/95 py-1 text-xs text-slate-200 shadow-xl shadow-black/50 backdrop-blur-md"
     >
       {children}

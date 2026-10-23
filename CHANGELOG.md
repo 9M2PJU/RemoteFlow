@@ -4,6 +4,9 @@ Numer wersji: `MAJOR.MINOR.PATCH`. Każda zmiana podnosi co najmniej numer PATCH
 Wersja jest zapisana w trzech plikach, które muszą być zgodne (pilnuje tego test `version_tests` w `src-tauri/src/lib.rs`):
 `package.json` (wyświetlana w aplikacji), `src-tauri/tauri.conf.json` (instalator) i `src-tauri/Cargo.toml`.
 
+## 1.4.2
+- Menu kontekstowe (prawy przycisk myszy) mieszczą się zawsze w oknie: gdy pod kursorem brakuje miejsca, menu otwiera się nad kursorem, a przy prawej krawędzi – na lewo od niego. Dotyczy drzewa „Struktura połączeń” (np. połączenie na samym dole listy), zakładek, terminala SSH i okna SFTP (wspólny hook `src/utils/useMenuPosition.ts`).
+
 ## 1.4.1
 - Jasny motyw z ciemnym terminalem: przyciski nad terminalem („Pliki (SFTP)”, „Tunele”, powiadomienia) były prawie niewidoczne (ciemny tekst na ciemnym terminalu). Pasek nad terminalem używa teraz kolorów terminalu – ciemnych, gdy terminal jest ciemny, i jasnych przy jasnym terminalu. Przycisk „Pliki (SFTP)” ma też własne tło (wcześniej przezroczyste).
 - Blok kolorów jasnego motywu w `src/index.css` jest generowany skryptem `scripts/gen-theme-css.py`; nowa klasa `rf-dark` przywraca ciemną paletę wewnątrz jasnego motywu.

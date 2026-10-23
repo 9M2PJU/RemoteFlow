@@ -22,6 +22,7 @@ import {
 import { api } from '../../services/api';
 import { SessionInfo, WorkspaceLayout } from '../../types';
 import { useT } from '../../i18n';
+import { useMenuPosition } from '../../utils/useMenuPosition';
 
 interface Props {
   sessions: SessionInfo[];
@@ -89,6 +90,7 @@ export const TabBar: React.FC<Props> = ({
   const [dropPosition, setDropPosition] = useState<'left' | 'right' | null>(null);
 
   const menuRef = useRef<HTMLDivElement>(null);
+  const menuStyle = useMenuPosition(menuRef, contextMenu);
   const isDraggingRef = useRef(false);
   const slotCount = getSlotCount(layout);
 
@@ -299,11 +301,7 @@ export const TabBar: React.FC<Props> = ({
               onContextMenu={(e) => {
                 e.preventDefault();
                 e.stopPropagation();
-                setContextMenu({
-                  x: Math.min(e.clientX, window.innerWidth - 220),
-                  y: e.clientY + 5,
-                  session,
-                });
+                setContextMenu({ x: e.clientX, y: e.clientY + 2, session });
               }}
               title={t('Przeciągnij zakładkę w inne miejsce, lub na pulpit roboczy aby podzielić ekran')}
               className={`group relative flex h-8 items-center gap-2 rounded-t-md border-t-2 px-3 text-xs font-medium transition-all cursor-grab active:cursor-grabbing max-w-[240px] shrink-0 select-none ${
@@ -526,7 +524,7 @@ export const TabBar: React.FC<Props> = ({
       {contextMenu && (
         <div
           ref={menuRef}
-          style={{ top: `${contextMenu.y}px`, left: `${contextMenu.x}px` }}
+          style={menuStyle}
           className="fixed z-50 w-52 rounded-xl border border-slate-700 bg-slate-900 p-1 shadow-2xl backdrop-blur-md"
         >
           <div className="px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wider text-slate-500 border-b border-slate-800">

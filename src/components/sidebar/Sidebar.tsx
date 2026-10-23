@@ -23,6 +23,7 @@ import { api } from '../../services/api';
 import { anchorFromElement, DialogAnchor } from '../dialogs/ConfirmDialog';
 import { Connection, Group } from '../../types';
 import { useT } from '../../i18n';
+import { useMenuPosition } from '../../utils/useMenuPosition';
 
 interface Props {
   groups: Group[];
@@ -540,6 +541,7 @@ const ConnectionItem: React.FC<ConnectionItemProps> = ({
   const activeTunnelsCount = connection.portForwarding.filter((p) => p.enabled).length;
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
+  const menuStyle = useMenuPosition(menuRef, contextMenu);
 
   useEffect(() => {
     if (!contextMenu) return;
@@ -569,10 +571,7 @@ const ConnectionItem: React.FC<ConnectionItemProps> = ({
         onContextMenu={(e) => {
           e.preventDefault();
           e.stopPropagation();
-          setContextMenu({
-            x: Math.min(e.clientX, window.innerWidth - 220),
-            y: e.clientY + 5,
-          });
+          setContextMenu({ x: e.clientX, y: e.clientY + 2 });
         }}
         className={`group relative flex items-center justify-between rounded-md px-1.5 py-[3px] transition-colors cursor-grab active:cursor-grabbing border ${
           isDragging
@@ -659,7 +658,7 @@ const ConnectionItem: React.FC<ConnectionItemProps> = ({
       {contextMenu && (
         <div
           ref={menuRef}
-          style={{ top: `${contextMenu.y}px`, left: `${contextMenu.x}px` }}
+          style={menuStyle}
           className="fixed z-50 w-56 rounded-xl border border-slate-700 bg-slate-900 p-1 shadow-2xl backdrop-blur-md"
         >
           <div className="px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wider text-slate-500 border-b border-slate-800">

@@ -17,6 +17,7 @@ import { SessionInfo } from '../../types';
 import { SftpManager } from './SftpManager';
 import { useT } from '../../i18n';
 import { useLightTerminal } from '../../theme';
+import { useMenuPosition } from '../../utils/useMenuPosition';
 
 // Full 16-colour palettes. The dark one is the original RemoteFlow terminal; the light one is used
 // with the light application theme (unless "keep the terminal dark" is set in Settings).
@@ -93,6 +94,7 @@ export const SshTerminal: React.FC<Props> = ({ session, isActive, splitLayout = 
   const [isUploading, setIsUploading] = useState(false);
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
+  const menuStyle = useMenuPosition(menuRef, contextMenu);
 
   const showNotification = useCallback((msg: string) => {
     setFeedback(msg);
@@ -656,7 +658,7 @@ export const SshTerminal: React.FC<Props> = ({ session, isActive, splitLayout = 
           ref={menuRef}
           // Keep the keyboard focus in the terminal while a menu item is clicked
           onMouseDown={(e) => e.preventDefault()}
-          style={{ top: contextMenu.y, left: contextMenu.x }}
+          style={menuStyle}
           className="fixed z-50 w-48 rounded-lg border border-slate-700 bg-slate-900/95 py-1 text-xs text-slate-200 shadow-xl backdrop-blur-md font-sans"
         >
           <button
