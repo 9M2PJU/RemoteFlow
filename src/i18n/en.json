@@ -742,5 +742,6 @@
   "Cel na tym komputerze:": "Target on this computer:",
   "Cel (z serwera):": "Target (from the server):",
   "serwer": "server",
-  "Pominięto połączenia z nieobsługiwanymi protokołami ({n}): {list}. RemoteFlow obsługuje SSH i RDP.": "Skipped connections with unsupported protocols ({n}): {list}. RemoteFlow supports SSH and RDP."
+  "Pominięto połączenia z nieobsługiwanymi protokołami ({n}): {list}. RemoteFlow obsługuje SSH i RDP.": "Skipped connections with unsupported protocols ({n}): {list}. RemoteFlow supports SSH and RDP.",
+  "Rozłączono: {p0}": "Disconnected: {p0}"
 }

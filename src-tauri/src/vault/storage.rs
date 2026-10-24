@@ -27,6 +27,7 @@ fn dir_is_writable(dir: &Path) -> bool {
     }
 }
 
+#[cfg_attr(test, allow(dead_code))]
 fn resolve_vault_path() -> PathBuf {
     let exe_dir = std::env::current_exe()
         .ok()
@@ -68,10 +69,25 @@ fn resolve_vault_path() -> PathBuf {
 }
 
 /// The vault location is resolved once per process so it cannot change while the app runs.
+/// Tests never touch the user's vault: they get their own folder in the system temp directory
+/// (the normal lookup would find e.g. ~/.config/remoteflow/vault.json, and the tests delete the
+/// vault and its backups).
+#[cfg(test)]
+fn vault_path_for_this_build() -> PathBuf {
+    let dir = std::env::temp_dir().join(format!("remoteflow-test-{}", std::process::id()));
+    let _ = fs::create_dir_all(&dir);
+    dir.join("vault.json")
+}
+
+#[cfg(not(test))]
+fn vault_path_for_this_build() -> PathBuf {
+    resolve_vault_path()
+}
+
 pub fn get_vault_path() -> PathBuf {
     VAULT_PATH
         .get_or_init(|| {
-            let path = resolve_vault_path();
+            let path = vault_path_for_this_build();
             // Vaults written by older versions may be world-readable (0644) – tighten them once
             restrict_file(&path);
             path
@@ -227,6 +243,21 @@ pub fn delete_vault() -> Result<(), String> {
         fs::rename(&path, &backup_path).map_err(|e| tr!("Nie udało się utworzyć kopii sejfu: {}", "Could not back up the vault: {}", e))?;
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod path_tests {
+    use super::*;
+
+    #[test]
+    fn tests_use_a_private_vault_path() {
+        let p = get_vault_path();
+        assert!(p.starts_with(std::env::temp_dir()), "{:?}", p);
+        assert!(p.to_string_lossy().contains("remoteflow-test-"));
+        if let Some(cfg) = dirs::config_dir() {
+            assert!(!p.starts_with(cfg));
+        }
+    }
 }
 
 #[cfg(all(test, unix))]

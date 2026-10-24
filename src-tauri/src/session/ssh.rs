@@ -151,11 +151,20 @@ fn pubkey_from_memory(sess: &ssh2::Session, username: &str, key: &str, passphras
     }
 }
 
+/// Time limit for the SSH handshake and authentication. Without it a server that accepts the
+/// TCP connection but never answers would block the thread forever (closing the tab did not help).
+#[cfg(not(test))]
+const HANDSHAKE_TIMEOUT_MS: u32 = 20_000;
+#[cfg(test)]
+const HANDSHAKE_TIMEOUT_MS: u32 = 1_500;
+
 pub fn ssh_connect_raw(config: &SshConnectionConfig) -> Result<ssh2::Session, String> {
-    let addr_str = format!("{}:{}", config.host, config.port);
+    // Host and port go to the resolver separately – "host:port" broke IPv6 literals (::1 -> "::1:22")
+    let host = crate::session::bare_host(&config.host);
+    let addr_str = crate::session::host_port(&config.host, config.port);
     let mut tcp_stream = None;
 
-    if let Ok(addrs) = addr_str.to_socket_addrs() {
+    if let Ok(addrs) = (host, config.port).to_socket_addrs() {
         for addr in addrs {
             if let Ok(stream) = std::net::TcpStream::connect_timeout(&addr, std::time::Duration::from_secs(4)) {
                 let _ = stream.set_nodelay(true);
@@ -180,6 +189,9 @@ pub fn ssh_connect_raw(config: &SshConnectionConfig) -> Result<ssh2::Session, St
 
     let mut sess = ssh2::Session::new().map_err(|e| tr!("Błąd inicjalizacji biblioteki SSH: {}", "SSH library initialisation error: {}", e))?;
     sess.set_tcp_stream(tcp);
+    // Covers the handshake, the host key check and authentication; callers set their own
+    // timeout (or non-blocking mode) for the rest of the session.
+    sess.set_timeout(HANDSHAKE_TIMEOUT_MS);
     sess.handshake().map_err(|e| tr!("Błąd negocjacji SSH (Handshake): {}", "SSH handshake error: {}", e))?;
 
     // Host key verification (TOFU) – must happen before any authentication attempt,
@@ -287,40 +299,65 @@ pub fn spawn_ssh_session(
     app: AppHandle,
 ) {
     std::thread::spawn(move || {
-        let sid = session_id.clone();
+        let data_app = app.clone();
+        let data_event = format!("ssh-data-{}", session_id);
+        run_ssh_worker(
+            config,
+            cmd_rx,
+            move |text: String| {
+                let _ = data_app.emit(&data_event, text);
+            },
+            move |status: &str, message: Option<String>| {
+                crate::session::report_session_status(&app, &session_id, status, message)
+            },
+        );
+    });
+}
+
+/// The terminal session loop: connects, starts the shell and moves data until the session ends.
+/// `emit` sends terminal output to the UI, `set_status` reports connecting/connected/error/
+/// disconnected (separate from Tauri so it can be tested).
+fn run_ssh_worker(
+    config: SshConnectionConfig,
+    cmd_rx: Receiver<SshWorkerCommand>,
+    emit: impl Fn(String),
+    set_status: impl Fn(&str, Option<String>),
+) {
+    {
         let emit_error = |msg: String| {
             let formatted = tr!("\r\n\x1b[1;31m[RemoteFlow Błąd SSH]\x1b[0m {}\r\n", "\r\n\x1b[1;31m[RemoteFlow SSH error]\x1b[0m {}\r\n", msg);
-            let _ = app.emit(&format!("ssh-data-{}", sid), formatted);
+            emit(formatted);
         };
 
         let sess = match ssh_connect_raw(&config) {
             Ok(s) => s,
             Err(e) => {
-                emit_error(e);
+                emit_error(e.clone());
+                set_status("error", Some(e));
                 return;
             }
+        };
+
+        let fail = |msg: String| {
+            emit_error(msg.clone());
+            set_status("error", Some(msg));
         };
 
         // 4. Request PTY & Shell
         let mut channel = match sess.channel_session() {
             Ok(c) => c,
-            Err(e) => {
-                emit_error(tr!("Błąd otwierania kanału SSH: {}", "Error opening the SSH channel: {}", e));
-                return;
-            }
+            Err(e) => return fail(tr!("Błąd otwierania kanału SSH: {}", "Error opening the SSH channel: {}", e)),
         };
-
         if let Err(e) = channel.request_pty("xterm-256color", None, Some((100, 30, 0, 0))) {
-            emit_error(tr!("Błąd żądania PTY: {}", "PTY request error: {}", e));
-            return;
+            return fail(tr!("Błąd żądania PTY: {}", "PTY request error: {}", e));
         }
-
         if let Err(e) = channel.shell() {
-            emit_error(tr!("Błąd uruchamiania powłoki: {}", "Error starting the shell: {}", e));
-            return;
+            return fail(tr!("Błąd uruchamiania powłoki: {}", "Error starting the shell: {}", e));
         }
+        set_status("connected", None);
 
-        // Configure session with blocking mode and 30ms timeout for reliable channel flow control
+        // Blocking mode with a short timeout: a read waits at most 30 ms for data, a write sends
+        // what fits into the channel window and returns how much it sent.
         sess.set_blocking(true);
         sess.set_timeout(30);
         sess.set_keepalive(false, 15);
@@ -330,26 +367,92 @@ pub fn spawn_ssh_session(
         let mut buffer = [0u8; 4096];
         // Bytes of a UTF-8 character split between two reads (e.g. "ż" = 2 bytes)
         let mut utf8_pending: Vec<u8> = Vec::new();
+        // Input not yet accepted by the channel (large paste, full window, slow link). Kept
+        // until it is sent – previously `write_all` hit the 30 ms timeout and the rest was lost.
+        let mut outgoing: std::collections::VecDeque<u8> = std::collections::VecDeque::new();
+        const MAX_OUTGOING: usize = 16 * 1024 * 1024;
+
+        let is_timeout = |e: &std::io::Error| matches!(e.kind(), std::io::ErrorKind::TimedOut | std::io::ErrorKind::WouldBlock);
+        let lost_connection = |e: &dyn std::fmt::Display| {
+            let err_str = e.to_string();
+            if err_str.contains("transport read")
+                || err_str.contains("Broken pipe")
+                || err_str.contains("Connection reset")
+                || err_str.contains("WSAECONNRESET")
+            {
+                tr!(
+                    "Połączenie SSH zostało zakończone przez serwer zdalny lub nastąpiła utrata łączności sieciowej.",
+                    "The SSH connection was closed by the remote server or the network connection was lost."
+                )
+                .to_string()
+            } else {
+                tr!("Błąd kanału SSH: {}", "SSH channel error: {}", err_str)
+            }
+        };
+
+        // Returns false when the session must end (Close / UI gone).
+        let handle_cmd = |cmd: SshWorkerCommand, outgoing: &mut std::collections::VecDeque<u8>, channel: &mut ssh2::Channel| -> bool {
+            match cmd {
+                SshWorkerCommand::Input(data) => {
+                    if outgoing.len() + data.len() <= MAX_OUTGOING {
+                        outgoing.extend(data);
+                    } else {
+                        emit_error(tr!(
+                            "Wklejany tekst jest zbyt duży (ponad 16 MB oczekuje na wysłanie) – pominięto.",
+                            "The pasted text is too large (over 16 MB waiting to be sent) – skipped."
+                        ).to_string());
+                    }
+                    true
+                }
+                SshWorkerCommand::Resize(cols, rows) => {
+                    let _ = channel.request_pty_size(cols, rows, None, None);
+                    true
+                }
+                SshWorkerCommand::Close => {
+                    let _ = channel.close();
+                    false
+                }
+            }
+        };
+
         loop {
-            // Periodically send SSH keepalive packet to maintain active state through NAT/firewalls
-            if last_keepalive.elapsed() >= std::time::Duration::from_secs(5) {
+            // Periodic keepalive through NAT / firewalls – not while input is being sent (the data
+            // keeps the connection alive anyway and no other packet is squeezed in between)
+            if last_keepalive.elapsed() >= std::time::Duration::from_secs(5) && outgoing.is_empty() {
                 let _ = sess.keepalive_send();
                 last_keepalive = std::time::Instant::now();
             }
 
-            // Process any pending commands from UI (input keystrokes, resize, close)
-            while let Ok(cmd) = cmd_rx.try_recv() {
-                match cmd {
-                    SshWorkerCommand::Input(data) => {
-                        let _ = channel.write_all(&data);
-                        let _ = channel.flush();
+            // Commands from the UI (keystrokes, resize, close)
+            loop {
+                match cmd_rx.try_recv() {
+                    Ok(cmd) => {
+                        if !handle_cmd(cmd, &mut outgoing, &mut channel) {
+                            return;
+                        }
                     }
-                    SshWorkerCommand::Resize(cols, rows) => {
-                        let _ = channel.request_pty_size(cols, rows, None, None);
-                    }
-                    SshWorkerCommand::Close => {
+                    Err(std::sync::mpsc::TryRecvError::Empty) => break,
+                    Err(std::sync::mpsc::TryRecvError::Disconnected) => {
                         let _ = channel.close();
                         return;
+                    }
+                }
+            }
+
+            // Send pending input – whatever the channel accepts now; the rest stays queued
+            if !outgoing.is_empty() {
+                let (front, _) = outgoing.as_slices();
+                let chunk = &front[..front.len().min(32 * 1024)];
+                match channel.write(chunk) {
+                    Ok(n) => {
+                        outgoing.drain(..n);
+                    }
+                    Err(ref e) if is_timeout(e) => {}
+                    Err(e) => {
+                        let msg = lost_connection(&e);
+                        emit_error(msg.clone());
+                        set_status("error", Some(msg));
+                        break;
                     }
                 }
             }
@@ -358,10 +461,8 @@ pub fn spawn_ssh_session(
             match channel.read(&mut buffer) {
                 Ok(0) => {
                     // EOF - remote server closed session
-                    let _ = app.emit(
-                        &format!("ssh-data-{}", sid),
-                        tr!("\r\n\x1b[33m[Sesja SSH została zakończona przez serwer zdalny]\x1b[0m\r\n", "\r\n\x1b[33m[The SSH session was closed by the remote server]\x1b[0m\r\n").to_string(),
-                    );
+                    emit(tr!("\r\n\x1b[33m[Sesja SSH została zakończona przez serwer zdalny]\x1b[0m\r\n", "\r\n\x1b[33m[The SSH session was closed by the remote server]\x1b[0m\r\n").to_string());
+                    set_status("disconnected", Some(tr!("Sesja zakończona przez serwer", "Session closed by the server").to_string()));
                     break;
                 }
                 Ok(n) => {
@@ -371,70 +472,166 @@ pub fn spawn_ssh_session(
                     // light theme.
                     utf8_pending.extend_from_slice(&buffer[..n]);
                     let text = take_utf8(&mut utf8_pending);
-                    if text.is_empty() {
-                        continue;
+                    if !text.is_empty() {
+                        emit(text);
                     }
-                    let _ = app.emit(&format!("ssh-data-{}", sid), text);
                 }
-                Err(ref e) if e.kind() == std::io::ErrorKind::TimedOut || e.kind() == std::io::ErrorKind::WouldBlock => {
-                    // Send keepalive during quiet/idle periods
-                    if last_keepalive.elapsed() >= std::time::Duration::from_secs(5) {
-                        let _ = sess.keepalive_send();
-                        last_keepalive = std::time::Instant::now();
-                    }
-
-                    // Read timeout (no incoming data from remote server): wait briefly for user input from UI
-                    match cmd_rx.recv_timeout(std::time::Duration::from_millis(15)) {
-                        Ok(SshWorkerCommand::Input(mut data)) => {
-                            // Batch any consecutive keystrokes
-                            while let Ok(cmd) = cmd_rx.try_recv() {
-                                match cmd {
-                                    SshWorkerCommand::Input(more) => data.extend(more),
-                                    SshWorkerCommand::Resize(cols, rows) => {
-                                        let _ = channel.request_pty_size(cols, rows, None, None);
-                                    }
-                                    SshWorkerCommand::Close => {
-                                        let _ = channel.close();
-                                        return;
-                                    }
+                Err(ref e) if is_timeout(e) => {
+                    // Nothing from the server: wait briefly for user input (unless input is queued)
+                    if outgoing.is_empty() {
+                        match cmd_rx.recv_timeout(std::time::Duration::from_millis(15)) {
+                            Ok(cmd) => {
+                                if !handle_cmd(cmd, &mut outgoing, &mut channel) {
+                                    return;
                                 }
                             }
-                            let _ = channel.write_all(&data);
-                            let _ = channel.flush();
-                        }
-                        Ok(SshWorkerCommand::Resize(cols, rows)) => {
-                            let _ = channel.request_pty_size(cols, rows, None, None);
-                        }
-                        Ok(SshWorkerCommand::Close) => {
-                            let _ = channel.close();
-                            return;
-                        }
-                        Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {
-                            // Timeout expired; continue loop
-                        }
-                        Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => {
-                            return;
+                            Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {}
+                            Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => {
+                                let _ = channel.close();
+                                return;
+                            }
                         }
                     }
                 }
                 Err(e) => {
-                    let err_str = e.to_string();
-                    if err_str.contains("transport read")
-                        || err_str.contains("Broken pipe")
-                        || err_str.contains("Connection reset")
-                        || err_str.contains("WSAECONNRESET")
-                    {
-                        emit_error(
-                            tr!("Połączenie SSH zostało zakończone przez serwer zdalny lub nastąpiła utrata łączności sieciowej.", "The SSH connection was closed by the remote server or the network connection was lost.").to_string(),
-                        );
-                    } else {
-                        emit_error(tr!("Błąd odczytu z kanału SSH: {}", "Error reading from the SSH channel: {}", e));
-                    }
+                    let msg = lost_connection(&e);
+                    emit_error(msg.clone());
+                    set_status("error", Some(msg));
                     break;
                 }
             }
         }
-    });
+    }
+}
+
+#[cfg(test)]
+mod handshake_timeout_tests {
+    use super::*;
+    use crate::vault::known_hosts::HostTrust;
+
+    /// A server that accepts TCP but never speaks SSH must not block the thread forever.
+    #[test]
+    fn silent_server_times_out() {
+        let l = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = l.local_addr().unwrap().port();
+        std::thread::spawn(move || {
+            let _keep: Vec<_> = l.incoming().take(1).collect(); // accept and stay silent
+            std::thread::sleep(std::time::Duration::from_secs(10));
+        });
+        let cfg = SshConnectionConfig {
+            host: "127.0.0.1".into(),
+            port,
+            username: "x".into(),
+            password: Some("x".into()),
+            private_key: None,
+            passphrase: None,
+            host_key_verifier: HostKeyVerifier(Arc::new(|_| Ok(HostTrust::Known))),
+        };
+        let t0 = std::time::Instant::now();
+        assert!(ssh_connect_raw(&cfg).is_err());
+        assert!(t0.elapsed() < std::time::Duration::from_secs(5), "{:?}", t0.elapsed());
+    }
+
+    #[test]
+    fn ipv6_loopback_is_resolved() {
+        let l = match std::net::TcpListener::bind("[::1]:0") {
+            Ok(l) => l,
+            Err(_) => return, // no IPv6 on this machine
+        };
+        let port = l.local_addr().unwrap().port();
+        std::thread::spawn(move || {
+            let _keep: Vec<_> = l.incoming().take(1).collect();
+            std::thread::sleep(std::time::Duration::from_secs(5));
+        });
+        let cfg = SshConnectionConfig {
+            host: "::1".into(),
+            port,
+            username: "x".into(),
+            password: None,
+            private_key: None,
+            passphrase: None,
+            host_key_verifier: HostKeyVerifier(Arc::new(|_| Ok(HostTrust::Known))),
+        };
+        // TCP connects (then the silent server makes the handshake fail) – not "cannot connect"
+        let err = ssh_connect_raw(&cfg).err().expect("must fail");
+        assert!(err.contains("Handshake") || err.contains("handshake"), "{}", err);
+    }
+}
+
+#[cfg(test)]
+mod worker_e2e {
+    use super::*;
+    use crate::vault::known_hosts::HostTrust;
+    use std::sync::Mutex;
+
+    fn cfg(password: &str) -> SshConnectionConfig {
+        SshConnectionConfig {
+            host: "127.0.0.1".into(),
+            port: 2222,
+            username: "rftest".into(),
+            password: Some(password.into()),
+            private_key: None,
+            passphrase: None,
+            host_key_verifier: HostKeyVerifier(Arc::new(|_| Ok(HostTrust::Known))),
+        }
+    }
+
+    fn start(password: &str) -> (std::sync::mpsc::Sender<SshWorkerCommand>, Arc<Mutex<String>>, Arc<Mutex<Vec<String>>>) {
+        let (tx, rx) = std::sync::mpsc::channel();
+        let out = Arc::new(Mutex::new(String::new()));
+        let statuses = Arc::new(Mutex::new(Vec::new()));
+        let (o, st) = (out.clone(), statuses.clone());
+        let c = cfg(password);
+        std::thread::spawn(move || {
+            run_ssh_worker(c, rx, move |t| o.lock().unwrap().push_str(&t), move |s, _| st.lock().unwrap().push(s.to_string()))
+        });
+        (tx, out, statuses)
+    }
+
+    fn wait_for(cond: impl Fn() -> bool, secs: u64) -> bool {
+        let t0 = std::time::Instant::now();
+        while t0.elapsed() < std::time::Duration::from_secs(secs) {
+            if cond() {
+                return true;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(50));
+        }
+        false
+    }
+
+    /// A 3 MB paste arrives completely (previously `write_all` with the 30 ms timeout dropped the
+    /// rest), and the state is reported only after login.
+    #[test]
+    #[ignore]
+    fn large_paste_is_not_lost_and_status_is_reported() {
+        let target = "/tmp/rf-paste-test.txt";
+        let _ = std::fs::remove_file(target);
+        let (tx, out, statuses) = start("Test-Pass-123");
+        assert!(wait_for(|| statuses.lock().unwrap().contains(&"connected".to_string()), 15));
+        // The reader starts late, so the channel window fills up and writes have to wait.
+        // Raw mode: no line editing (and no terminal bell flood when the input queue is full).
+        tx.send(SshWorkerCommand::Input(
+            format!("stty raw -echo; sleep 1; head -c 3000000 > {}; stty sane; echo DONE-$((40+2))\n", target).into_bytes(),
+        ))
+        .unwrap();
+        std::thread::sleep(std::time::Duration::from_millis(500));
+        let line = format!("{}\n", "x".repeat(99));
+        let paste = line.repeat(30_000); // 3 000 000 bytes
+        tx.send(SshWorkerCommand::Input(paste.into_bytes())).unwrap();
+        assert!(wait_for(|| out.lock().unwrap().contains("DONE-42"), 90), "paste did not finish");
+        assert_eq!(std::fs::metadata(target).unwrap().len(), 3_000_000);
+        tx.send(SshWorkerCommand::Close).unwrap();
+        let _ = std::fs::remove_file(target);
+        assert_eq!(statuses.lock().unwrap().first().map(String::as_str), Some("connected"));
+    }
+
+    #[test]
+    #[ignore]
+    fn wrong_password_reports_error() {
+        let (_tx, _out, statuses) = start("wrong-password");
+        assert!(wait_for(|| statuses.lock().unwrap().contains(&"error".to_string()), 30));
+        assert!(!statuses.lock().unwrap().contains(&"connected".to_string()));
+    }
 }
 
 #[cfg(test)]

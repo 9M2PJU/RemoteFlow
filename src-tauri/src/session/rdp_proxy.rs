@@ -77,7 +77,7 @@ pub fn start_rdp_proxy(
     let (shutdown_tx, _) = broadcast::channel::<()>(1);
     let mut shutdown = shutdown_tx.subscribe();
     let ctx = ProxyContext {
-        target: format!("{}:{}", target_host, target_port),
+        target: crate::session::host_port(&target_host, target_port),
         token: Arc::new(token),
         verifier,
         report,

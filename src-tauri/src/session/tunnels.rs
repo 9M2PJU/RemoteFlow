@@ -416,6 +416,8 @@ struct Worker {
     connect_error_reported: bool,
     ever_connected: bool,
     pending: VecDeque<PendingOpen>,
+    /// SOCKS clients waiting for a free helper thread (bursts larger than MAX_HELPERS)
+    waiting_socks: VecDeque<(TcpStream, Instant)>,
     conns: Vec<Conn>,
     closing: Vec<Closing>,
     /// -R: server channels waiting for their local target connection.
@@ -446,6 +448,7 @@ impl Worker {
             connect_error_reported: false,
             ever_connected: false,
             pending: VecDeque::new(),
+            waiting_socks: VecDeque::new(),
             conns: Vec::new(),
             closing: Vec::new(),
             awaiting_target: HashMap::new(),
@@ -457,7 +460,7 @@ impl Worker {
     }
 
     fn busy(&self) -> usize {
-        self.conns.len() + self.pending.len() + self.awaiting_target.len()
+        self.conns.len() + self.pending.len() + self.awaiting_target.len() + self.waiting_socks.len()
     }
 
     fn run(mut self) {
@@ -526,7 +529,7 @@ impl Worker {
             }
 
             if !active {
-                let idle = self.conns.is_empty() && self.pending.is_empty();
+                let idle = self.conns.is_empty() && self.pending.is_empty() && self.waiting_socks.is_empty();
                 std::thread::sleep(Duration::from_millis(if idle { 20 } else { 2 }));
             }
         }
@@ -631,22 +634,34 @@ impl Worker {
                     Some((host, port)) => {
                         self.pending.push_back(PendingOpen { stream, host, port, socks: false, since: Instant::now() });
                     }
-                    None => {
-                        let Some(slot) = HelperSlot::try_acquire(&self.helpers) else {
-                            drop(stream);
-                            continue;
-                        };
-                        let tx = self.tx.clone();
-                        std::thread::spawn(move || {
-                            let _slot = slot;
-                            let mut stream = stream;
-                            if let Some((host, port)) = socks_handshake(&mut stream) {
-                                let _ = tx.send(Event::SocksRequest { stream, host, port });
-                            }
-                        });
-                    }
+                    None => self.waiting_socks.push_back((stream, Instant::now())),
                 }
             }
+        }
+        active |= self.start_socks_handshakes();
+        active
+    }
+
+    /// Starts SOCKS handshakes for waiting clients as long as helper threads are free. A burst
+    /// larger than the limit waits instead of being refused.
+    fn start_socks_handshakes(&mut self) -> bool {
+        let mut active = false;
+        while let Some((_, since)) = self.waiting_socks.front() {
+            if since.elapsed() > OPEN_TIMEOUT {
+                self.waiting_socks.pop_front();
+                continue;
+            }
+            let Some(slot) = HelperSlot::try_acquire(&self.helpers) else { break };
+            let (stream, _) = self.waiting_socks.pop_front().unwrap();
+            let tx = self.tx.clone();
+            std::thread::spawn(move || {
+                let _slot = slot;
+                let mut stream = stream;
+                if let Some((host, port)) = socks_handshake(&mut stream) {
+                    let _ = tx.send(Event::SocksRequest { stream, host, port });
+                }
+            });
+            active = true;
         }
         active
     }
@@ -865,8 +880,9 @@ mod tunnel_e2e {
         let mut s = TcpStream::connect(("127.0.0.1", 41001)).unwrap();
         assert_eq!(request(&mut s, &big), format!("OK:{}", big.len()));
 
-        // -D: 60 parallel connections through one SSH session (60 logins would hit MaxStartups)
-        let threads: Vec<_> = (0..60)
+        // -D: 100 parallel connections through one SSH session (100 logins would hit MaxStartups;
+        // more than MAX_HELPERS handshakes at once must wait, not be refused)
+        let threads: Vec<_> = (0..100)
             .map(|i| {
                 std::thread::spawn(move || {
                     let mut s = socks_connect(41002, target);

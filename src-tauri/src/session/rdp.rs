@@ -64,7 +64,7 @@ fn write_mstsc_rdp_file(session_id: &str, host: &str, port: u16, login: &str) ->
     let safe_id: String = session_id.chars().filter(|c| c.is_ascii_alphanumeric() || *c == '-').collect();
     let path = dir.join(format!("{}.rdp", safe_id));
     let clean = |v: &str| v.replace(['\r', '\n'], "");
-    let mut content = format!("full address:s:{}:{}\r\n", clean(host), port);
+    let mut content = format!("full address:s:{}\r\n", crate::session::host_port(&clean(host), port));
     if !login.is_empty() {
         content.push_str(&format!("username:s:{}\r\n", clean(login)));
     }
@@ -147,7 +147,7 @@ pub fn spawn_rdp_session(
         let mut stdin_password: Option<String> = None;
 
         if binary.contains("freerdp") {
-            cmd.arg(format!("/v:{}:{}", config.host, config.port));
+            cmd.arg(format!("/v:{}", crate::session::host_port(&config.host, config.port)));
             if !rdp_user.is_empty() {
                 cmd.arg(format!("/u:{}", rdp_user));
             }
@@ -202,7 +202,7 @@ pub fn spawn_rdp_session(
                 }
                 Err(e) => {
                     emit_log(tr!("⚠️ Nie udało się przygotować pliku .rdp ({}), użytkownik nie zostanie podpowiedziany.", "⚠️ Could not prepare the .rdp file ({}), the user name will not be pre-filled.", e));
-                    cmd.arg(format!("/v:{}:{}", config.host, config.port));
+                    cmd.arg(format!("/v:{}", crate::session::host_port(&config.host, config.port)));
                 }
             }
         }

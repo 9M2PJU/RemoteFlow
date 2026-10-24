@@ -554,9 +554,20 @@ fn download_one(
         }
     };
     let target = local_dir.join(&name);
+    // Never write through an existing local symbolic link: a link named like the downloaded
+    // item would send the data wherever it points (outside the chosen folder).
+    if is_local_link(&target) {
+        sum.fail(tr!(
+            "Pominięto {}: w katalogu docelowym jest dowiązanie symboliczne o tej nazwie",
+            "Skipped {}: the target folder contains a symbolic link with this name",
+            display_path(&target)
+        ));
+        return;
+    }
 
     if stat.is_dir() {
-        if let Err(e) = std::fs::create_dir_all(&target) {
+        let created = if target.is_dir() { Ok(()) } else { std::fs::create_dir(&target) };
+        if let Err(e) = created {
             sum.fail(tr!("Nie można utworzyć katalogu {}: {}", "Cannot create folder {}: {}", display_path(&target), e));
             return;
         }
@@ -578,11 +589,7 @@ fn download_one(
         let result = sftp
             .open(remote)
             .map_err(|e| tr!("Nie można otworzyć {}: {}", "Cannot open {}: {}", remote_path_string(remote), e))
-            .and_then(|mut src| {
-                let mut dst = File::create(&target)
-                    .map_err(|e| tr!("Błąd tworzenia pliku {}: {}", "Error creating file {}: {}", display_path(&target), e))?;
-                copy_with_progress(&mut src, &mut dst).map_err(|e| tr!("Błąd pobierania {}: {}", "Error downloading {}: {}", name, e))
-            });
+            .and_then(|mut src| download_to(&mut src, &target, &name));
         match result {
             Ok(n) => {
                 sum.files += 1;
@@ -591,6 +598,41 @@ fn download_one(
             Err(e) => sum.fail(e),
         }
     }
+}
+
+fn is_local_link(path: &Path) -> bool {
+    std::fs::symlink_metadata(path).map(|m| m.file_type().is_symlink()).unwrap_or(false)
+}
+
+/// Writes a downloaded file safely: into a new temporary file next to the target (created with
+/// `create_new`, which never follows links) that replaces the target only when complete. A
+/// rename replaces a directory entry and never follows a link, so even a link created in the
+/// meantime cannot redirect the data; an interrupted download also leaves the old file intact.
+fn download_to(src: &mut dyn std::io::Read, target: &Path, name: &str) -> Result<u64, String> {
+    let tmp = target.with_file_name(format!(".{}.rf-part", name));
+    let _ = std::fs::remove_file(&tmp); // leftover of an interrupted download (or a planted link – only the link is removed)
+    let result = std::fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(&tmp)
+        .map_err(|e| tr!("Błąd tworzenia pliku {}: {}", "Error creating file {}: {}", display_path(target), e))
+        .and_then(|mut dst| copy_with_progress(src, &mut dst).map_err(|e| tr!("Błąd pobierania {}: {}", "Error downloading {}: {}", name, e)))
+        .and_then(|n| {
+            if is_local_link(target) {
+                return Err(tr!(
+                    "Pominięto {}: w katalogu docelowym jest dowiązanie symboliczne o tej nazwie",
+                    "Skipped {}: the target folder contains a symbolic link with this name",
+                    display_path(target)
+                ));
+            }
+            std::fs::rename(&tmp, target)
+                .map(|_| n)
+                .map_err(|e| tr!("Błąd zapisu pliku {}: {}", "Error saving file {}: {}", display_path(target), e))
+        });
+    if result.is_err() {
+        let _ = std::fs::remove_file(&tmp);
+    }
+    result
 }
 
 pub fn download_paths(
@@ -631,6 +673,27 @@ mod tests {
         assert!(sanitize_name("a/b").is_err());
         assert!(sanitize_name("a\\b").is_err());
         assert!(sanitize_name("").is_err());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn download_never_writes_through_links() {
+        let base = std::env::temp_dir().join(format!("rf-dl-link-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&base);
+        std::fs::create_dir_all(base.join("dst")).unwrap();
+        std::fs::write(base.join("victim.txt"), b"keep").unwrap();
+        std::os::unix::fs::symlink(base.join("victim.txt"), base.join("dst").join("raport.txt")).unwrap();
+        let mut src: &[u8] = b"downloaded";
+        let err = download_to(&mut src, &base.join("dst").join("raport.txt"), "raport.txt");
+        assert!(err.is_err());
+        assert_eq!(std::fs::read(base.join("victim.txt")).unwrap(), b"keep", "link target untouched");
+        assert!(!base.join("dst").join(".raport.txt.rf-part").exists());
+        // normal file: written and replaced atomically
+        let mut src: &[u8] = b"new";
+        std::fs::write(base.join("dst").join("a.txt"), b"old").unwrap();
+        assert_eq!(download_to(&mut src, &base.join("dst").join("a.txt"), "a.txt").unwrap(), 3);
+        assert_eq!(std::fs::read(base.join("dst").join("a.txt")).unwrap(), b"new");
+        let _ = std::fs::remove_dir_all(&base);
     }
 
     #[test]

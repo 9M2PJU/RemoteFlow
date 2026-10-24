@@ -78,6 +78,61 @@ impl SessionManager {
 
 pub type SessionState = Mutex<SessionManager>;
 
+/// Host without IPv6 brackets ("[::1]" -> "::1"), for the resolver.
+pub fn bare_host(host: &str) -> &str {
+    let h = host.trim();
+    h.strip_prefix('[').and_then(|x| x.strip_suffix(']')).unwrap_or(h)
+}
+
+/// "host:port" with brackets around IPv6 literals ("[::1]:22"), as expected by socket address
+/// parsers, FreeRDP (/v:) and the RDP proxy destination check.
+pub fn host_port(host: &str, port: u16) -> String {
+    let h = bare_host(host);
+    if h.contains(':') { format!("[{}]:{}", h, port) } else { format!("{}:{}", h, port) }
+}
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct SessionStatusEvent {
+    session_id: String,
+    status: String,
+    message: Option<String>,
+}
+
+/// Updates the state of a session (connecting / connected / error / disconnected) and tells the
+/// UI. Called by the worker threads, so the tab shows the real state (e.g. a failed login).
+pub(crate) fn report_session_status(app: &tauri::AppHandle, session_id: &str, status: &str, message: Option<String>) {
+    if let Some(state) = app.try_state::<SessionState>() {
+        if let Ok(mut mgr) = state.lock() {
+            if let Some(s) = mgr.sessions.get_mut(session_id) {
+                s.status = status.to_string();
+                s.status_message = message.clone();
+            }
+        }
+    }
+    let _ = app.emit(
+        "session-status",
+        SessionStatusEvent { session_id: session_id.to_string(), status: status.to_string(), message },
+    );
+}
+
+#[cfg(test)]
+mod addr_tests {
+    use super::*;
+
+    #[test]
+    fn ipv6_literals_get_brackets() {
+        assert_eq!(host_port("::1", 22), "[::1]:22");
+        assert_eq!(host_port("[fe80::1]", 3389), "[fe80::1]:3389");
+        assert_eq!(host_port("srv.local", 22), "srv.local:22");
+        assert_eq!(host_port("10.0.0.5", 22), "10.0.0.5:22");
+        assert_eq!(bare_host("[::1]"), "::1");
+        use std::net::ToSocketAddrs;
+        assert!(host_port("::1", 22).to_socket_addrs().is_ok());
+        assert!((bare_host("[::1]"), 22).to_socket_addrs().is_ok());
+    }
+}
+
 /// `where <bin>` without flashing a console window (Windows); plain `where` elsewhere.
 pub(crate) fn winproc_where(bin: &str) -> std::io::Result<std::process::Output> {
     #[cfg(target_os = "windows")]
@@ -255,8 +310,9 @@ pub fn session_connect(
             host: host.clone(),
             port,
             username: resolved.username.clone(),
-            status: "connected".to_string(),
-            status_message: Some(tr!("Połączono pomyślnie", "Connected").to_string()),
+            // The worker thread reports "connected" (after login) or "error" via `session-status`
+            status: "connecting".to_string(),
+            status_message: Some(tr!("Nawiązywanie połączenia...", "Connecting...").to_string()),
             bytes_sent: 0,
             bytes_received: 0,
             started_at: now,
@@ -278,6 +334,12 @@ pub fn session_connect(
             host_key_verifier: make_host_verifier(&app, "ssh", host, port),
         };
 
+        // Registered before the worker starts, so its status updates always find the session
+        {
+            let mut mgr = session_state.lock().map_err(|e| e.to_string())?;
+            mgr.sessions.insert(session_id.clone(), session.clone());
+            mgr.senders.insert(session_id.clone(), tx);
+        }
         spawn_ssh_session(session_id.clone(), config.clone(), rx, app.clone());
 
         let tunnel_app = app.clone();
@@ -291,12 +353,11 @@ pub fn session_connect(
         );
 
         let mut mgr = session_state.lock().map_err(|e| e.to_string())?;
-        mgr.sessions.insert(session_id.clone(), session.clone());
-        mgr.senders.insert(session_id.clone(), tx);
         if let Some(th) = tunnel_handle {
             mgr.tunnels.insert(session_id.clone(), th);
         }
-        Ok(session)
+        // The worker may already have reported "connected" / "error"
+        Ok(mgr.sessions.get(&session_id).cloned().unwrap_or(session))
     } else if protocol == "rdp" {
         // Local WebSocket-to-TCP proxy for the WebAssembly client. It is locked to the configured
         // target, requires a per-session random token and pins the server's TLS certificate.

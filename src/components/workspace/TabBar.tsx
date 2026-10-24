@@ -334,6 +334,8 @@ export const TabBar: React.FC<Props> = ({
                     ? t('Połączono pomyślnie')
                     : session.status === 'connecting'
                     ? t('Nawiązywanie połączenia...')
+                    : session.status === 'disconnected'
+                    ? t('Rozłączono: {p0}', { p0: session.statusMessage || '' })
                     : t('Błąd połączenia: {p0}', { p0: session.statusMessage || '' })
                 }
                 className={`h-2 w-2 shrink-0 rounded-full ${
@@ -341,6 +343,8 @@ export const TabBar: React.FC<Props> = ({
                     ? 'bg-emerald-400 shadow-xs shadow-emerald-400/50'
                     : session.status === 'connecting'
                     ? 'bg-amber-400 animate-pulse'
+                    : session.status === 'disconnected'
+                    ? 'bg-slate-500'
                     : 'bg-red-400 animate-bounce'
                 }`}
               />

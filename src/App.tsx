@@ -239,8 +239,20 @@ const t = useT();
         customPassphrase
       );
 
+      // SSH: the backend reports the real state (login, errors) via `session-status`, which may
+      // already have arrived – do not overwrite it with the initial "connecting".
       setSessions((prev) =>
-        prev.map((s) => (s.sessionId === sessionId ? { ...s, ...sess, status: 'connected' } : s))
+        prev.map((s) =>
+          s.sessionId === sessionId
+            ? {
+                ...s,
+                ...sess,
+                status: s.status !== 'connecting' && sess.status === 'connecting' ? s.status : sess.status,
+                statusMessage:
+                  s.status !== 'connecting' && sess.status === 'connecting' ? s.statusMessage : sess.statusMessage,
+              }
+            : s
+        )
       );
     } catch (err: unknown) {
       const errMsg = err instanceof Error ? err.message : String(err);
@@ -318,6 +330,23 @@ const t = useT();
     };
     window.addEventListener('remoteflow-ui-settings', onChanged);
     return () => window.removeEventListener('remoteflow-ui-settings', onChanged);
+  }, []);
+
+  // Session state reported by the backend workers (SSH: connected after login, error, disconnected)
+  useEffect(() => {
+    if (!isTauri()) return;
+    let un: (() => void) | null = null;
+    let cancelled = false;
+    listen<{ sessionId: string; status: SessionInfo['status']; message?: string | null }>('session-status', (e) => {
+      const { sessionId, status, message } = e.payload;
+      setSessions((prev) =>
+        prev.map((s) => (s.sessionId === sessionId ? { ...s, status, statusMessage: message ?? undefined } : s))
+      );
+    }).then((fn) => (cancelled ? fn() : (un = fn)));
+    return () => {
+      cancelled = true;
+      if (un) un();
+    };
   }, []);
 
   // Vault changed outside the main forms (e.g. SFTP start folders saved from the SFTP window)

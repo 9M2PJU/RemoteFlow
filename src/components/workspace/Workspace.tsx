@@ -497,6 +497,8 @@ export const Workspace: React.FC<Props> = ({
                           ? 'bg-emerald-400'
                           : session.status === 'connecting'
                           ? 'bg-amber-400'
+                          : session.status === 'disconnected'
+                          ? 'bg-slate-500'
                           : 'bg-red-400'
                       }`}
                     />

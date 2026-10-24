@@ -411,6 +411,8 @@ pub(crate) fn vault_unlock_master_impl(master_password: &str, accept_modified: O
         }
     }
     mgr.set_unlocked(key);
+    // Verified list of trusted hosts – used for reconnects while the vault is locked later
+    crate::vault::known_hosts::remember_verified(&vault.metadata.known_hosts);
 
     let warning = if warnings.is_empty() { None } else { Some(warnings.join("\n")) };
     Ok(build_status(Some(&vault), &mgr, warning))
@@ -944,6 +946,7 @@ pub fn vault_batch_import(
 pub fn vault_reset(state: tauri::State<'_, AuthState>) -> Result<VaultStatus, String> {
     // Non-destructive: the current file is renamed to vault.json.bak_<timestamp>.
     delete_vault()?;
+    crate::vault::known_hosts::forget_verified();
     let mut mgr = lock_auth(&state)?;
     mgr.clear();
     Ok(build_status(None, &mgr, None))
@@ -1049,6 +1052,7 @@ pub fn vault_list_known_hosts(state: tauri::State<'_, AuthState>) -> Result<Vec<
     let mgr = lock_auth(&state)?;
     let key = mgr.unlocked_key()?;
     let vault = load_vault_verified(key)?;
+    crate::vault::known_hosts::remember_verified(&vault.metadata.known_hosts);
     Ok(vault
         .metadata
         .known_hosts
@@ -1063,6 +1067,7 @@ pub fn vault_forget_known_host(id: String, state: tauri::State<'_, AuthState>) -
     let key = mgr.unlocked_key()?;
     update_vault(key, |v| {
         v.metadata.known_hosts.remove(&id);
+        crate::vault::known_hosts::remember_verified(&v.metadata.known_hosts);
         Ok(())
     })
 }
@@ -1314,6 +1319,17 @@ mod lifecycle_tests {
         assert!(check_host(Some(&key), "ssh", "srv", 22, "SHA256:b").unwrap_err().contains("MITM"));
         assert_eq!(check_host(None, "ssh", "srv", 22, "SHA256:a").unwrap(), HostTrust::Known);
         assert!(check_host(None, "ssh", "other", 22, "SHA256:a").is_err(), "no TOFU while locked");
+        // A fingerprint planted in the file (MAC not updated) is ignored while locked: only the
+        // list verified with the master key counts.
+        let original = raw_file();
+        let mut json: serde_json::Value = serde_json::from_str(&original).unwrap();
+        json["metadata"]["knownHosts"]["ssh:srv:22"] = serde_json::Value::String("SHA256:evil".into());
+        json["metadata"]["knownHosts"]["ssh:planted:22"] = serde_json::Value::String("SHA256:evil".into());
+        std::fs::write(get_vault_path(), serde_json::to_string(&json).unwrap()).unwrap();
+        assert!(check_host(None, "ssh", "srv", 22, "SHA256:evil").is_err());
+        assert!(check_host(None, "ssh", "planted", 22, "SHA256:evil").is_err());
+        assert_eq!(check_host(None, "ssh", "srv", 22, "SHA256:a").unwrap(), HostTrust::Known);
+        std::fs::write(get_vault_path(), original).unwrap();
 
         // --- change master password ---------------------------------------------------------------
         vault_change_master_password_impl("password123", "newpassword9", &state).unwrap();
@@ -1494,6 +1510,7 @@ pub fn vault_restore_backup(name: String, state: tauri::State<'_, AuthState>) ->
     let key = mgr.unlocked_key()?;
     let settings = load_vault_verified(key)?.metadata.backup;
     backup::restore_backup(&settings, &name)?;
+    crate::vault::known_hosts::forget_verified();
     mgr.clear();
     let vault = load_vault()?;
     Ok(build_status(vault.as_ref(), &mgr, None))

@@ -50,6 +50,12 @@ import { useT } from '../../i18n';
 import { installRdpCanvasBatching } from '../../utils/rdpCanvasBatching';
 
 let rdpWasmInitPromise: Promise<void> | null = null;
+/** "host:port" with brackets around IPv6 literals ("[::1]:3389"), like the backend. */
+const hostPort = (host: string, port: number): string => {
+  const h = host.trim().replace(/^\[(.*)\]$/, '$1');
+  return h.includes(':') ? `[${h}]:${port}` : `${h}:${port}`;
+};
+
 /** WebKit engines (WebKitGTK on Linux, WKWebView on macOS) – not Chromium-based WebView2. */
 const isWebKitEngine = (): boolean => {
   const ua = navigator.userAgent;
@@ -1059,7 +1065,7 @@ export const RdpViewer: React.FC<Props> = ({ session, isActive }) => {
           );
 
           const configBuilder = new ConfigBuilder()
-            .withDestination(`${session.host}:${session.port}`)
+            .withDestination(hostPort(session.host, session.port))
             .withProxyAddress(`ws://127.0.0.1:${proxyPort}`)
             .withAuthToken(session.rdpProxyToken || '')
             .withUsername(session.username || '')
