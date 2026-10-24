@@ -38,6 +38,7 @@ Wszystkie połączenia, hasła i klucze są przechowywane w lokalnym, zaszyfrowa
 - TLS z przypinaniem certyfikatu; automatyczne przejście na systemowy stos TLS (Schannel / OpenSSL) dla starszych serwerów, np. Windows Server 2012.
 - Konta domenowe: `użytkownik` + pole „Domena”, `DOMENA\użytkownik`, UPN `użytkownik@domena.local` lub `.\konto` dla konta lokalnego – tak samo dla wbudowanego klienta, FreeRDP i mstsc.
 - Schowek tekstowy w obie strony. Na Windows pliki skopiowane w sesji zdalnej można od razu wkleić w Eksploratorze (i odwrotnie); na Linuksie pliki są wymieniane przez folder współdzielony.
+- Panel statystyk wydajności w oknie RDP (przepustowość, aktualizacje ekranu, czas rysowania, obciążenie wątku głównego).
 - Opcjonalne uruchomienie systemowego klienta (`mstsc` na Windows, FreeRDP na Linuksie – z potokiem graficznym `/gfx` i `/network:auto`; szybszy od wbudowanego klienta przy wideo lub intensywnym przewijaniu).
 
 ### Bezpieczeństwo

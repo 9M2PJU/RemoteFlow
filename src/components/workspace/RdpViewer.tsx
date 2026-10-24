@@ -30,6 +30,7 @@ import {
   Trash2,
   Keyboard,
   ChevronDown,
+  Activity,
 } from 'lucide-react';
 import '@devolutions/iron-remote-desktop';
 import { ConfigBuilder, UserInteraction } from '@devolutions/iron-remote-desktop';
@@ -48,6 +49,8 @@ import { explainRdpError } from '../../utils/rdpErrors';
 import { listen } from '@tauri-apps/api/event';
 import { useT } from '../../i18n';
 import { installRdpCanvasBatching } from '../../utils/rdpCanvasBatching';
+import { installRdpStats } from '../../utils/rdpStats';
+import { RdpStatsPanel } from './RdpStatsPanel';
 
 let rdpWasmInitPromise: Promise<void> | null = null;
 /** "host:port" with brackets around IPv6 literals ("[::1]:3389"), like the backend. */
@@ -63,6 +66,8 @@ const isWebKitEngine = (): boolean => {
 };
 
 function ensureRdpInitialized(): Promise<void> {
+  // Measuring hooks for the statistics panel (inactive until the panel is opened)
+  installRdpStats();
   // WebKit draws each putImageData call slowly – batch the RDP screen updates (see the module)
   if (isWebKitEngine()) installRdpCanvasBatching();
   if (!rdpWasmInitPromise) {
@@ -305,6 +310,7 @@ export const RdpViewer: React.FC<Props> = ({ session, isActive }) => {
 
   // Key Sequence / Combination menu
   const [isKeyMenuOpen, setIsKeyMenuOpen] = useState(false);
+  const [isStatsOpen, setIsStatsOpen] = useState(false);
   const [keyMenuTab, setKeyMenuTab] = useState<'shortcuts' | 'custom' | 'text'>('shortcuts');
   const [customCtrl, setCustomCtrl] = useState(true);
   const [customAlt, setCustomAlt] = useState(true);
@@ -1666,6 +1672,19 @@ export const RdpViewer: React.FC<Props> = ({ session, isActive }) => {
             </select>
           </div>
 
+          {/* Performance statistics of the embedded client */}
+          <button
+            onClick={() => setIsStatsOpen((v) => !v)}
+            title={t('Statystyki wydajności RDP (dane, rysowanie, obciążenie)')}
+            className={`flex items-center rounded-lg border px-2 py-1 text-xs transition-colors ${
+              isStatsOpen
+                ? 'border-cyan-500/50 bg-cyan-950/40 text-cyan-200 hover:bg-cyan-900/50'
+                : 'border-slate-700 bg-slate-800/80 text-slate-200 hover:bg-slate-700'
+            }`}
+          >
+            <Activity className="h-3 w-3 text-cyan-400" />
+          </button>
+
           {/* Scale Switcher: Fit vs Real (100% 1:1) */}
           <button
             onClick={handleToggleScale}
@@ -2546,6 +2565,8 @@ export const RdpViewer: React.FC<Props> = ({ session, isActive }) => {
             </div>
           </div>
         )}
+
+        {isStatsOpen && isConnected && <RdpStatsPanel onClose={() => setIsStatsOpen(false)} />}
 
         {/* Loading / Connecting Overlay */}
         {isConnecting && (

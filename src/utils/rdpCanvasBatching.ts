@@ -27,6 +27,8 @@ const HOLD_MAX_MS = 150;
 /** Small updates are held back at most this long (a burst usually starts small). */
 const HOLD_SMALL_MS = 34;
 
+import { rdpStatsEnabled, statsFrame, statsRegion, statsSetBatched } from './rdpStats';
+
 interface CanvasBatch {
   width: number;
   height: number;
@@ -40,8 +42,9 @@ interface CanvasBatch {
   /** start of the current burst (regions without a QUIET_MS gap) / time of the last region */
   burstStart: number;
   lastWrite: number;
-  /** pixels received in the current burst (also those already drawn) */
+  /** pixels / regions received in the current burst (also those already drawn) */
   burstPx: number;
+  burstRegions: number;
 }
 
 const batches = new WeakMap<HTMLCanvasElement, CanvasBatch>();
@@ -56,6 +59,7 @@ const isRdpCanvas = (canvas: HTMLCanvasElement | OffscreenCanvas): canvas is HTM
 export function installRdpCanvasBatching(): void {
   if (installed || typeof CanvasRenderingContext2D === 'undefined') return;
   installed = true;
+  statsSetBatched(true);
 
   const proto = CanvasRenderingContext2D.prototype;
   const native = proto.putImageData;
@@ -69,7 +73,9 @@ export function installRdpCanvasBatching(): void {
       const now = performance.now();
       const large = Math.max(w * h, b.burstPx) >= LARGE_BURST_FRACTION * b.width * b.height;
       const holdMax = large ? HOLD_MAX_MS : HOLD_SMALL_MS;
-      if (now - b.lastWrite < QUIET_MS && now - b.burstStart < holdMax) {
+      // Only a multi-part update is held back: a single region (e.g. one decoded RemoteFX frame
+      // when decoding keeps the thread busy) is shown at once – waiting would only add latency.
+      if (b.burstRegions > 1 && now - b.lastWrite < QUIET_MS && now - b.burstStart < holdMax) {
         // A large update is still arriving – present it in one piece on a later frame
         b.scheduled = true;
         requestAnimationFrame(() => flush(ctx, b));
@@ -88,7 +94,9 @@ export function installRdpCanvasBatching(): void {
       }
       part = new ImageData(buf, w, h);
     }
+    const t0 = performance.now();
     (native as any).call(ctx, part, b.x0, b.y0);
+    if (rdpStatsEnabled()) statsFrame(performance.now() - t0);
     b.x0 = b.y0 = Number.MAX_SAFE_INTEGER;
     b.x1 = b.y1 = 0;
   };
@@ -124,6 +132,7 @@ export function installRdpCanvasBatching(): void {
         burstStart: 0,
         lastWrite: 0,
         burstPx: 0,
+        burstRegions: 0,
       };
       // The canvas already shows the current picture – keep it in the frame buffer
       if (canvas.width > 0 && canvas.height > 0) {
@@ -181,6 +190,7 @@ export function installRdpCanvasBatching(): void {
     const offY = ry;
 
     // Copy the region into the frame buffer (row by row; one block when full rows match)
+    const copyStart = rdpStatsEnabled() ? performance.now() : 0;
     const src = img.data;
     if (offX === 0 && w === img.width && w === b.width) {
       b.frame.set(src.subarray(offY * img.width * 4, (offY + h) * img.width * 4), y * b.width * 4);
@@ -192,11 +202,14 @@ export function installRdpCanvasBatching(): void {
     }
 
     const now = performance.now();
+    if (copyStart) statsRegion(w * h, b.width, b.height, now - copyStart);
     if (now - b.lastWrite >= QUIET_MS) {
       b.burstStart = now;
       b.burstPx = 0;
+      b.burstRegions = 0;
     }
     b.burstPx += w * h;
+    b.burstRegions++;
     b.lastWrite = now;
     b.x0 = Math.min(b.x0, x);
     b.y0 = Math.min(b.y0, y);

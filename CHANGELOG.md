@@ -4,6 +4,11 @@ Numer wersji: `MAJOR.MINOR.PATCH`. Każda zmiana podnosi co najmniej numer PATCH
 Wersja jest zapisana w trzech plikach, które muszą być zgodne (pilnuje tego test `version_tests` w `src-tauri/src/lib.rs`):
 `package.json` (wyświetlana w aplikacji), `src-tauri/tauri.conf.json` (instalator) i `src-tauri/Cargo.toml`.
 
+## 1.5.4 – statystyki wydajności RDP
+- **Statystyki w oknie RDP** (przycisk z ikoną wykresu na pasku narzędzi): dane z serwera (MB/s), aktualizacje ekranu (regiony/s, Mpx/s), czas rysowania, obciążenie wątku głównego (sonda co 10 ms) i podsumowanie dużych zmian ekranu (np. przełączenie okna): czas, dane, czas zajętości wątku. Przycisk „Kopiuj” kopiuje wyniki jako tekst. Pomiar działa tylko przy otwartym panelu.
+- **Wynik pomiarów (serwer RemoteFX `freerdp-shadow`, 1600×900):** wątek główny zajęty ~95% czasu zarówno w WebKitGTK, jak i w Chromium, rysowanie zajmuje ~1% – ograniczeniem jest dekodowanie RemoteFX w IronRDP (WebAssembly, jeden wątek; moduł jest już skompilowany z SIMD), a nie sposób rysowania. Koszt dekodowania rośnie z liczbą pikseli – mniejsza rozdzielczość pulpitu zdalnego lub FreeRDP (H.264, wiele wątków) dają płynniejszy obraz.
+- **Poprawka do 1.5.3:** wstrzymywanie obrazu dotyczy tylko aktualizacji złożonych z wielu części. Gdy dekodowanie zajmuje wątek, każda klatka przychodzi jako jeden region – wcześniej mogła być niepotrzebnie wstrzymana do 150 ms.
+
 ## 1.5.3 – RDP na Linuksie: obraz bez „doczytywania”
 - **Wbudowany klient RDP (WebKitGTK):** duża aktualizacja ekranu (np. przełączenie okna na zdalnym pulpicie) przychodzi w wielu pakietach i była rysowana co klatkę, więc było widać, jak obraz się doczytuje. Teraz, dopóki napływa seria aktualizacji, obraz jest wstrzymywany (maks. 34 ms dla małych zmian, 150 ms dla zmian obejmujących ≥10% ekranu) i pokazywany w całości. Pojedyncze małe zmiany (pisanie, kursor) pojawiają się w kolejnej klatce jak dotąd.
 - **FreeRDP (przycisk „Otwórz w FreeRDP” / klient systemowy na Linuksie):** uruchamiany z `/gfx` (potok graficzny – RemoteFX progressive / H.264, jeśli serwer i kompilacja FreeRDP go obsługują) i `/network:auto`. Wbudowany klient (IronRDP w WebAssembly) nie obsługuje GFX/H.264 i dekoduje obraz w jednym wątku, dlatego przy dynamicznej zawartości (wideo, przewijanie dużych okien) FreeRDP pozostaje szybszy.
