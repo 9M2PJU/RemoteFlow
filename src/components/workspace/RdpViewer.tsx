@@ -47,9 +47,18 @@ import { api, isTauri, isWindowsHost } from '../../services/api';
 import { explainRdpError } from '../../utils/rdpErrors';
 import { listen } from '@tauri-apps/api/event';
 import { useT } from '../../i18n';
+import { installRdpCanvasBatching } from '../../utils/rdpCanvasBatching';
 
 let rdpWasmInitPromise: Promise<void> | null = null;
+/** WebKit engines (WebKitGTK on Linux, WKWebView on macOS) – not Chromium-based WebView2. */
+const isWebKitEngine = (): boolean => {
+  const ua = navigator.userAgent;
+  return /AppleWebKit/.test(ua) && !/Chrome|Chromium|Edg\//.test(ua);
+};
+
 function ensureRdpInitialized(): Promise<void> {
+  // WebKit draws each putImageData call slowly – batch the RDP screen updates (see the module)
+  if (isWebKitEngine()) installRdpCanvasBatching();
   if (!rdpWasmInitPromise) {
     rdpWasmInitPromise = initRdpWasm('info').catch((err) => {
       rdpWasmInitPromise = null;

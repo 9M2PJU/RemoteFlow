@@ -4,6 +4,10 @@ Numer wersji: `MAJOR.MINOR.PATCH`. Każda zmiana podnosi co najmniej numer PATCH
 Wersja jest zapisana w trzech plikach, które muszą być zgodne (pilnuje tego test `version_tests` w `src-tauri/src/lib.rs`):
 `package.json` (wyświetlana w aplikacji), `src-tauri/tauri.conf.json` (instalator) i `src-tauri/Cargo.toml`.
 
+## 1.5.1
+- **RDP na Linuksie rysuje się kilka razy szybciej.** Przyczyna (zmierzona w WebKitGTK 2.52 z serwerem xrdp): wbudowany klient IronRDP rysuje każdy zmieniony fragment ekranu osobnym wywołaniem `putImageData` – pełnoekranowe zdjęcie to ok. 180 pasków 1600×5 px. W WebView2 (Windows) to łącznie ~2 ms, ale w WebKitGTK każde wywołanie kosztuje stałe ~2 ms, więc obraz 1600×900 rysował się 340–480 ms i było widać, jak ładuje się pasami. Teraz fragmenty trafiają do bufora w pamięci, a ekran jest odświeżany jednym wywołaniem na klatkę: 11–23 ms rysowania, cały obraz pojawia się w 2–3 krokach (`src/utils/rdpCanvasBatching.ts`, włączane tylko w silnikach WebKit).
+- Proxy RDP: wyłączony algorytm Nagle'a na lokalnym połączeniu WebSocket (mniej opóźnień przy wielu małych aktualizacjach ekranu).
+
 ## 1.5.0 – tunele SSH, terminal, SFTP i poprawki z przeglądu kodu
 - **Tunele SSH na nowo (`session/tunnels.rs`).** Wszystkie tunele połączenia (-L, -D, -R) używają jednej wspólnej sesji SSH; każde połączenie TCP to tylko nowy kanał w tej sesji. Wcześniej każde połączenie przez tunel lokalny lub SOCKS5 zestawiało osobne połączenie SSH z pełnym logowaniem – przeglądarka otwierająca kilkadziesiąt połączeń naraz trafiała na limit `MaxStartups` serwera (zrywane połączenia, timeouty). Test: 60 równoległych połączeń SOCKS5 = 1 logowanie na serwerze.
 - Tunele obsługują półzamknięcie TCP (half-close): gdy klient skończy wysyłać (np. zapytanie HTTP/SQL), odpowiedź serwera jest dalej przekazywana do końca – wcześniej kanał był zamykany i odpowiedź ucinana. Działa w obu kierunkach.

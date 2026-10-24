@@ -325,6 +325,8 @@ where
 }
 
 async fn handle_client(ws_tcp: TcpStream, ctx: ProxyContext) {
+    // Screen updates are many small WebSocket frames – do not let Nagle delay them
+    let _ = ws_tcp.set_nodelay(true);
     let ws = match accept_hdr_async(ws_tcp, |req: &Request, mut resp: Response| {
         if let Some(proto) = req.headers().get("Sec-WebSocket-Protocol") {
             resp.headers_mut().insert("Sec-WebSocket-Protocol", proto.clone());
