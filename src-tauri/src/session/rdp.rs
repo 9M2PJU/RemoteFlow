@@ -170,6 +170,11 @@ pub fn spawn_rdp_session(
                 cmd.arg("+clipboard");
             }
             cmd.arg("+dynamic-resolution");
+            // Graphics pipeline (RemoteFX progressive / H.264 when the server and the FreeRDP build
+            // support it) and automatic bandwidth detection – much faster than the legacy bitmap
+            // updates, especially when large parts of the screen change.
+            cmd.arg("/gfx");
+            cmd.arg("/network:auto");
 
             // Drive redirection: share local folder and home with remote Windows session
             // Visible in Windows Explorer under "Ten komputer" (This PC) as "RemoteFlow on <hostname>" or \\tsclient\RemoteFlow

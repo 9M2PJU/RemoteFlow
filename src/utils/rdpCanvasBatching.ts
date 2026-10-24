@@ -11,7 +11,21 @@
  * drawn with ONE `putImageData` per animation frame – measured in WebKitGTK 2.52 against xrdp
  * (1600×900 picture): 11–23 ms of drawing instead of 340–480 ms. Only canvases inside the
  * `<iron-remote-desktop>` element are affected; enabled for WebKit engines (RdpViewer).
+ *
+ * Large updates (e.g. switching windows on the remote desktop) arrive spread over several network
+ * packets / animation frames. Drawing every frame would still show the picture building up, so
+ * while a burst is still arriving the presentation is held back (at most HOLD_SMALL_MS, or HOLD_MAX_MS once it covers a large area) and
+ * the whole update appears at once.
  */
+
+/** A burst covering at least this part of the canvas is presented in one piece. */
+const LARGE_BURST_FRACTION = 0.1;
+/** The burst is considered finished when no region arrived for this long. */
+const QUIET_MS = 12;
+/** Upper bound for holding back a large burst (keeps the session responsive). */
+const HOLD_MAX_MS = 150;
+/** Small updates are held back at most this long (a burst usually starts small). */
+const HOLD_SMALL_MS = 34;
 
 interface CanvasBatch {
   width: number;
@@ -23,6 +37,11 @@ interface CanvasBatch {
   x1: number;
   y1: number;
   scheduled: boolean;
+  /** start of the current burst (regions without a QUIET_MS gap) / time of the last region */
+  burstStart: number;
+  lastWrite: number;
+  /** pixels received in the current burst (also those already drawn) */
+  burstPx: number;
 }
 
 const batches = new WeakMap<HTMLCanvasElement, CanvasBatch>();
@@ -41,11 +60,22 @@ export function installRdpCanvasBatching(): void {
   const proto = CanvasRenderingContext2D.prototype;
   const native = proto.putImageData;
 
-  const flush = (ctx: CanvasRenderingContext2D, b: CanvasBatch) => {
+  const flush = (ctx: CanvasRenderingContext2D, b: CanvasBatch, force = false) => {
     b.scheduled = false;
     if (b.x1 <= b.x0 || b.y1 <= b.y0) return;
     const w = b.x1 - b.x0;
     const h = b.y1 - b.y0;
+    if (!force) {
+      const now = performance.now();
+      const large = Math.max(w * h, b.burstPx) >= LARGE_BURST_FRACTION * b.width * b.height;
+      const holdMax = large ? HOLD_MAX_MS : HOLD_SMALL_MS;
+      if (now - b.lastWrite < QUIET_MS && now - b.burstStart < holdMax) {
+        // A large update is still arriving – present it in one piece on a later frame
+        b.scheduled = true;
+        requestAnimationFrame(() => flush(ctx, b));
+        return;
+      }
+    }
     // Copy the dirty rows into a compact buffer (full-width rows are a zero-copy view)
     let part: ImageData;
     if (b.x0 === 0 && w === b.width) {
@@ -81,7 +111,7 @@ export function installRdpCanvasBatching(): void {
 
     let b = batches.get(canvas);
     if (!b || b.width !== canvas.width || b.height !== canvas.height) {
-      if (b?.scheduled) flush(this, b);
+      if (b?.scheduled) flush(this, b, true);
       b = {
         width: canvas.width,
         height: canvas.height,
@@ -91,6 +121,9 @@ export function installRdpCanvasBatching(): void {
         x1: 0,
         y1: 0,
         scheduled: false,
+        burstStart: 0,
+        lastWrite: 0,
+        burstPx: 0,
       };
       // The canvas already shows the current picture – keep it in the frame buffer
       if (canvas.width > 0 && canvas.height > 0) {
@@ -158,6 +191,13 @@ export function installRdpCanvasBatching(): void {
       }
     }
 
+    const now = performance.now();
+    if (now - b.lastWrite >= QUIET_MS) {
+      b.burstStart = now;
+      b.burstPx = 0;
+    }
+    b.burstPx += w * h;
+    b.lastWrite = now;
     b.x0 = Math.min(b.x0, x);
     b.y0 = Math.min(b.y0, y);
     b.x1 = Math.max(b.x1, x + w);

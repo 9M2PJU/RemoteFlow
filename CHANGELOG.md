@@ -4,6 +4,10 @@ Numer wersji: `MAJOR.MINOR.PATCH`. Każda zmiana podnosi co najmniej numer PATCH
 Wersja jest zapisana w trzech plikach, które muszą być zgodne (pilnuje tego test `version_tests` w `src-tauri/src/lib.rs`):
 `package.json` (wyświetlana w aplikacji), `src-tauri/tauri.conf.json` (instalator) i `src-tauri/Cargo.toml`.
 
+## 1.5.3 – RDP na Linuksie: obraz bez „doczytywania”
+- **Wbudowany klient RDP (WebKitGTK):** duża aktualizacja ekranu (np. przełączenie okna na zdalnym pulpicie) przychodzi w wielu pakietach i była rysowana co klatkę, więc było widać, jak obraz się doczytuje. Teraz, dopóki napływa seria aktualizacji, obraz jest wstrzymywany (maks. 34 ms dla małych zmian, 150 ms dla zmian obejmujących ≥10% ekranu) i pokazywany w całości. Pojedyncze małe zmiany (pisanie, kursor) pojawiają się w kolejnej klatce jak dotąd.
+- **FreeRDP (przycisk „Otwórz w FreeRDP” / klient systemowy na Linuksie):** uruchamiany z `/gfx` (potok graficzny – RemoteFX progressive / H.264, jeśli serwer i kompilacja FreeRDP go obsługują) i `/network:auto`. Wbudowany klient (IronRDP w WebAssembly) nie obsługuje GFX/H.264 i dekoduje obraz w jednym wątku, dlatego przy dynamicznej zawartości (wideo, przewijanie dużych okien) FreeRDP pozostaje szybszy.
+
 ## 1.5.2 – poprawki z przeglądu kodu
 - **Testy nie dotykają prawdziwego sejfu.** Testy jednostkowe używały zwykłego wyszukiwania lokalizacji sejfu (obok programu, katalog roboczy, `~/.config/remoteflow`) i usuwały `vault.json` oraz `backups` – uruchomione na komputerze z prawdziwym sejfem mogły go skasować. Teraz w testach sejf jest zawsze w osobnym katalogu tymczasowym (`remoteflow-test-<pid>`); pilnuje tego test.
 - **Zaufane hosty przy zablokowanym sejfie:** odtwarzany tunel nie czyta już listy z niezweryfikowanego pliku. Używana jest lista zapamiętana w pamięci przy ostatnim odczycie zweryfikowanym kluczem (odblokowanie, połączenie, Ustawienia). Wpis podmieniony w pliku podczas blokady jest ignorowany (test). Reset sejfu i przywrócenie kopii czyszczą tę listę.
