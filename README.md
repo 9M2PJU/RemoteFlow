@@ -38,6 +38,7 @@ All connections, passwords and keys are kept in a local, encrypted vault. The ap
 - TLS with certificate pinning; automatic fallback to the system TLS stack (Schannel / OpenSSL) for older servers such as Windows Server 2012.
 - Domain accounts: `user` + domain field, `DOMAIN\user`, UPN `user@domain.local` or `.\account` for a local account – normalised the same way for the embedded client, FreeRDP and mstsc.
 - Text clipboard in both directions. On Windows, files copied in the remote session can be pasted directly in Explorer (and vice versa); on Linux files are exchanged through a shared folder.
+- Linux: optional **FreeRDP inside the app window** (Settings → RDP client) – the native client (multi-threaded, H.264) draws the session in the RemoteFlow tab; requires X11 (on Wayland the app then runs through XWayland) and `xfreerdp3`.
 - Performance statistics panel in the RDP view (data rate, screen updates, drawing time, main-thread load).
 - Optional launch of the system client (`mstsc` on Windows, FreeRDP on Linux – started with the graphics pipeline `/gfx` and `/network:auto`; faster than the embedded client for video or heavy scrolling).
 

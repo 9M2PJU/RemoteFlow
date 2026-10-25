@@ -111,6 +111,26 @@ export interface MrngParams {
   kdfIterations: number;
 }
 
+export interface DisplaySettingsInfo {
+  supported: boolean;
+  safeRendering: boolean;
+  activeSafeRendering: boolean;
+  forcedByEnv: boolean;
+  /** saved: RDP through FreeRDP inside the window */
+  rdpFreerdpEmbedded: boolean;
+  /** this instance can embed FreeRDP (X11 + xfreerdp) */
+  rdpEmbedAvailable: boolean;
+  x11: boolean;
+  xfreerdpInstalled: boolean;
+}
+
+export interface EmbedRect {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
 export const api = {
   async getStatus(): Promise<VaultStatus> {
     if (isTauri()) {
@@ -807,16 +827,58 @@ export const api = {
   },
 
   /** Display settings applied at start-up (Linux: GPU / compatible rendering). */
-  async getDisplaySettings(): Promise<{
-    supported: boolean;
-    safeRendering: boolean;
-    activeSafeRendering: boolean;
-    forcedByEnv: boolean;
-  }> {
+  async getDisplaySettings(): Promise<DisplaySettingsInfo> {
     if (isTauri()) {
       return await invoke('display_get_settings');
     }
-    return { supported: false, safeRendering: false, activeSafeRendering: false, forcedByEnv: false };
+    return {
+      supported: false,
+      safeRendering: false,
+      activeSafeRendering: false,
+      forcedByEnv: false,
+      rdpFreerdpEmbedded: false,
+      rdpEmbedAvailable: false,
+      x11: false,
+      xfreerdpInstalled: false,
+    };
+  },
+
+  /** Linux: RDP sessions drawn by FreeRDP inside the RemoteFlow window (from the next start). */
+  async setRdpFreerdpEmbedded(enabled: boolean): Promise<void> {
+    if (isTauri()) {
+      await invoke<void>('display_set_rdp_freerdp_embedded', { enabled });
+    }
+  },
+
+  /** Starts FreeRDP inside the window over the given area (CSS px, relative to the web view). */
+  async rdpEmbedStart(session: SessionInfo, rect: EmbedRect): Promise<void> {
+    if (isTauri()) {
+      await invoke<void>('rdp_embed_start', {
+        sessionId: session.sessionId,
+        connectionId: session.connectionId,
+        title: session.title,
+        rect,
+      });
+    }
+  },
+
+  async rdpEmbedUpdate(sessionId: string, rect: EmbedRect, visible: boolean): Promise<void> {
+    if (isTauri()) {
+      await invoke<void>('rdp_embed_update', { sessionId, rect, visible });
+    }
+  },
+
+  /** Keyboard back to the RemoteFlow window (a click on the web content). */
+  async rdpEmbedReleaseFocus(): Promise<void> {
+    if (isTauri()) {
+      await invoke<void>('rdp_embed_release_focus');
+    }
+  },
+
+  async rdpEmbedStop(sessionId: string): Promise<void> {
+    if (isTauri()) {
+      await invoke<void>('rdp_embed_stop', { sessionId });
+    }
   },
 
   async setSafeRendering(enabled: boolean): Promise<void> {

@@ -42,6 +42,7 @@ pub fn run() {
             // Private-key files left by a crash in the Windows fallback are wiped
             std::thread::spawn(session::ssh::sweep_stale_key_files);
             oslock::start_monitor(app.handle().clone());
+            session::rdp_embed::init();
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -89,6 +90,11 @@ pub fn run() {
             session_resize,
             session_close,
             session_launch_external_rdp,
+            session::rdp_embed::rdp_embed_start,
+            session::rdp_embed::rdp_embed_update,
+            session::rdp_embed::rdp_embed_stop,
+            session::rdp_embed::rdp_embed_release_focus,
+            display::display_set_rdp_freerdp_embedded,
             sftp_list,
             sftp_upload_file,
             sftp_upload_paths,

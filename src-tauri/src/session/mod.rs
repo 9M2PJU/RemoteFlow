@@ -1,4 +1,5 @@
 pub mod rdp;
+pub mod rdp_embed;
 pub mod rdp_proxy;
 pub mod sftp;
 pub mod ssh;
@@ -60,6 +61,8 @@ pub struct SessionManager {
     pub sessions: HashMap<String, SessionInfo>,
     pub senders: HashMap<String, Sender<SshWorkerCommand>>,
     pub rdp_killers: HashMap<String, Sender<()>>,
+    /// FreeRDP processes drawing inside the RemoteFlow window (rdp_embed)
+    pub rdp_embed_killers: HashMap<String, Sender<()>>,
     pub rdp_proxies: HashMap<String, RdpProxyHandle>,
     pub tunnels: HashMap<String, TunnelHandle>,
 }
@@ -70,6 +73,7 @@ impl SessionManager {
             sessions: HashMap::new(),
             senders: HashMap::new(),
             rdp_killers: HashMap::new(),
+            rdp_embed_killers: HashMap::new(),
             rdp_proxies: HashMap::new(),
             tunnels: HashMap::new(),
         }
@@ -449,8 +453,13 @@ pub fn session_resize(
 pub fn session_close(
     session_id: String,
     state: tauri::State<'_, SessionState>,
+    app: tauri::AppHandle,
 ) -> Result<(), String> {
     let mut mgr = state.lock().map_err(|e| e.to_string())?;
+    if let Some(kill_tx) = mgr.rdp_embed_killers.remove(&session_id) {
+        let _ = kill_tx.send(());
+    }
+    rdp_embed::destroy_container(&app, &session_id);
     mgr.sessions.remove(&session_id);
     if let Some(tx) = mgr.senders.remove(&session_id) {
         let _ = tx.send(SshWorkerCommand::Close);
@@ -483,7 +492,17 @@ pub fn session_launch_external_rdp(
     let resolved = resolve_connection(&auth_state, &connection_id)?;
 
     let (kill_tx, kill_rx) = std::sync::mpsc::channel();
-    let rdp_config = rdp::RdpConnectionConfig {
+    let rdp_config = rdp_config_from(resolved, title, None);
+
+    rdp::spawn_rdp_session(session_id.clone(), rdp_config, kill_rx, app);
+
+    let mut mgr = session_state.lock().map_err(|e| e.to_string())?;
+    mgr.rdp_killers.insert(session_id, kill_tx);
+    Ok(())
+}
+
+fn rdp_config_from(resolved: ResolvedConnection, title: String, embed: Option<rdp::EmbedTarget>) -> rdp::RdpConnectionConfig {
+    rdp::RdpConnectionConfig {
         title,
         host: resolved.conn.host.clone(),
         port: resolved.conn.port,
@@ -491,13 +510,19 @@ pub fn session_launch_external_rdp(
         password: resolved.password.clone(),
         domain: resolved.conn.rdp_settings.as_ref().and_then(|s| s.domain.clone()),
         rdp_settings: resolved.conn.rdp_settings.clone(),
-    };
+        embed,
+    }
+}
 
-    rdp::spawn_rdp_session(session_id.clone(), rdp_config, kill_rx, app);
-
-    let mut mgr = session_state.lock().map_err(|e| e.to_string())?;
-    mgr.rdp_killers.insert(session_id, kill_tx);
-    Ok(())
+/// FreeRDP configuration of a saved connection (credentials from the unlocked vault).
+#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
+pub(crate) fn rdp_config_for_connection(
+    auth_state: &AuthState,
+    connection_id: &str,
+    title: String,
+    embed: Option<rdp::EmbedTarget>,
+) -> Result<rdp::RdpConnectionConfig, String> {
+    Ok(rdp_config_from(resolve_connection(auth_state, connection_id)?, title, embed))
 }
 
 pub fn resolve_connection_ssh_config(

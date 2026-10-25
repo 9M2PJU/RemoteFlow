@@ -3232,7 +3232,7 @@ checksum = "d6f6ff9a378485b298a5286656da665ba74413d36db0979633275d2e708145d4"
 
 [[package]]
 name = "remoteflow"
-version = "1.5.4"
+version = "1.6.0"
 dependencies = [
  "aes",
  "aes-gcm",
@@ -3244,6 +3244,7 @@ dependencies = [
  "dirs 6.0.0",
  "futures-util",
  "gdk",
+ "gdkx11",
  "gtk",
  "hmac",
  "ironrdp-rdcleanpath",
@@ -3268,6 +3269,7 @@ dependencies = [
  "tokio-rustls",
  "tokio-tungstenite",
  "uuid",
+ "x11",
  "zbus",
  "zeroize",
 ]

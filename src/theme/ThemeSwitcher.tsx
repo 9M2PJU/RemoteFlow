@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Cpu, Gauge, Moon, Sun } from 'lucide-react';
+import { Cpu, ExternalLink, Gauge, Monitor, Moon, Sun } from 'lucide-react';
 import { api } from '../services/api';
 import { setTerminalDark, setTheme, Theme, useThemeState } from './index';
 import { useT } from '../i18n';
@@ -124,6 +124,86 @@ export const LinuxRenderingSetting: React.FC = () => {
       {info.forcedByEnv && (
         <p className="text-[11px] text-slate-500">
           {t('Tryb zgodny jest teraz wymuszony zmienną środowiskową REMOTEFLOW_SAFE_RENDERING=1.')}
+        </p>
+      )}
+      {error && <p className="text-[11px] text-red-400">{error}</p>}
+    </div>
+  );
+};
+
+/** Linux: RDP client – embedded IronRDP (WebAssembly) or FreeRDP drawn inside the window. */
+export const LinuxRdpClientSetting: React.FC = () => {
+  const t = useT();
+  const [info, setInfo] = useState<Awaited<ReturnType<typeof api.getDisplaySettings>> | null>(null);
+  const [startValue, setStartValue] = useState<boolean | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    api
+      .getDisplaySettings()
+      .then((i) => {
+        setInfo(i);
+        setStartValue(i.rdpFreerdpEmbedded);
+      })
+      .catch(() => {});
+  }, []);
+
+  if (!info?.supported) return null;
+
+  const choose = async (embedded: boolean) => {
+    if (embedded === info.rdpFreerdpEmbedded) return;
+    try {
+      await api.setRdpFreerdpEmbedded(embedded);
+      setInfo({ ...info, rdpFreerdpEmbedded: embedded });
+      setError(null);
+    } catch (err: any) {
+      setError(String(err?.message || err));
+    }
+  };
+
+  const options = [
+    { embedded: false, label: t('Wbudowany'), icon: <Monitor className="h-3.5 w-3.5" /> },
+    { embedded: true, label: t('FreeRDP w oknie'), icon: <ExternalLink className="h-3.5 w-3.5" /> },
+  ];
+
+  return (
+    <div className="pt-3 border-t border-slate-800/80 space-y-2">
+      <div className="flex items-center justify-between gap-3">
+        <div>
+          <div className="text-xs text-slate-300">{t('Klient RDP (Linux)')}</div>
+          <p className="text-[11px] text-slate-500 mt-0.5">
+            {t('FreeRDP rysuje sesję w zakładce RemoteFlow jako natywny klient (wiele wątków, H.264) – szybszy przy zmianie okien, wideo i przewijaniu. Wymaga X11; w sesji Wayland program uruchamia się wtedy przez XWayland. Zmiana działa po ponownym uruchomieniu programu.')}
+          </p>
+        </div>
+        <div className="flex shrink-0 rounded-lg border border-slate-700 bg-slate-800/60 p-0.5">
+          {options.map((o) => (
+            <button
+              key={String(o.embedded)}
+              type="button"
+              onClick={() => choose(o.embedded)}
+              className={`flex items-center gap-1.5 whitespace-nowrap rounded-md px-3 py-1 text-xs font-medium transition-colors ${
+                o.embedded === info.rdpFreerdpEmbedded
+                  ? 'bg-cyan-600 text-white shadow-sm'
+                  : 'text-slate-300 hover:bg-slate-700 hover:text-white'
+              }`}
+            >
+              {o.icon}
+              {o.label}
+            </button>
+          ))}
+        </div>
+      </div>
+      {info.rdpFreerdpEmbedded && !info.xfreerdpInstalled && (
+        <p className="text-[11px] text-amber-300">
+          {t('Nie znaleziono klienta xfreerdp3 / xfreerdp. Zainstaluj go, np.: sudo apt install freerdp3-x11')}
+        </p>
+      )}
+      {startValue !== null && info.rdpFreerdpEmbedded !== startValue && (
+        <p className="text-[11px] text-amber-300">{t('Uruchom program ponownie, aby zastosować zmianę.')}</p>
+      )}
+      {startValue && info.rdpFreerdpEmbedded && !info.x11 && (
+        <p className="text-[11px] text-amber-300">
+          {t('Okno nie działa w trybie X11 (brak XWayland lub ustawiona zmienna GDK_BACKEND) – sesje RDP używają wbudowanego klienta.')}
         </p>
       )}
       {error && <p className="text-[11px] text-red-400">{error}</p>}

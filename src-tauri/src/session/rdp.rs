@@ -12,6 +12,18 @@ pub struct RdpConnectionConfig {
     pub password: Option<String>,
     pub domain: Option<String>,
     pub rdp_settings: Option<RdpSettings>,
+    /// Linux/X11: draw the session inside this native window of RemoteFlow (FreeRDP
+    /// `/parent-window`) instead of a separate window.
+    pub embed: Option<EmbedTarget>,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct EmbedTarget {
+    /// X11 window id of the container window
+    pub parent_xid: u64,
+    /// initial size in device pixels
+    pub width: u32,
+    pub height: u32,
 }
 
 /// Splits the RDP login into the account name and the domain the way Windows does.
@@ -91,7 +103,10 @@ pub fn spawn_rdp_session(
         ));
 
         // Locate available RDP binary on the system
-        let binary_candidates = if cfg!(target_os = "windows") {
+        let binary_candidates = if config.embed.is_some() {
+            // Only the X11 client can draw into another (X11) window
+            vec!["xfreerdp3", "xfreerdp"]
+        } else if cfg!(target_os = "windows") {
             vec!["mstsc.exe", "mstsc"]
         } else if cfg!(target_os = "macos") {
             vec!["xfreerdp3", "xfreerdp", "open"]
@@ -161,7 +176,12 @@ pub fn spawn_rdp_session(
             if let Some(dom) = &rdp_domain {
                 cmd.arg(format!("/d:{}", dom));
             }
-            cmd.arg(format!("/t:RemoteFlow - {} ({}:{})", config.title, config.host, config.port));
+            if let Some(embed) = &config.embed {
+                cmd.arg(format!("/parent-window:{}", embed.parent_xid));
+                cmd.arg(format!("/size:{}x{}", embed.width.max(320), embed.height.max(240)));
+            } else {
+                cmd.arg(format!("/t:RemoteFlow - {} ({}:{})", config.title, config.host, config.port));
+            }
             // Trust-on-first-use instead of blindly accepting any certificate (MITM protection).
             cmd.arg("/cert:tofu");
             if binary.contains("freerdp3") {
@@ -189,7 +209,7 @@ pub fn spawn_rdp_session(
                 if settings.sound {
                     cmd.arg("/sound:sys:pulse");
                 }
-                if settings.width > 0 && settings.height > 0 && !binary.contains("wlfreerdp") {
+                if config.embed.is_none() && settings.width > 0 && settings.height > 0 && !binary.contains("wlfreerdp") {
                     cmd.arg(format!("/size:{}x{}", settings.width, settings.height));
                 }
             }

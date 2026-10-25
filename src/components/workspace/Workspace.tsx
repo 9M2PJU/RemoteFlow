@@ -18,6 +18,7 @@ import {
 } from 'lucide-react';
 import { Connection, SessionInfo, WorkspaceLayout } from '../../types';
 import { useT } from '../../i18n';
+import { useEmbeddedFreeRdp } from '../../utils/rdpClientMode';
 
 // Session viewers are loaded on demand. The RDP viewer embeds the IronRDP WebAssembly engine
 // (~6 MB of JavaScript); bundling it into the main chunk made every app start parse it, which
@@ -27,6 +28,9 @@ const loadSshTerminal = () => import('./SshTerminal');
 const loadRdpViewer = () => import('./RdpViewer');
 const SshTerminal = lazy(() => loadSshTerminal().then((m) => ({ default: m.SshTerminal })));
 const RdpViewer = lazy(() => loadRdpViewer().then((m) => ({ default: m.RdpViewer })));
+const FreeRdpEmbedViewer = lazy(() =>
+  import('./FreeRdpEmbedViewer').then((m) => ({ default: m.FreeRdpEmbedViewer }))
+);
 
 const ViewerLoading: React.FC<{ label: string }> = ({ label }) => (
   <div className="flex h-full w-full items-center justify-center bg-slate-950 text-xs text-slate-400">
@@ -113,6 +117,7 @@ export const Workspace: React.FC<Props> = ({
   onNewConnection,
 }) => {
   const t = useT();
+  const embeddedFreeRdp = useEmbeddedFreeRdp();
   const [dragOverPaneIndex, setDragOverPaneIndex] = useState<number | null>(null);
   const [splitHoverZone, setSplitHoverZone] = useState<'right' | 'bottom' | null>(null);
 
@@ -574,7 +579,13 @@ export const Workspace: React.FC<Props> = ({
                 </Suspense>
               ) : (
                 <Suspense fallback={<ViewerLoading label={t('Ładowanie silnika RDP...')} />}>
-                  <RdpViewer session={session} isActive={isVisible} />
+                  {embeddedFreeRdp === null ? (
+                    <ViewerLoading label={t('Ładowanie silnika RDP...')} />
+                  ) : embeddedFreeRdp ? (
+                    <FreeRdpEmbedViewer session={session} isActive={isVisible} />
+                  ) : (
+                    <RdpViewer session={session} isActive={isVisible} />
+                  )}
                 </Suspense>
               )}
             </div>

@@ -763,5 +763,14 @@
   "Kopiuj statystyki": "Copy statistics",
   "Zbieranie danych…": "Collecting data…",
   "Duża zmiana: wątek zajęty prawie przez cały czas = ogranicza komputer (dekodowanie/rysowanie); dużo mniej = ogranicza sieć lub serwer.": "Large update: main thread busy almost the whole time = the computer is the limit (decoding/drawing); much less = the network or the server is the limit.",
-  "Statystyki wydajności RDP (dane, rysowanie, obciążenie)": "RDP performance statistics (data, drawing, load)"
+  "Statystyki wydajności RDP (dane, rysowanie, obciążenie)": "RDP performance statistics (data, drawing, load)",
+  "FreeRDP w oknie": "FreeRDP in window",
+  "Otwórz to połączenie w osobnym oknie FreeRDP": "Open this connection in a separate FreeRDP window",
+  "Osobne okno": "Separate window",
+  "Uruchamianie FreeRDP...": "Starting FreeRDP...",
+  "Wbudowany": "Built-in",
+  "Klient RDP (Linux)": "RDP client (Linux)",
+  "FreeRDP rysuje sesję w zakładce RemoteFlow jako natywny klient (wiele wątków, H.264) – szybszy przy zmianie okien, wideo i przewijaniu. Wymaga X11; w sesji Wayland program uruchamia się wtedy przez XWayland. Zmiana działa po ponownym uruchomieniu programu.": "FreeRDP draws the session in the RemoteFlow tab as a native client (multi-threaded, H.264) – faster when switching windows, playing video and scrolling. Requires X11; in a Wayland session the program then starts through XWayland. The change applies after restarting the program.",
+  "Nie znaleziono klienta xfreerdp3 / xfreerdp. Zainstaluj go, np.: sudo apt install freerdp3-x11": "No xfreerdp3 / xfreerdp client found. Install it, e.g.: sudo apt install freerdp3-x11",
+  "Okno nie działa w trybie X11 (brak XWayland lub ustawiona zmienna GDK_BACKEND) – sesje RDP używają wbudowanego klienta.": "The window is not running on X11 (no XWayland or GDK_BACKEND is set) – RDP sessions use the built-in client."
 }

@@ -1,6 +1,6 @@
 [package]
 name = "remoteflow"
-version = "1.5.4"
+version = "1.6.0"
 description = "Cross-platform SSH, SFTP and RDP connection manager with an encrypted vault"
 authors = ["Jacek Nikiel"]
 license = "MIT"
@@ -64,6 +64,10 @@ libssh2-sys = "0.3"
 zbus = "5"
 gtk = "0.18"
 gdk = "0.18"
+# X11 window id of the container window for embedded FreeRDP (session/rdp_embed.rs)
+gdkx11 = "0.18"
+# Keyboard focus for the embedded FreeRDP window (XSetInputFocus)
+x11 = { version = "2.21", features = ["xlib"] }
 
 
 # Read the optimization guideline for more details: https://tauri.app/concept/size/#cargo-configuration
