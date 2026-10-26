@@ -1,5 +1,7 @@
 import { invoke } from '@tauri-apps/api/core';
 import { ConnectionPasswordStatus, PasswordPromptCancelled, requestConnectionPassword } from '../utils/passwordPrompt';
+import { getLang } from '../i18n';
+import { selectExportData } from '../utils/exportScope';
 
 // An explicit decision to use an empty password lasts for this session only.
 const emptyPasswordSessions = new Set<string>();
@@ -369,6 +371,22 @@ export const api = {
     mockConnections = mockConnections.filter(c => c.id !== connectionId);
   },
 
+  async cloneConnection(connectionId: string): Promise<Connection> {
+    if (isTauri()) return invoke<Connection>('vault_clone_connection', { connectionId });
+    const index = mockConnections.findIndex((connection) => connection.id === connectionId);
+    if (index < 0) throw new Error('Connection not found');
+    const source = mockConnections[index];
+    const label = getLang() === 'en' ? 'copy' : 'kopia';
+    const names = new Set(mockConnections.map((connection) => connection.name.toLocaleLowerCase()));
+    let name = `${source.name} (${label})`;
+    let number = 2;
+    while (names.has(name.toLocaleLowerCase())) name = `${source.name} (${label} ${number++})`;
+    const now = new Date().toISOString();
+    const copy = { ...structuredClone(source), id: crypto.randomUUID(), name, createdAt: now, updatedAt: now };
+    mockConnections = [...mockConnections.slice(0, index + 1), copy, ...mockConnections.slice(index + 1)];
+    return copy;
+  },
+
   async saveGroup(group: Group): Promise<Group> {
     if (isTauri()) {
       return await invoke<Group>('vault_save_group', { group });
@@ -478,20 +496,28 @@ export const api = {
     return invoke<void>('rdp_certificate_trust', { ...info });
   },
 
-  async exportVault(exportPassword?: string, allowPlaintext: boolean = false): Promise<string> {
+  async exportVault(exportPassword?: string, allowPlaintext: boolean = false, groupIds: string[] | null = null, includeUngrouped = false): Promise<string> {
     if (isTauri()) {
       return await invoke<string>('vault_export', {
         exportPassword: exportPassword || null,
         allowPlaintext,
+        groupIds,
+        includeUngrouped,
       });
     }
+    if (groupIds !== null && ((!groupIds.length && !includeUngrouped) || groupIds.some((id) => !mockGroups.some((group) => group.id === id)))) {
+      throw new Error(getLang() === 'en' ? 'Select valid export groups' : 'Wybierz poprawne grupy do eksportu');
+    }
+    const selected = selectExportData(mockGroups, mockConnections, groupIds, includeUngrouped);
+    const credentialIds = new Set(selected.connections.map((connection) => connection.credentialId));
     // Mock export
     const payload = {
       format: 'remoteflow_export',
       version: 1,
       isEncrypted: !!exportPassword,
-      groups: mockGroups,
-      connections: mockConnections,
+      groups: selected.groups,
+      connections: selected.connections,
+      credentials: groupIds === null ? mockCredentials : mockCredentials.filter((credential) => credentialIds.has(credential.id)),
       exportedAt: new Date().toISOString(),
     };
     return JSON.stringify(payload, null, 2);

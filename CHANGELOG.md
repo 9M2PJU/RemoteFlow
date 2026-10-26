@@ -4,6 +4,15 @@ Numer wersji: `MAJOR.MINOR.PATCH`. Każda zmiana podnosi co najmniej numer PATCH
 Wersja jest zapisana w trzech plikach, które muszą być zgodne (pilnuje tego test `version_tests` w `src-tauri/src/lib.rs`):
 `package.json` (wyświetlana w aplikacji), `src-tauri/tauri.conf.json` (instalator) i `src-tauri/Cargo.toml`.
 
+## 1.6.6 – zakres eksportu połączeń
+- Eksport obejmuje wszystkie połączenia albo zaznaczone grupy wraz z podgrupami. Można osobno dołączyć połączenia bez grupy; formularz pokazuje liczbę eksportowanych połączeń i folderów.
+- Eksport podgrupy zachowuje foldery nadrzędne potrzebne do odtworzenia ścieżki, bez eksportowania innych połączeń nadrzędnych i sąsiednich grup. Do eksportu częściowego trafiają tylko używane profile poświadczeń.
+- Wybór zakresu działa dla szyfrowanych plików `.rfvault` i jawnych plików JSON. Pusty lub nieaktualny wybór grup nie przełącza eksportu na całą bazę.
+
+## 1.6.5 – klonowanie połączeń
+- „Klonuj połączenie” w strukturze połączeń (przycisk przy wpisie i menu pod prawym przyciskiem myszy) tworzy zapisany wpis obok oryginału, w tej samej grupie, z nowym identyfikatorem i dopiskiem „(kopia)”. Kolejne kopie mają numer, np. „(kopia 2)”.
+- Kopia zachowuje konfigurację, tunele, tagi, notatki, ustawienia RDP i SFTP oraz zaszyfrowane hasła i klucze. Współdzielony profil poświadczeń pozostaje powiązany. Oryginał nie jest zmieniany; klonowanie nie uruchamia sesji.
+
 ## 1.6.4 – grupy i pełny tekst na liście sesji
 - Lista otwartych sesji pokazuje grupę połączenia, wraz z pełną ścieżką zagnieżdżonych folderów. Połączenia poza grupami są oznaczone „Bez grupy”. Wyszukiwanie uwzględnia także nazwy grup.
 - Nazwa sesji, dane hosta i ścieżka grupy przewijają się automatycznie, gdy przekraczają szerokość wiersza. Krótki tekst pozostaje nieruchomy; przy ograniczeniu animacji w ustawieniach systemu tekst można przewijać ręcznie.

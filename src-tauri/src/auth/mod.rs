@@ -698,6 +698,38 @@ pub fn vault_delete_connection(connection_id: &str, state: tauri::State<'_, Auth
 }
 
 #[tauri::command]
+pub fn vault_clone_connection(connection_id: &str, state: tauri::State<'_, AuthState>) -> Result<Connection, String> {
+    vault_clone_connection_impl(connection_id, &state)
+}
+
+pub(crate) fn vault_clone_connection_impl(connection_id: &str, state: &AuthState) -> Result<Connection, String> {
+    let mgr = lock_auth(state)?;
+    let key = mgr.unlocked_key()?;
+    update_vault(key, |v| {
+        let index = v.connections.iter().position(|c| c.id == connection_id)
+            .ok_or_else(|| tr!("Nie znaleziono połączenia", "Connection not found").to_string())?;
+        let mut copy = v.connections[index].clone();
+        let names: std::collections::HashSet<_> = v.connections.iter().map(|c| c.name.to_lowercase()).collect();
+        let label = tr!("kopia", "copy");
+        let base = copy.name.clone();
+        copy.name = format!("{} ({})", base, label);
+        let mut number = 2;
+        while names.contains(&copy.name.to_lowercase()) {
+            copy.name = format!("{} ({} {})", base, label, number);
+            number += 1;
+        }
+        copy.id = uuid::Uuid::new_v4().to_string();
+        let now = chrono::Utc::now().to_rfc3339();
+        copy.created_at = now.clone();
+        copy.updated_at = now;
+        // Secrets already use this vault's key. Copy ciphertext without exposing plaintext
+        // to the frontend; the complete new vault is authenticated and encrypted on write.
+        v.connections.insert(index + 1, copy.clone());
+        Ok(copy)
+    })
+}
+
+#[tauri::command]
 pub fn vault_save_group(group: Group, state: tauri::State<'_, AuthState>) -> Result<Group, String> {
     let mgr = lock_auth(&state)?;
     let key = mgr.unlocked_key()?;
@@ -726,17 +758,54 @@ pub fn vault_delete_group(group_id: &str, state: tauri::State<'_, AuthState>) ->
 }
 
 #[tauri::command]
-pub fn vault_export(export_password: Option<String>, allow_plaintext: Option<bool>, state: tauri::State<'_, AuthState>) -> Result<String, String> {
-    vault_export_impl(export_password, allow_plaintext, &state)
+pub fn vault_export(export_password: Option<String>, allow_plaintext: Option<bool>, group_ids: Option<Vec<String>>, include_ungrouped: Option<bool>, state: tauri::State<'_, AuthState>) -> Result<String, String> {
+    vault_export_impl(export_password, allow_plaintext, group_ids, include_ungrouped.unwrap_or(false), &state)
 }
 
-pub(crate) fn vault_export_impl(export_password: Option<String>, allow_plaintext: Option<bool>, state: &AuthState) -> Result<String, String> {
+fn filter_export_scope(vault: &mut VaultData, group_ids: Option<&[String]>, include_ungrouped: bool) -> Result<(), String> {
+    let Some(group_ids) = group_ids else { return Ok(()); }; // None means the complete vault.
+    if group_ids.is_empty() && !include_ungrouped {
+        return Err(tr!("Wybierz co najmniej jedną grupę lub połączenia bez grupy", "Select at least one group or ungrouped connections").into());
+    }
+    let parents: BTreeMap<_, _> = vault.groups.iter().map(|g| (g.id.clone(), g.parent_id.clone())).collect();
+    if group_ids.iter().any(|id| !parents.contains_key(id)) {
+        return Err(tr!("Wybrana grupa już nie istnieje. Wybierz zakres eksportu ponownie.", "A selected group no longer exists. Select the export scope again.").into());
+    }
+    let mut included: std::collections::BTreeSet<String> = group_ids.iter().cloned().collect();
+    loop {
+        let before = included.len();
+        for group in &vault.groups {
+            if group.parent_id.as_ref().is_some_and(|id| included.contains(id)) { included.insert(group.id.clone()); }
+        }
+        if included.len() == before { break; }
+    }
+    vault.connections.retain(|connection| match connection.group_id.as_ref() {
+        Some(id) if parents.contains_key(id) => included.contains(id),
+        _ => include_ungrouped,
+    });
+    let credentials: std::collections::BTreeSet<_> = vault.connections.iter().filter_map(|c| c.credential_id.clone()).collect();
+    vault.credentials.retain(|credential| credentials.contains(&credential.id));
+    // Preserve the parent folder chain, but never add its other connections or sibling groups.
+    let mut folders = included.clone();
+    for id in included {
+        let mut current = parents.get(&id).and_then(|parent| parent.clone());
+        while let Some(parent) = current {
+            if !parents.contains_key(&parent) || !folders.insert(parent.clone()) { break; }
+            current = parents.get(&parent).and_then(|next| next.clone());
+        }
+    }
+    vault.groups.retain(|group| folders.contains(&group.id));
+    Ok(())
+}
+
+pub(crate) fn vault_export_impl(export_password: Option<String>, allow_plaintext: Option<bool>, group_ids: Option<Vec<String>>, include_ungrouped: bool, state: &AuthState) -> Result<String, String> {
     let mgr = lock_auth(&state).map_err(|e| e.to_string())?;
     let key = mgr
         .unlocked_key()
         .map_err(|_| tr!("Sejf musi być odblokowany, aby wyeksportować dane", "The vault must be unlocked to export data").to_string())?;
 
-    let vault = load_vault_verified(key)?;
+    let mut vault = load_vault_verified(key)?;
+    filter_export_scope(&mut vault, group_ids.as_deref(), include_ungrouped)?;
     let now = chrono::Utc::now().to_rfc3339();
 
     // Decrypt EVERY secret field. Any failure aborts the export instead of silently
@@ -1331,10 +1400,10 @@ mod lifecycle_tests {
         assert_eq!(vault_reveal_password_impl("c1", &state).unwrap(), "s3cret");
 
         // --- export / import ------------------------------------------------------------------
-        assert!(vault_export_impl(None, None, &state).is_err(), "plaintext export needs confirmation");
-        let plain = vault_export_impl(None, Some(true), &state).unwrap();
+        assert!(vault_export_impl(None, None, None, false, &state).is_err(), "plaintext export needs confirmation");
+        let plain = vault_export_impl(None, Some(true), None, false, &state).unwrap();
         assert!(plain.contains("s3cret") && plain.contains("phrase"));
-        let enc = vault_export_impl(Some("exportpass1".into()), None, &state).unwrap();
+        let enc = vault_export_impl(Some("exportpass1".into()), None, None, false, &state).unwrap();
         assert!(!enc.contains("s3cret"));
         let summary = vault_import_impl(enc, Some("exportpass1".into()), true, &state).unwrap();
         assert_eq!(summary.connections_imported, 1);
@@ -1504,6 +1573,143 @@ mod lifecycle_tests {
         assert!(vault_set_connection_password_impl("first", "other".into(), &state).is_err());
         vault_unlock_master_impl("password123", None, &state).unwrap();
         assert_eq!(vault_reveal_password_impl("first", &state).unwrap(), "new connection password");
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn cloned_connections_preserve_configuration_and_secrets_with_independent_ids() {
+        let _serial = TEST_SERIAL.lock().unwrap_or_else(|p| p.into_inner());
+        let path = get_vault_path();
+        let _ = std::fs::remove_file(&path);
+        let state: AuthState = Mutex::new(AuthManager::new());
+        vault_init_impl("password123", &state).unwrap();
+        let mut source = conn("source", "server.example");
+        source.name = "Production database".into();
+        source.group_id = Some("group-prod".into());
+        source.credential_id = Some("shared".into());
+        source.tags = vec!["production".into()];
+        source.notes = Some("Keep these notes".into());
+        source.sftp_remote_dir = Some("/srv/data".into());
+        source.rdp_settings = Some(serde_json::from_value(serde_json::json!({
+            "width": 1920, "height": 1080, "colorDepth": 32, "sound": true, "clipboard": true
+        })).unwrap());
+        source.port_forwarding.push(serde_json::from_value(serde_json::json!({
+            "id": "forward", "forwardType": "local", "localPort": 8000,
+            "remoteHost": "localhost", "remotePort": 80, "enabled": true
+        })).unwrap());
+        let source = vault_save_connection_impl(source, Some("clone secret".into()), Some("PRIVATE KEY".into()), Some("key phrase".into()), &state).unwrap();
+        let key = lock_auth(&state).unwrap().unlocked_key().unwrap().clone();
+        update_vault(&key, |v| {
+            v.credentials.push(serde_json::from_value(serde_json::json!({
+                "id": "shared", "name": "shared", "username": "alice", "authType": "password", "createdAt": "", "updatedAt": ""
+            })).unwrap());
+            Ok(())
+        }).unwrap();
+        let first = vault_clone_connection_impl("source", &state).unwrap();
+        let second = vault_clone_connection_impl("source", &state).unwrap();
+        assert_ne!(source.id, first.id);
+        assert_ne!(first.id, second.id);
+        assert_ne!(first.name, second.name);
+        assert!(first.name.starts_with(&source.name));
+        assert!(second.name.ends_with(" 2)"));
+        let canonical = |connection: &Connection| {
+            let mut json = serde_json::to_value(connection).unwrap();
+            for field in ["id", "name", "createdAt", "updatedAt"] { json.as_object_mut().unwrap().remove(field); }
+            json
+        };
+        assert_eq!(canonical(&source), canonical(&first));
+        assert_eq!(canonical(&source), canonical(&second));
+        assert_eq!(vault_reveal_password_impl(&first.id, &state).unwrap(), "clone secret");
+        assert_eq!(decrypt_string(&key, first.private_key_encrypted.as_ref().unwrap()).unwrap(), "PRIVATE KEY");
+        assert_eq!(decrypt_string(&key, first.private_key_passphrase_encrypted.as_ref().unwrap()).unwrap(), "key phrase");
+        assert!(vault_clone_connection_impl("missing", &state).is_err());
+        let saved = load_vault_verified(&key).unwrap();
+        assert_eq!(saved.connections.len(), 3);
+        assert_eq!(saved.credentials.len(), 1);
+        assert_eq!(serde_json::to_value(&source).unwrap(), serde_json::to_value(&saved.connections[0]).unwrap());
+        vault_set_connection_password_impl(&first.id, "only the copy".into(), &state).unwrap();
+        assert_eq!(vault_reveal_password_impl(&source.id, &state).unwrap(), "clone secret");
+        assert!(!raw_file().contains("clone secret"));
+        vault_lock(&state);
+        assert!(vault_clone_connection_impl("source", &state).is_err());
+        vault_unlock_master_impl("password123", None, &state).unwrap();
+        assert_eq!(vault_reveal_password_impl(&first.id, &state).unwrap(), "only the copy");
+        assert_eq!(vault_reveal_password_impl(&second.id, &state).unwrap(), "clone secret");
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn export_scope_preserves_subtrees_without_leaking_other_connections_or_credentials() {
+        let _serial = TEST_SERIAL.lock().unwrap_or_else(|p| p.into_inner());
+        let path = get_vault_path();
+        let _ = std::fs::remove_file(&path);
+        let state: AuthState = Mutex::new(AuthManager::new());
+        vault_init_impl("password123", &state).unwrap();
+        let key = lock_auth(&state).unwrap().unlocked_key().unwrap().clone();
+        update_vault(&key, |v| {
+            let group = |id: &str, parent: Option<&str>| Group {
+                id: id.into(), name: id.into(), parent_id: parent.map(str::to_string), icon: None, color: None,
+            };
+            v.groups = vec![group("parent", None), group("child", Some("parent")), group("grandchild", Some("child")), group("other", None)];
+            for (id, secret) in [("used", "used-profile-secret"), ("unrelated", "unrelated-profile-secret"), ("unused", "unused-profile-secret")] {
+                v.credentials.push(serde_json::from_value(serde_json::json!({
+                    "id": id, "name": id, "username": id, "authType": "password", "passwordEncrypted": encrypt_string(&key, secret).unwrap(),
+                    "createdAt": "", "updatedAt": ""
+                })).unwrap());
+            }
+            Ok(())
+        }).unwrap();
+        for (id, group, credential) in [
+            ("parent-conn", Some("parent"), Some("unrelated")), ("child-conn", Some("child"), Some("used")),
+            ("grandchild-conn", Some("grandchild"), Some("used")), ("other-conn", Some("other"), Some("unrelated")), ("root-conn", None, None),
+        ] {
+            let mut connection = conn(id, &format!("{}.example", id));
+            connection.group_id = group.map(str::to_string);
+            connection.credential_id = credential.map(str::to_string);
+            vault_save_connection_impl(connection, Some(format!("{}-secret", id)), None, None, &state).unwrap();
+        }
+        let plain = |selection, root| -> ExportPayload {
+            serde_json::from_str(&vault_export_impl(None, Some(true), selection, root, &state).unwrap()).unwrap()
+        };
+        let all = plain(None, false);
+        assert_eq!(all.connections.unwrap().len(), 5);
+        assert_eq!(all.credentials.unwrap().len(), 3);
+        let subset = plain(Some(vec!["child".into(), "grandchild".into()]), false);
+        assert_eq!(subset.connections.as_ref().unwrap().len(), 2);
+        assert_eq!(subset.credentials.as_ref().unwrap().iter().map(|c| c.id.as_str()).collect::<Vec<_>>(), vec!["used"]);
+        assert_eq!(subset.groups.unwrap().iter().map(|g| g.id.as_str()).collect::<Vec<_>>(), vec!["parent", "child", "grandchild"]);
+        let parent = plain(Some(vec!["parent".into(), "child".into()]), false);
+        assert_eq!(parent.connections.unwrap().len(), 3, "overlapping selections do not duplicate connections");
+        let multiple = plain(Some(vec!["child".into(), "other".into()]), false);
+        assert_eq!(multiple.connections.unwrap().len(), 3);
+        let root = plain(Some(vec![]), true);
+        assert_eq!(root.connections.unwrap()[0].id, "root-conn");
+        assert!(root.groups.unwrap().is_empty());
+        assert!(root.credentials.unwrap().is_empty());
+        assert_eq!(plain(Some(vec!["child".into()]), true).connections.unwrap().len(), 3);
+        assert!(vault_export_impl(None, Some(true), Some(vec![]), false, &state).is_err());
+        assert!(vault_export_impl(None, Some(true), Some(vec!["missing".into()]), true, &state).is_err());
+        assert!(vault_export_impl(None, None, Some(vec!["child".into()]), false, &state).is_err(), "plaintext still requires confirmation");
+        // Excluded secrets are never decrypted, even if damaged.
+        update_vault(&key, |v| {
+            v.connections.iter_mut().find(|c| c.id == "other-conn").unwrap().password_encrypted = Some("broken".into());
+            v.credentials.iter_mut().find(|c| c.id == "unrelated").unwrap().password_encrypted = Some("broken".into());
+            Ok(())
+        }).unwrap();
+        let partial = vault_export_impl(None, Some(true), Some(vec!["child".into()]), false, &state).unwrap();
+        assert!(!partial.contains("parent-conn") && !partial.contains("other-conn") && !partial.contains("root-conn"));
+        assert!(!partial.contains("unrelated-profile-secret") && !partial.contains("unused-profile-secret"));
+        let encrypted = vault_export_impl(Some("exportpass1".into()), None, Some(vec!["child".into()]), false, &state).unwrap();
+        assert!(!encrypted.contains("child-conn-secret"));
+        let summary = vault_import_impl(encrypted, Some("exportpass1".into()), false, &state).unwrap();
+        assert_eq!((summary.connections_imported, summary.groups_imported, summary.credentials_imported), (2, 3, 1));
+        assert_eq!(vault_reveal_password_impl("child-conn", &state).unwrap(), "child-conn-secret");
+        assert!(vault_reveal_password_impl("other-conn", &state).is_err());
+        let restored = load_vault_verified(&key).unwrap();
+        assert_eq!(restored.groups.iter().find(|g| g.id == "child").unwrap().parent_id.as_deref(), Some("parent"));
+        assert_eq!(decrypt_string(&key, restored.credentials[0].password_encrypted.as_ref().unwrap()).unwrap(), "used-profile-secret");
+        vault_lock(&state);
+        assert!(vault_export_impl(None, Some(true), None, false, &state).is_err());
         let _ = std::fs::remove_file(&path);
     }
 

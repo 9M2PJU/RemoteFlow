@@ -16,6 +16,7 @@ import {
   Search,
   X,
   Copy,
+  CopyPlus,
   KeyRound,
   User,
 } from 'lucide-react';
@@ -33,6 +34,7 @@ interface Props {
   onConnect: (connection: Connection, allowDuplicate?: boolean) => void;
   onConnectAllInGroup: (group: Group, conns: Connection[]) => void;
   onEditConnection: (connection: Connection) => void;
+  onCloneConnection: (connection: Connection) => Promise<void>;
   onDeleteConnection: (connectionId: string, anchor?: DialogAnchor | null) => void;
   onEditGroup: (group: Group) => void;
   onDeleteGroup: (groupId: string, anchor?: DialogAnchor | null) => void;
@@ -51,6 +53,7 @@ export const Sidebar: React.FC<Props> = ({
   onConnect,
   onConnectAllInGroup,
   onEditConnection,
+  onCloneConnection,
   onDeleteConnection,
   onEditGroup,
   onDeleteGroup,
@@ -228,6 +231,7 @@ export const Sidebar: React.FC<Props> = ({
         }}
         onConnect={onConnect}
         onEdit={onEditConnection}
+        onClone={onCloneConnection}
         onDelete={onDeleteConnection}
       />
     </div>
@@ -493,6 +497,7 @@ export const Sidebar: React.FC<Props> = ({
                   }}
                   onConnect={onConnect}
                   onEdit={onEditConnection}
+                  onClone={onCloneConnection}
                   onDelete={onDeleteConnection}
                 />
               ))
@@ -537,6 +542,7 @@ interface ConnectionItemProps {
   onDragEnd: () => void;
   onConnect: (connection: Connection, allowDuplicate?: boolean) => void;
   onEdit: (connection: Connection) => void;
+  onClone: (connection: Connection) => Promise<void>;
   onDelete: (id: string, anchor?: DialogAnchor | null) => void;
 }
 
@@ -547,6 +553,7 @@ const ConnectionItem: React.FC<ConnectionItemProps> = ({
   onDragEnd,
   onConnect,
   onEdit,
+  onClone,
   onDelete,
 }) => {
   const t = useT();
@@ -555,6 +562,13 @@ const ConnectionItem: React.FC<ConnectionItemProps> = ({
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
   const menuStyle = useMenuPosition(menuRef, contextMenu);
+  const [isCloning, setIsCloning] = useState(false);
+  const cloneConnection = async () => {
+    if (isCloning) return;
+    setContextMenu(null);
+    setIsCloning(true);
+    try { await onClone(connection); } finally { setIsCloning(false); }
+  };
 
   useEffect(() => {
     if (!contextMenu) return;
@@ -645,6 +659,12 @@ const ConnectionItem: React.FC<ConnectionItemProps> = ({
             className="flex h-5 w-5 items-center justify-center rounded text-slate-400 hover:bg-slate-700 hover:text-cyan-400"
           >
             <Copy className="h-2.5 w-2.5" />
+          </button>
+
+          <button type="button" onClick={() => { void cloneConnection(); }} disabled={isCloning}
+            title={t('Klonuj połączenie')} aria-label={t('Klonuj połączenie')}
+            className="flex h-5 w-5 items-center justify-center rounded text-slate-400 hover:bg-slate-700 hover:text-cyan-400 disabled:opacity-40">
+            <CopyPlus className="h-2.5 w-2.5" />
           </button>
 
           {/* Edit */}
@@ -750,6 +770,12 @@ const ConnectionItem: React.FC<ConnectionItemProps> = ({
             >
               <Edit2 className="h-3.5 w-3.5 text-slate-400" />
               <span>{t('Edytuj konfigurację')}</span>
+            </button>
+
+            <button type="button" onClick={() => { void cloneConnection(); }} disabled={isCloning}
+              className="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 hover:bg-slate-800 hover:text-white transition-colors disabled:opacity-40">
+              <CopyPlus className="h-3.5 w-3.5 text-cyan-400" />
+              <span>{t('Klonuj połączenie')}</span>
             </button>
 
             <button

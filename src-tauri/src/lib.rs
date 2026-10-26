@@ -66,6 +66,7 @@ pub fn run() {
             auth::vault_set_connection_password,
             session::connection_password_status,
             vault_delete_connection,
+            auth::vault_clone_connection,
             vault_save_group,
             vault_delete_group,
             vault_get_credentials,

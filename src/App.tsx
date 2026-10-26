@@ -626,6 +626,21 @@ const t = useT();
     });
   };
 
+  const handleCloneConnection = async (source: Connection) => {
+    try {
+      const copy = await api.cloneConnection(source.id);
+      setConnections((previous) => {
+        if (previous.some((connection) => connection.id === copy.id)) return previous;
+        const next = [...previous];
+        const index = next.findIndex((connection) => connection.id === source.id);
+        next.splice(index < 0 ? next.length : index + 1, 0, copy);
+        return next;
+      });
+    } catch (error) {
+      setSecurityWarning(t('Nie udało się sklonować połączenia: {error}', { error: String(error) }));
+    }
+  };
+
   // Deleting a connection / folder asks for confirmation next to the clicked item
   const [pendingDelete, setPendingDelete] = useState<{
     kind: 'connection' | 'group';
@@ -832,6 +847,7 @@ const t = useT();
               setIsConnModalOpen(true);
             }}
             onDeleteConnection={handleDeleteConnection}
+            onCloneConnection={handleCloneConnection}
             onEditGroup={(grp) => {
               setEditingGroup(grp);
               setDefaultParentGroupId(grp.parentId);
@@ -990,6 +1006,8 @@ const t = useT();
       {/* Import & Export Modal */}
       <ImportExportModal
         isOpen={isImportExportModalOpen}
+        groups={groups}
+        connections={connections}
         onClose={() => setIsImportExportModalOpen(false)}
         onDataChanged={loadData}
       />

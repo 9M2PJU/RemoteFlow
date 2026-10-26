@@ -798,5 +798,21 @@
   "Zakładki połączeń": "Connection tabs",
   "Bez grupy": "No group",
   "Grupa: {name}": "Group: {name}",
-  "Szukaj nazwy, grupy, hosta lub użytkownika...": "Search by name, group, host or user..."
+  "Szukaj nazwy, grupy, hosta lub użytkownika...": "Search by name, group, host or user...",
+  "Klonuj połączenie": "Clone connection",
+  "Nie udało się sklonować połączenia: {error}": "Could not clone the connection: {error}",
+  "Zakres eksportu": "Export scope",
+  "Wszystkie połączenia": "All connections",
+  "Wybrane grupy połączeń": "Selected connection groups",
+  "Pełny eksport obejmuje również połączenia bez grupy i wszystkie profile poświadczeń.": "A full export also includes ungrouped connections and all credential profiles.",
+  "Wybrana grupa obejmuje podgrupy. Foldery nadrzędne zachowają strukturę, bez ich pozostałych połączeń.": "Selected groups include their subgroups. Parent folders preserve the hierarchy without including their other connections.",
+  "Brak zdefiniowanych grup": "No groups defined",
+  "Uwzględniono z grupą nadrzędną": "Included with the parent group",
+  "Eksportuj grupę: {name}": "Export group: {name}",
+  "{n} połączeń": "{n} connections",
+  "Połączenia bez grupy": "Ungrouped connections",
+  "Dołączane są tylko profile poświadczeń używane przez wybrane połączenia.": "Only credential profiles used by the selected connections are included.",
+  "Do eksportu: {connections} połączeń, {groups} grup": "To export: {connections} connections, {groups} groups",
+  "Wybierz co najmniej jedną grupę lub połączenia bez grupy": "Select at least one group or ungrouped connections",
+  "Wyeksportuj konfiguracje połączeń z wybranego zakresu, tunele SSH i poświadczenia do pliku.": "Export connection settings in the selected scope, SSH tunnels and credentials to a file."
 }

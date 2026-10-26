@@ -15,17 +15,23 @@ import {
 import { api, MrngParams } from '../../services/api';
 import { parseMRemoteNGXml, readMRemoteNGEncryption, MRemoteNGParseResult } from '../../utils/mremoteng';
 import { useT } from '../../i18n';
+import { Connection, Group } from '../../types';
+import { ExportScope, ExportScopeSelector } from './ExportScopeSelector';
 
 interface Props {
   isOpen: boolean;
   onClose: () => void;
   onDataChanged: () => Promise<void>;
+  groups: Group[];
+  connections: Connection[];
 }
 
 export const ImportExportModal: React.FC<Props> = ({
   isOpen,
   onClose,
   onDataChanged,
+  groups,
+  connections,
 }) => {
   const t = useT();
   const [activeTab, setActiveTab] = useState<'export' | 'import_rf' | 'import_mrng'>('export');
@@ -36,6 +42,8 @@ export const ImportExportModal: React.FC<Props> = ({
   const [confirmExportPassword, setConfirmExportPassword] = useState('');
   const [exportLoading, setExportLoading] = useState(false);
   const [plaintextConfirmed, setPlaintextConfirmed] = useState(false);
+  const [exportScope, setExportScope] = useState<ExportScope>({ groupIds: null, includeUngrouped: false });
+  const emptySelection = exportScope.groupIds !== null && exportScope.groupIds.length === 0 && !exportScope.includeUngrouped;
 
   // Import RemoteFlow state
   const [rfFileContent, setRfFileContent] = useState('');
@@ -65,6 +73,10 @@ export const ImportExportModal: React.FC<Props> = ({
     e.preventDefault();
     setMessage(null);
 
+    if (emptySelection) {
+      setMessage({ text: t('Wybierz co najmniej jedną grupę lub połączenia bez grupy'), type: 'error' });
+      return;
+    }
     if (exportEncrypted) {
       if (exportPassword.length < 8) {
         setMessage({ text: t('Hasło eksportu musi mieć co najmniej 8 znaków'), type: 'error' });
@@ -86,7 +98,9 @@ export const ImportExportModal: React.FC<Props> = ({
     try {
       const payloadString = await api.exportVault(
         exportEncrypted ? exportPassword : undefined,
-        !exportEncrypted && plaintextConfirmed
+        !exportEncrypted && plaintextConfirmed,
+        exportScope.groupIds,
+        exportScope.includeUngrouped
       );
       
       // Trigger download
@@ -345,13 +359,15 @@ export const ImportExportModal: React.FC<Props> = ({
           {/* TAB 1: EXPORT */}
           {activeTab === 'export' && (
             <form onSubmit={handleExport} className="space-y-5">
+              <ExportScopeSelector groups={groups} connections={connections} value={exportScope}
+                onChange={(scope) => { setExportScope(scope); setMessage(null); }} disabled={exportLoading} />
               <div className="rounded-xl border border-slate-800 bg-slate-950/40 p-4 space-y-3">
                 <div className="text-xs font-bold text-white uppercase tracking-wider flex items-center gap-1.5">
                   <Download className="h-3.5 w-3.5 text-cyan-400" />
                   {t('Format i Opcje Eksportu')}
                 </div>
                 <p className="text-xs text-slate-400">
-                  {t('Wyeksportuj wszystkie foldery, konfiguracje połączeń, tunele SSH i poświadczenia do pliku.')}
+                  {t('Wyeksportuj konfiguracje połączeń z wybranego zakresu, tunele SSH i poświadczenia do pliku.')}
                 </p>
 
                 <div className="grid grid-cols-2 gap-3 pt-2">
@@ -445,7 +461,7 @@ export const ImportExportModal: React.FC<Props> = ({
 
               <button
                 type="submit"
-                disabled={exportLoading}
+                disabled={exportLoading || emptySelection}
                 className="flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-cyan-600 to-blue-600 py-3 text-xs font-semibold text-white shadow-lg shadow-cyan-600/20 hover:opacity-95 disabled:opacity-50"
               >
                 {exportLoading ? (
