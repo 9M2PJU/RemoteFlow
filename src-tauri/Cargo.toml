@@ -1,6 +1,6 @@
 [package]
 name = "remoteflow"
-version = "1.6.6"
+version = "1.6.7"
 description = "Cross-platform SSH, SFTP and RDP connection manager with an encrypted vault"
 authors = ["Jacek Nikiel"]
 license = "MIT"

@@ -20,20 +20,25 @@ interface Props {
    * centre – used for deleting items in the sidebar so the prompt appears right next to them.
    */
   anchor?: DialogAnchor | null;
+  /** Keep the background visible for a compact confirmation next to its trigger. */
+  dimBackdrop?: boolean;
 }
 
 export interface DialogAnchor {
-  /** Left edge for the dialog (usually the right edge of the clicked element). */
+  /** Horizontal anchor: the right edge of a side trigger, or left edge of a trigger above. */
   x: number;
-  /** Vertical centre of the clicked element. */
+  /** Vertical centre for side placement, or bottom edge for placement below the trigger. */
   y: number;
+  placement?: 'side' | 'below';
 }
 
 /** Anchor to the right of the element that triggered an action. */
-export const anchorFromElement = (el: Element | null | undefined): DialogAnchor | null => {
+export const anchorFromElement = (el: Element | null | undefined, placement: 'side' | 'below' = 'side'): DialogAnchor | null => {
   if (!el) return null;
   const r = el.getBoundingClientRect();
-  return { x: r.right, y: r.top + r.height / 2 };
+  return placement === 'below'
+    ? { x: r.left, y: r.bottom, placement }
+    : { x: r.right, y: r.top + r.height / 2 };
 };
 
 const ANCHOR_GAP = 10;
@@ -52,6 +57,7 @@ export const ConfirmDialog: React.FC<Props> = ({
   variant = 'danger',
   hideCancel = false,
   anchor = null,
+  dimBackdrop = true,
 }) => {
   const confirmRef = useRef<HTMLButtonElement>(null);
   const t = useT();
@@ -71,6 +77,14 @@ export const ConfirmDialog: React.FC<Props> = ({
       const h = box.offsetHeight;
       const vw = window.innerWidth;
       const vh = window.innerHeight;
+      if (anchor.placement === 'below') {
+        setPos({
+          left: Math.max(EDGE, Math.min(anchor.x, vw - w - EDGE)),
+          top: Math.max(EDGE, Math.min(anchor.y + ANCHOR_GAP, vh - h - EDGE)),
+          arrowTop: null,
+        });
+        return;
+      }
       let left = anchor.x + ANCHOR_GAP;
       let arrow = true;
       if (left + w > vw - EDGE) {
@@ -110,7 +124,7 @@ export const ConfirmDialog: React.FC<Props> = ({
     <div
       className={
         anchor
-          ? 'fixed inset-0 z-[70] bg-slate-950/40'
+          ? `fixed inset-0 z-[70] ${dimBackdrop ? 'bg-slate-950/40' : ''}`
           : `${contained ? 'absolute z-[60]' : 'fixed z-[70]'} inset-0 flex items-center justify-center bg-slate-950/80 backdrop-blur-sm p-4`
       }
       onMouseDown={(e) => {
@@ -120,6 +134,7 @@ export const ConfirmDialog: React.FC<Props> = ({
       <div
         ref={boxRef}
         role="dialog"
+        aria-label={title}
         aria-modal="true"
         className={`rounded-2xl border border-slate-700 bg-slate-900 p-5 shadow-2xl ${
           anchor ? 'fixed w-[340px] max-w-[calc(100vw-16px)] shadow-black/60' : 'w-full max-w-sm'

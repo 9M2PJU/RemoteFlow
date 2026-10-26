@@ -4,6 +4,10 @@ Numer wersji: `MAJOR.MINOR.PATCH`. Każda zmiana podnosi co najmniej numer PATCH
 Wersja jest zapisana w trzech plikach, które muszą być zgodne (pilnuje tego test `version_tests` w `src-tauri/src/lib.rs`):
 `package.json` (wyświetlana w aplikacji), `src-tauri/tauri.conf.json` (instalator) i `src-tauri/Cargo.toml`.
 
+## 1.6.7 – lokalne potwierdzenie zamknięcia sesji
+- Potwierdzenie rozłączenia ma formę małego okienka pod zamykaną zakładką lub przyciskiem połączenia, bez przyciemniania i rozmywania całego ekranu.
+- Lokalna pozycja obejmuje zamknięcie karty, połączenia w podzielonym widoku, pozostałych sesji i wszystkich kart. Okienko mieści się w granicach okna; działanie przycisków i klawiszy Enter/Escape pozostaje zachowane.
+
 ## 1.6.6 – zakres eksportu połączeń
 - Eksport obejmuje wszystkie połączenia albo zaznaczone grupy wraz z podgrupami. Można osobno dołączyć połączenia bez grupy; formularz pokazuje liczbę eksportowanych połączeń i folderów.
 - Eksport podgrupy zachowuje foldery nadrzędne potrzebne do odtworzenia ścieżki, bez eksportowania innych połączeń nadrzędnych i sąsiednich grup. Do eksportu częściowego trafiają tylko używane profile poświadczeń.

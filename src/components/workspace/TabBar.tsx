@@ -26,6 +26,7 @@ import { Connection, Group, SessionInfo, WorkspaceLayout } from '../../types';
 import { useT } from '../../i18n';
 import { useMenuPosition } from '../../utils/useMenuPosition';
 import { SessionSwitcher } from './SessionSwitcher';
+import { anchorFromElement, DialogAnchor } from '../dialogs/ConfirmDialog';
 
 interface Props {
   sessions: SessionInfo[];
@@ -38,11 +39,11 @@ interface Props {
   isSidebarCollapsed?: boolean;
   onToggleSidebar?: () => void;
   onSelectSession: (sessionId: string) => void;
-  onCloseSession: (sessionId: string) => void;
+  onCloseSession: (sessionId: string, anchor?: DialogAnchor | null) => void;
   onReconnectSession: (sessionId: string) => void;
   onDuplicateSession: (sessionId: string) => void;
-  onCloseOtherSessions: (sessionId: string) => void;
-  onCloseAll: () => void;
+  onCloseOtherSessions: (sessionId: string, anchor?: DialogAnchor | null) => void;
+  onCloseAll: (anchor?: DialogAnchor | null) => void;
   onReorderSessions?: (sourceSessionId: string, targetSessionId: string, position: 'left' | 'right') => void;
 }
 
@@ -469,7 +470,7 @@ export const TabBar: React.FC<Props> = ({
                   type="button"
                   onClick={(e) => {
                     e.stopPropagation();
-                    onCloseSession(session.sessionId);
+                    onCloseSession(session.sessionId, anchorFromElement(e.currentTarget, 'below'));
                   }}
                   title={t('Zamknij kartę')}
                   className="flex h-4.5 w-4.5 items-center justify-center rounded text-slate-400 opacity-60 group-hover:opacity-100 hover:bg-slate-800 hover:text-red-400 transition-all"
@@ -577,7 +578,7 @@ export const TabBar: React.FC<Props> = ({
         )}
 
         <button
-          onClick={onCloseAll}
+          onClick={(event) => onCloseAll(anchorFromElement(event.currentTarget, 'below'))}
           title={t('Zamknij wszystkie karty')}
           className="rounded px-2 py-0.5 text-[11px] text-slate-400 hover:bg-slate-800 hover:text-red-400 transition-colors"
         >
@@ -699,7 +700,7 @@ export const TabBar: React.FC<Props> = ({
             {/* Close */}
             <button
               onClick={() => {
-                onCloseSession(contextMenu.session.sessionId);
+                onCloseSession(contextMenu.session.sessionId, anchorFromElement(tabRefs.current.get(contextMenu.session.sessionId), 'below'));
                 setContextMenu(null);
               }}
               className="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 hover:bg-red-500/20 hover:text-red-400 transition-colors"
@@ -711,7 +712,7 @@ export const TabBar: React.FC<Props> = ({
             {/* Close others */}
             <button
               onClick={() => {
-                onCloseOtherSessions(contextMenu.session.sessionId);
+                onCloseOtherSessions(contextMenu.session.sessionId, anchorFromElement(tabRefs.current.get(contextMenu.session.sessionId), 'below'));
                 setContextMenu(null);
               }}
               className="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 hover:bg-slate-800 hover:text-white transition-colors"

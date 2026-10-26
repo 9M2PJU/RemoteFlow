@@ -316,9 +316,9 @@ const t = useT();
 
   // Pending close request awaiting user confirmation
   const [pendingClose, setPendingClose] = useState<
-    | { kind: 'one'; sessionId: string }
-    | { kind: 'others'; sessionId: string }
-    | { kind: 'all' }
+    | { kind: 'one'; sessionId: string; anchor: DialogAnchor }
+    | { kind: 'others'; sessionId: string; anchor: DialogAnchor }
+    | { kind: 'all'; anchor: DialogAnchor }
     | null
   >(null);
 
@@ -366,22 +366,26 @@ const t = useT();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const handleCloseSession = (sessionId: string) => {
+  const closePromptAnchor = (anchor?: DialogAnchor | null): DialogAnchor => anchor ?? {
+    x: Math.max(8, window.innerWidth - 360), y: 72, placement: 'below',
+  };
+
+  const handleCloseSession = (sessionId: string, anchor?: DialogAnchor | null) => {
     if (!sessions.some((s) => s.sessionId === sessionId)) return;
     if (!uiSettings.confirmCloseSessions) return closeSessionNow(sessionId);
-    setPendingClose({ kind: 'one', sessionId });
+    setPendingClose({ kind: 'one', sessionId, anchor: closePromptAnchor(anchor) });
   };
 
-  const handleCloseOtherSessions = (keepSessionId: string) => {
+  const handleCloseOtherSessions = (keepSessionId: string, anchor?: DialogAnchor | null) => {
     if (!sessions.some((s) => s.sessionId !== keepSessionId)) return;
     if (!uiSettings.confirmCloseSessions) return closeOtherSessionsNow(keepSessionId);
-    setPendingClose({ kind: 'others', sessionId: keepSessionId });
+    setPendingClose({ kind: 'others', sessionId: keepSessionId, anchor: closePromptAnchor(anchor) });
   };
 
-  const handleCloseAllSessions = () => {
+  const handleCloseAllSessions = (anchor?: DialogAnchor | null) => {
     if (sessions.length === 0) return;
     if (!uiSettings.confirmCloseSessions) return closeAllSessionsNow();
-    setPendingClose({ kind: 'all' });
+    setPendingClose({ kind: 'all', anchor: closePromptAnchor(anchor) });
   };
 
   // Confirmation before exiting the application (window close button, Alt+F4, ...)
@@ -944,6 +948,8 @@ const t = useT();
       {/* Confirmation before closing connections */}
       <ConfirmDialog
         isOpen={pendingClose !== null}
+        anchor={pendingClose?.anchor}
+        dimBackdrop={false}
         title={describePendingClose().title}
         message={describePendingClose().message}
         confirmLabel={t('Rozłącz')}

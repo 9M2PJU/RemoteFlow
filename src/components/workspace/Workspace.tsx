@@ -19,6 +19,7 @@ import {
 import { Connection, SessionInfo, WorkspaceLayout } from '../../types';
 import { useT } from '../../i18n';
 import { useEmbeddedFreeRdp } from '../../utils/rdpClientMode';
+import { anchorFromElement, DialogAnchor } from '../dialogs/ConfirmDialog';
 
 // Session viewers are loaded on demand. The RDP viewer embeds the IronRDP WebAssembly engine
 // (~6 MB of JavaScript); bundling it into the main chunk made every app start parse it, which
@@ -48,7 +49,7 @@ interface Props {
   onUpdatePaneSlot: (paneIndex: number, sessionId: string) => void;
   onSwapPaneSlots: (sourceIndex: number, targetIndex: number) => void;
   onSelectSession: (sessionId: string) => void;
-  onCloseSession: (sessionId: string) => void;
+  onCloseSession: (sessionId: string, anchor?: DialogAnchor | null) => void;
   onReconnectSession: (sessionId: string) => void;
   onConnect: (connection: Connection) => void;
   onNewConnection: () => void;
@@ -561,7 +562,7 @@ export const Workspace: React.FC<Props> = ({
                   {/* Close Session */}
                   <button
                     type="button"
-                    onClick={() => onCloseSession(session.sessionId)}
+                    onClick={(event) => onCloseSession(session.sessionId, anchorFromElement(event.currentTarget, 'below'))}
                     title={t('Zamknij to połączenie')}
                     className="flex h-5 w-5 items-center justify-center rounded text-slate-400 hover:bg-red-500/20 hover:text-red-400 transition-colors"
                   >
