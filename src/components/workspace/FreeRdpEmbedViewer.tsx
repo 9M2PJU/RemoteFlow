@@ -105,7 +105,7 @@ export const FreeRdpEmbedViewer: React.FC<{ session: SessionInfo; isActive: bool
       const rect = rectOf();
       const running = statusRef.current === 'starting' || statusRef.current === 'connected';
       let visible = !!el && !!rect && running && isActiveRef.current && document.visibilityState === 'visible'
-        && !document.getElementById('session-switcher');
+        && !document.querySelector('[data-session-switcher]');
       if (visible && el && rect) {
         visible = coveredFraction(el, el.getBoundingClientRect()) < 0.25;
       }

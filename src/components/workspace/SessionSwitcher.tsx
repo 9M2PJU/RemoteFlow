@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Check, ChevronDown, List, Monitor, Search, Terminal, X } from 'lucide-react';
 import { Connection, Group, SessionInfo } from '../../types';
@@ -12,10 +12,13 @@ interface Props {
   groups: Group[];
   activeSessionId: string | null;
   onSelectSession: (id: string) => void;
+  compact?: boolean;
 }
 
-export function SessionSwitcher({ sessions, connections, groups, activeSessionId, onSelectSession }: Props) {
+export function SessionSwitcher({ sessions, connections, groups, activeSessionId, onSelectSession, compact = false }: Props) {
   const t = useT();
+  const menuId = useId();
+  const label = compact ? t('Przełącz sesję w tym oknie') : t('Lista otwartych połączeń');
   const trigger = useRef<HTMLButtonElement>(null);
   const menu = useRef<HTMLDivElement>(null);
   const search = useRef<HTMLInputElement>(null);
@@ -72,19 +75,19 @@ export function SessionSwitcher({ sessions, connections, groups, activeSessionId
   }, [selectedId, !!anchor]);
 
   return <>
-    <button ref={trigger} type="button" title={t('Lista otwartych połączeń')} aria-label={t('Lista otwartych połączeń')}
-      aria-expanded={!!anchor} aria-haspopup="dialog" aria-controls={anchor ? 'session-switcher' : undefined}
+    <button ref={trigger} type="button" title={label} aria-label={label}
+      aria-expanded={!!anchor} aria-haspopup="dialog" aria-controls={anchor ? menuId : undefined}
       onClick={() => {
         if (anchor) { close(); return; }
         const rect = trigger.current?.getBoundingClientRect();
         if (rect) { setQuery(''); setHighlightedId(activeSessionId); setAnchor({ x: rect.right, y: rect.bottom + 6 }); }
       }}
-      className="flex h-7 shrink-0 items-center gap-1 rounded-lg border border-slate-700 bg-slate-900 px-2 text-xs text-slate-300 hover:border-cyan-500/50 hover:text-cyan-300">
-      <List className="h-3.5 w-3.5" /><span>{sessions.length}</span><ChevronDown className="h-3 w-3" />
+      className={`flex shrink-0 items-center gap-1 rounded border border-slate-700 bg-slate-900 text-slate-300 hover:border-cyan-500/50 hover:text-cyan-300 ${compact ? 'h-5 px-1 text-[10px]' : 'h-7 px-2 text-xs'}`}>
+      <List className="h-3.5 w-3.5" />{!compact && <span>{sessions.length}</span>}<ChevronDown className="h-3 w-3" />
     </button>
-    {anchor && createPortal(<div ref={menu} id="session-switcher" role="dialog" aria-label={t('Otwarte połączenia')}
-      style={{ ...style, maxHeight: 'min(440px, calc(100vh - 16px))' }}
-      className="fixed z-[80] flex w-[min(420px,calc(100vw-16px))] flex-col rounded-xl border border-slate-700 bg-slate-900 text-slate-200 shadow-2xl"
+    {anchor && createPortal(<div ref={menu} id={menuId} data-session-switcher role="dialog" aria-label={compact ? label : t('Otwarte połączenia')}
+      style={{ ...style, maxHeight: compact ? 'min(300px, calc(100vh - 16px))' : 'min(440px, calc(100vh - 16px))' }}
+      className={`fixed z-[80] flex flex-col rounded-xl border border-slate-700 bg-slate-900 text-slate-200 shadow-2xl ${compact ? 'w-[min(300px,calc(100vw-16px))]' : 'w-[min(420px,calc(100vw-16px))]'}`}
       onKeyDown={(event) => {
         if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); close(); }
         if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {

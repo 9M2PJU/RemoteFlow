@@ -800,6 +800,7 @@
   "Grupa: {name}": "Group: {name}",
   "Szukaj nazwy, grupy, hosta lub użytkownika...": "Search by name, group, host or user...",
   "Klonuj połączenie": "Clone connection",
+  "Opcje połączenia": "Connection options",
   "Nie udało się sklonować połączenia: {error}": "Could not clone the connection: {error}",
   "Zakres eksportu": "Export scope",
   "Wszystkie połączenia": "All connections",

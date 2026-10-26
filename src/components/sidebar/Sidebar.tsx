@@ -17,6 +17,7 @@ import {
   X,
   Copy,
   CopyPlus,
+  MoreHorizontal,
   KeyRound,
   User,
 } from 'lucide-react';
@@ -560,6 +561,7 @@ const ConnectionItem: React.FC<ConnectionItemProps> = ({
   const isSSH = connection.protocol === 'ssh';
   const activeTunnelsCount = connection.portForwarding.filter((p) => p.enabled).length;
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
+  const optionsRef = useRef<HTMLButtonElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
   const menuStyle = useMenuPosition(menuRef, contextMenu);
   const [isCloning, setIsCloning] = useState(false);
@@ -573,7 +575,7 @@ const ConnectionItem: React.FC<ConnectionItemProps> = ({
   useEffect(() => {
     if (!contextMenu) return;
     const handleClickOutside = (e: MouseEvent) => {
-      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node) && !optionsRef.current?.contains(e.target as Node)) {
         setContextMenu(null);
       }
     };
@@ -617,15 +619,15 @@ const ConnectionItem: React.FC<ConnectionItemProps> = ({
             {isSSH ? <Terminal className="h-3 w-3" /> : <Monitor className="h-3 w-3" />}
           </div>
 
-          <div className="min-w-0">
-            <div className="flex items-center gap-1.5">
+          <div className="min-w-0 flex-1">
+            <div className="flex min-w-0 items-center gap-1.5">
               <span className="truncate text-[11px] font-medium leading-tight text-slate-100 group-hover:text-cyan-300 transition-colors">
                 {connection.name}
               </span>
               {activeTunnelsCount > 0 && (
                 <span
                   title={t('{activeTunnelsCount} aktywnych przekierowań portów', { activeTunnelsCount })}
-                  className="flex items-center gap-0.5 rounded bg-amber-500/10 px-1 py-0.2 text-[9px] font-mono text-amber-400 border border-amber-500/20"
+                  className="flex shrink-0 items-center gap-0.5 rounded bg-amber-500/10 px-1 py-0.2 text-[9px] font-mono text-amber-400 border border-amber-500/20"
                 >
                   <ArrowRightLeft className="h-2.5 w-2.5" />
                   {activeTunnelsCount}
@@ -638,10 +640,13 @@ const ConnectionItem: React.FC<ConnectionItemProps> = ({
           </div>
         </div>
 
-        {/* Action buttons – overlay on hover, so they do not take width from the name */}
+        {/* Reserve space for actions so they never cover the name or tunnel badge. */}
         <div
-          className="absolute right-1 top-1/2 -translate-y-1/2 flex items-center gap-0.5 rounded bg-side-hover pl-1 opacity-0 pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto transition-opacity"
+          className="ml-1 flex shrink-0 items-center gap-0.5 opacity-0 pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto group-focus-within:opacity-100 group-focus-within:pointer-events-auto transition-opacity"
           onClick={(e) => e.stopPropagation()}
+          onDoubleClick={(e) => e.stopPropagation()}
+          draggable={false}
+          onDragStart={(e) => { e.preventDefault(); e.stopPropagation(); }}
         >
           {/* Direct Connect */}
           <button
@@ -661,28 +666,14 @@ const ConnectionItem: React.FC<ConnectionItemProps> = ({
             <Copy className="h-2.5 w-2.5" />
           </button>
 
-          <button type="button" onClick={() => { void cloneConnection(); }} disabled={isCloning}
-            title={t('Klonuj połączenie')} aria-label={t('Klonuj połączenie')}
-            className="flex h-5 w-5 items-center justify-center rounded text-slate-400 hover:bg-slate-700 hover:text-cyan-400 disabled:opacity-40">
-            <CopyPlus className="h-2.5 w-2.5" />
-          </button>
-
-          {/* Edit */}
-          <button
-            onClick={() => onEdit(connection)}
-            title={t('Edytuj połączenie')}
-            className="flex h-5 w-5 items-center justify-center rounded text-slate-400 hover:bg-slate-700 hover:text-white"
-          >
-            <Edit2 className="h-2.5 w-2.5" />
-          </button>
-
-          {/* Delete */}
-          <button
-            onClick={(e) => onDelete(connection.id, anchorFromElement(e.currentTarget))}
-            title={t('Usuń połączenie')}
-            className="flex h-5 w-5 items-center justify-center rounded text-slate-400 hover:bg-red-500/20 hover:text-red-400"
-          >
-            <Trash2 className="h-2.5 w-2.5" />
+          <button ref={optionsRef} type="button"
+            onClick={(e) => {
+              const rect = e.currentTarget.getBoundingClientRect();
+              setContextMenu(contextMenu ? null : { x: rect.right, y: rect.bottom + 4 });
+            }}
+            title={t('Opcje połączenia')} aria-label={t('Opcje połączenia')} aria-expanded={!!contextMenu}
+            className="flex h-5 w-5 items-center justify-center rounded text-slate-400 hover:bg-slate-700 hover:text-white">
+            <MoreHorizontal className="h-3.5 w-3.5" />
           </button>
         </div>
       </div>

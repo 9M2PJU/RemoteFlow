@@ -4,6 +4,10 @@ Numer wersji: `MAJOR.MINOR.PATCH`. Każda zmiana podnosi co najmniej numer PATCH
 Wersja jest zapisana w trzech plikach, które muszą być zgodne (pilnuje tego test `version_tests` w `src-tauri/src/lib.rs`):
 `package.json` (wyświetlana w aplikacji), `src-tauri/tauri.conf.json` (instalator) i `src-tauri/Cargo.toml`.
 
+## 1.6.8 – kompaktowe menu połączeń
+- W podzielonym widoku wybór sesji korzysta z kompaktowej listy z wyszukiwaniem, przewijaniem i informacją o grupie zamiast systemowej listy rozwijanej.
+- W strukturze połączeń pozostają szybkie akcje połączenia i nowej karty. Menu „⋯” udostępnia pozostałe opcje; przyciski nie zasłaniają nazw ani liczników tuneli.
+
 ## 1.6.7 – lokalne potwierdzenie zamknięcia sesji
 - Potwierdzenie rozłączenia ma formę małego okienka pod zamykaną zakładką lub przyciskiem połączenia, bez przyciemniania i rozmywania całego ekranu.
 - Lokalna pozycja obejmuje zamknięcie karty, połączenia w podzielonym widoku, pozostałych sesji i wszystkich kart. Okienko mieści się w granicach okna; działanie przycisków i klawiszy Enter/Escape pozostaje zachowane.

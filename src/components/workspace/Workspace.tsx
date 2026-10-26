@@ -16,7 +16,8 @@ import {
   Columns2,
   Rows2,
 } from 'lucide-react';
-import { Connection, SessionInfo, WorkspaceLayout } from '../../types';
+import { Connection, Group, SessionInfo, WorkspaceLayout } from '../../types';
+import { SessionSwitcher } from './SessionSwitcher';
 import { useT } from '../../i18n';
 import { useEmbeddedFreeRdp } from '../../utils/rdpClientMode';
 import { anchorFromElement, DialogAnchor } from '../dialogs/ConfirmDialog';
@@ -43,6 +44,7 @@ interface Props {
   sessions: SessionInfo[];
   activeSessionId: string | null;
   connections: Connection[];
+  groups: Group[];
   layout: WorkspaceLayout;
   paneSlots: string[];
   onChangeLayout: (layout: WorkspaceLayout) => void;
@@ -106,6 +108,7 @@ export const Workspace: React.FC<Props> = ({
   sessions,
   activeSessionId,
   connections,
+  groups,
   layout,
   paneSlots,
   onChangeLayout,
@@ -523,18 +526,9 @@ export const Workspace: React.FC<Props> = ({
                   onClick={(e) => e.stopPropagation()}
                 >
                   {/* Session Switcher Dropdown */}
-                  <select
-                    value={session.sessionId}
-                    onChange={(e) => onUpdatePaneSlot(paneIndex, e.target.value)}
-                    title={t('Przełącz sesję w tym oknie')}
-                    className="h-5 rounded bg-slate-800 border border-slate-700 px-1 text-[10px] text-slate-200 focus:outline-hidden hover:bg-slate-700 cursor-pointer max-w-[110px] truncate"
-                  >
-                    {sessions.map((s) => (
-                      <option key={s.sessionId} value={s.sessionId}>
-                        {s.title} ({s.protocol.toUpperCase()})
-                      </option>
-                    ))}
-                  </select>
+                  <SessionSwitcher compact sessions={sessions} connections={connections} groups={groups}
+                    activeSessionId={session.sessionId}
+                    onSelectSession={(id) => onUpdatePaneSlot(paneIndex, id)} />
 
                   {/* Reconnect / Reload */}
                   <button

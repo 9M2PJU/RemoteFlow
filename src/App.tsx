@@ -903,6 +903,7 @@ const t = useT();
           {/* Active Workspace / Terminal / RDP Frame */}
           <div className="flex-1 overflow-hidden">
             <Workspace
+              groups={groups}
               sessions={sessions}
               activeSessionId={activeSessionId}
               connections={connections}
