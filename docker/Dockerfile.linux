@@ -6,7 +6,7 @@
 #
 # Ubuntu 22.04 is used on purpose: its older glibc (2.35) makes the binary run on more distros.
 
-FROM ubuntu:22.04 AS build
+FROM ubuntu:22.04 AS source
 
 ENV DEBIAN_FRONTEND=noninteractive \
     CARGO_HOME=/usr/local/cargo \
@@ -36,6 +36,12 @@ RUN npm ci --no-audit --no-fund
 
 COPY . .
 
+FROM source AS verify
+RUN --mount=type=cache,target=/usr/local/cargo/registry \
+    --mount=type=cache,target=/app/src-tauri/target \
+    npm run build && cd src-tauri && cargo test --lib --locked
+
+FROM source AS build
 RUN --mount=type=cache,target=/usr/local/cargo/registry \
     --mount=type=cache,target=/app/src-tauri/target \
     npm run tauri build -- --bundles deb,rpm,appimage \

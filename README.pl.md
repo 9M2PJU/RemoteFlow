@@ -44,10 +44,12 @@ Wszystkie połączenia, hasła i klucze są przechowywane w lokalnym, zaszyfrowa
 
 ### Bezpieczeństwo
 - Sejf szyfrowany **AES-256-GCM**, klucz wyprowadzany z Master Password algorytmem **Argon2id**.
+- Format v3 szyfruje również nazwy i adresy połączeń, użytkowników, notatki, grupy oraz zaufane tożsamości serwerów. Publiczny nagłówek z ustawieniami odblokowania, interfejsu i kopii jest chroniony HMAC. Starszy sejf jest kopiowany i migrowany po poprawnym odblokowaniu; istniejące kopie zachowują swój format. Sejf v3 wymaga wersji aplikacji 1.6.1 lub nowszej.
 - Kontrola integralności całego pliku sejfu **HMAC-SHA256** – zmiany wprowadzone poza aplikacją są wykrywane.
 - Szybkie odblokowanie kodem PIN (klucz główny zabezpieczony PIN-em istnieje wyłącznie w pamięci).
 - Automatyczna blokada po bezczynności i po zablokowaniu systemu operacyjnego (Windows, Linux logind / ScreenSaver).
 - Okresowe kopie zapasowe sejfu i przywracanie z Ustawień.
+- Konflikt certyfikatu FreeRDP otwiera komunikat z odciskiem SHA-256 do sprawdzenia u administratora. Po jawnej akceptacji można połączyć się ponownie z zaakceptowanym certyfikatem, bez wyłączania weryfikacji i usuwania wspólnego magazynu certyfikatów FreeRDP.
 - Szyfrowany eksport i import sejfu.
 
 <img src="docs/screenshots/login.png" alt="RemoteFlow – ekran logowania" width="600">
@@ -98,6 +100,10 @@ node scripts/check-i18n.mjs   # każdy tekst interfejsu ma tłumaczenie angielsk
 cd src-tauri
 cargo test --lib              # testy jednostkowe
 cargo test --lib -- --ignored # testy integracyjne (wymagają lokalnych serwerów testowych SSH/RDP)
+```
+Kompilację i testy jednostkowe Linuksa można uruchomić także na Windows przez Docker:
+```bash
+docker build -f docker/Dockerfile.linux --target verify .
 ```
 
 ## Gdzie są moje dane?

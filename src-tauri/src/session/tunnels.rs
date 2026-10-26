@@ -579,6 +579,7 @@ impl Worker {
                     }
                 }
                 sess.set_timeout(0);
+                sess.set_keepalive(true, 10);
                 sess.set_blocking(false);
                 if self.ever_connected && self.connect_error_reported {
                     (self.notify)(ok_line(tr!("Tunele połączone ponownie.", "Tunnels reconnected.").to_string()));
@@ -790,6 +791,8 @@ mod tunnel_e2e {
 
     fn config() -> SshConnectionConfig {
         SshConnectionConfig {
+            auth_type: "password".into(),
+            certificate: None,
             host: "127.0.0.1".into(),
             port: 2222,
             username: "rftest".into(),

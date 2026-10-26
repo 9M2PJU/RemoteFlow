@@ -1062,7 +1062,7 @@ export const RdpViewer: React.FC<Props> = ({ session, isActive }) => {
 
         try {
           // Read from the vault only now – the password is not kept in the session data
-          const rdpPassword = await api.getRdpSessionPassword(session.sessionId);
+          const rdpPassword = await api.getRdpSessionPassword(session.sessionId, session.connectionId);
           if (!isSubscribed) return;
           const targetDimensions = getDimensionsForPreset(
             selectedResolution,

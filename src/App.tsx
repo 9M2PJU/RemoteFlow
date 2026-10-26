@@ -17,6 +17,9 @@ import { ImportExportModal } from './components/dialogs/ImportExportModal';
 import { PassphrasePromptModal } from './components/dialogs/PassphrasePromptModal';
 import { ConfirmDialog, DialogAnchor } from './components/dialogs/ConfirmDialog';
 import { Loader2 } from 'lucide-react';
+import { RdpCertificateDialog } from './components/dialogs/RdpCertificateDialog';
+import { EmptyPasswordDialog } from './components/dialogs/EmptyPasswordDialog';
+import { PasswordPromptCancelled } from './utils/passwordPrompt';
 import { useT } from './i18n';
 
 export const App: React.FC = () => {
@@ -193,6 +196,12 @@ const t = useT();
     }
 
     const sessionId = 'sess-' + Math.random().toString(36).substring(2, 9) + '-' + Date.now();
+    try {
+      await api.ensureConnectionPassword(conn.id, sessionId);
+    } catch (err) {
+      if (!(err instanceof PasswordPromptCancelled)) setSecurityWarning(String(err));
+      return;
+    }
 
     const tunnelsDesc = conn.portForwarding
       .filter((p) => p.enabled)
@@ -854,6 +863,8 @@ const t = useT();
           {/* Active Tabs Bar */}
           <TabBar
             sessions={sessions}
+            connections={connections}
+            groups={groups}
             activeSessionId={activeSessionId}
             layout={layout}
             paneSlots={paneSlots}
@@ -998,6 +1009,10 @@ const t = useT();
       />
     </div>
     {masterPasswordScreen}
+    <RdpCertificateDialog sessions={sessions} unlocked={!!vaultStatus?.isUnlocked} />
+    <EmptyPasswordDialog unlocked={!!vaultStatus?.isUnlocked} onSaved={(saved) => {
+      setConnections((prev) => prev.map((conn) => conn.id === saved.id ? saved : conn));
+    }} />
 
     {/* Confirmation before exiting the application (rendered above the lock screen) */}
     <ConfirmDialog

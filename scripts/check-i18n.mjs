@@ -2,8 +2,9 @@
 // and lists Polish-looking text that is not wrapped in t().  Usage: node scripts/check-i18n.mjs
 import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
-const root = new URL('..', import.meta.url).pathname;
+const root = fileURLToPath(new URL('..', import.meta.url));
 const en = JSON.parse(readFileSync(join(root, 'src/i18n/en.json'), 'utf8'));
 const files = [];
 const walk = (d) => {

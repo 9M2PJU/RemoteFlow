@@ -1,7 +1,7 @@
 use crate::vault::cipher::{
     decrypt_bytes, decrypt_opt, decrypt_string, decrypt_string_z, derive_key, derive_pin_key,
     encrypt_bytes, encrypt_string, generate_salt, SecretKey, CANARY_PHRASE_V1, CANARY_PHRASE_V2,
-    MIN_MASTER_PASSWORD_LEN,
+    MIN_MASTER_PASSWORD_LEN, CANARY_PHRASE_V3,
 };
 use crate::vault::models::{
     Connection, Credential, DecryptedExportData, ExportPayload, Group, ImportSummary,
@@ -11,7 +11,7 @@ use crate::vault::backup::{self, backup_while_locked};
 use crate::vault::models::{BackupEntry, BackupSettings, UiSettings};
 use crate::vault::storage::{
     delete_vault, get_vault_path, integrity_error, load_vault, load_vault_verified, lock_io,
-    save_vault_signed, update_vault, vault_exists, verify_vault_mac,
+    save_vault_signed, update_vault, vault_exists, verify_vault_mac, open_vault_envelope,
 };
 use base64::engine::general_purpose::STANDARD as BASE64;
 use base64::Engine;
@@ -19,7 +19,7 @@ use std::collections::BTreeMap;
 use std::sync::{Mutex, MutexGuard};
 use zeroize::Zeroizing;
 
-const VAULT_FORMAT_VERSION: u32 = 2;
+const VAULT_FORMAT_VERSION: u32 = 3;
 const DEFAULT_MAX_PIN_ATTEMPTS: u32 = 3;
 const MIN_PIN_LEN: usize = 4;
 const MAX_PIN_LEN: usize = 12;
@@ -163,8 +163,8 @@ fn open_canary(key: &[u8; 32], metadata: &VaultMetadata) -> Result<Zeroizing<Vec
         .map_err(|_| tr!("Nieprawidłowe Master Password", "Invalid Master Password").to_string())
 }
 
-fn set_canary_v2(key: &[u8; 32], metadata: &mut VaultMetadata) -> Result<(), String> {
-    let (ct, nonce) = encrypt_bytes(key, CANARY_PHRASE_V2.as_bytes())?;
+fn set_current_canary(key: &[u8; 32], metadata: &mut VaultMetadata) -> Result<(), String> {
+    let (ct, nonce) = encrypt_bytes(key, CANARY_PHRASE_V3.as_bytes())?;
     metadata.canary_nonce_base64 = BASE64.encode(nonce);
     metadata.canary_ciphertext_base64 = BASE64.encode(ct);
     metadata.version = VAULT_FORMAT_VERSION;
@@ -236,7 +236,8 @@ fn upsert_by_id<T: Clone>(list: &mut Vec<T>, item: T, id_of: impl Fn(&T) -> &str
 #[tauri::command]
 pub fn vault_get_status(state: tauri::State<'_, AuthState>) -> Result<VaultStatus, String> {
     let mgr = lock_auth(&state)?;
-    let vault = if vault_exists() { load_vault()? } else { None };
+    let vault = if mgr.is_unlocked { Some(load_vault_verified(mgr.unlocked_key()?)?) }
+        else if vault_exists() { load_vault()? } else { None };
     Ok(build_status(vault.as_ref(), &mgr, None))
 }
 
@@ -272,7 +273,7 @@ pub(crate) fn vault_init_impl(master_password: &str, state: &AuthState) -> Resul
         backup: Default::default(),
         ui: Default::default(),
     };
-    set_canary_v2(&key, &mut metadata)?;
+    set_current_canary(&key, &mut metadata)?;
 
     // Default starter folders for mRemoteNG-like experience
     let default_groups = vec![
@@ -305,6 +306,7 @@ pub(crate) fn vault_init_impl(master_password: &str, state: &AuthState) -> Resul
         connections: Vec::new(),
         credentials: Vec::new(),
         mac: None,
+        encrypted_data: None,
     };
 
     {
@@ -339,15 +341,20 @@ pub(crate) fn vault_unlock_master_impl(master_password: &str, accept_modified: O
     let mut warnings: Vec<String> = Vec::new();
     let vault = {
         let _io = lock_io();
-        let mut vault = load_vault()?.ok_or(tr!("Sejf nie istnieje", "The vault does not exist"))?;
+        let vault = load_vault()?.ok_or(tr!("Sejf nie istnieje", "The vault does not exist"))?;
         if vault.metadata.salt_base64 != initial.metadata.salt_base64 {
             return Err(tr!("Plik sejfu zmienił się podczas odblokowywania – spróbuj ponownie", "The vault file changed while unlocking – try again").to_string());
         }
 
         let canary = open_canary(&key, &vault.metadata)?;
-        let mut dirty = false;
+        if canary.as_slice() == CANARY_PHRASE_V3.as_bytes() && vault.encrypted_data.is_none() {
+            return Err(integrity_error());
+        }
+        let mut vault = open_vault_envelope(vault, &key)?;
+        let migrating = vault.metadata.version < 3;
+        let mut dirty = migrating;
 
-        if canary.as_slice() == CANARY_PHRASE_V2.as_bytes() {
+        if canary.as_slice() == CANARY_PHRASE_V2.as_bytes() || canary.as_slice() == CANARY_PHRASE_V3.as_bytes() {
             if !verify_vault_mac(&vault, &key) {
                 if accept_modified != Some(true) {
                     return Err(integrity_error());
@@ -370,10 +377,10 @@ pub(crate) fn vault_unlock_master_impl(master_password: &str, accept_modified: O
             // Legacy vault (v1): no integrity protection, PIN-wrapped master key stored on disk.
             let had_pin = vault.metadata.pin_enabled || vault.metadata.pin_wrapped_master_key_base64.is_some();
             clear_pin_metadata(&mut vault.metadata);
-            set_canary_v2(&key, &mut vault.metadata)?;
+            set_current_canary(&key, &mut vault.metadata)?;
             if had_pin {
                 warnings.push(
-                    "Sejf zaktualizowano do formatu v2 (ochrona integralności). Ze względów bezpieczeństwa \
+                    "Sejf zaktualizowano do formatu v3 (szyfrowanie danych połączeń i ochrona integralności). Ze względów bezpieczeństwa \
                      kod PIN został wyłączony – ustaw go ponownie w Ustawieniach."
                         .to_string(),
                 );
@@ -385,10 +392,8 @@ pub(crate) fn vault_unlock_master_impl(master_password: &str, accept_modified: O
 
         if dirty {
             // Keep the file exactly as it was before migration / accepting external changes.
-            let reason = if canary.as_slice() == CANARY_PHRASE_V1.as_bytes() { "pre-migration-v2" } else { "pre-accept-modified" };
-            if let Err(e) = backup_while_locked(&BackupSettings::default(), reason, true) {
-                eprintln!("[RemoteFlow] Nie udało się utworzyć kopii przed zmianą formatu: {}", e);
-            }
+            let reason = if migrating { "pre-migration-v3" } else { "pre-accept-modified" };
+            backup_while_locked(&BackupSettings::default(), reason, true)?;
             save_vault_signed(&mut vault, &key)?;
         }
         vault
@@ -488,9 +493,9 @@ pub(crate) fn vault_unlock_pin_impl(pin: &str, state: &AuthState) -> Result<Vaul
         Ok(bytes) if bytes.len() == 32 => {
             let mut key = Zeroizing::new([0u8; 32]);
             key.copy_from_slice(&bytes);
+            let vault = load_vault_verified(&key)?;
             mgr.set_unlocked(key);
-            let vault = load_vault()?;
-            Ok(build_status(vault.as_ref(), &mgr, None))
+            Ok(build_status(Some(&vault), &mgr, None))
         }
         _ => {
             mgr.failed_pin_attempts += 1;
@@ -636,6 +641,28 @@ pub(crate) fn vault_reveal_password_impl(connection_id: &str, state: &AuthState)
 #[tauri::command]
 pub fn vault_save_connection(connection: Connection, raw_password: Option<String>, raw_private_key: Option<String>, raw_passphrase: Option<String>, state: tauri::State<'_, AuthState>) -> Result<Connection, String> {
     vault_save_connection_impl(connection, raw_password, raw_private_key, raw_passphrase, &state)
+}
+
+#[tauri::command]
+pub fn vault_set_connection_password(connection_id: String, password: String, state: tauri::State<'_, AuthState>) -> Result<Connection, String> {
+    vault_set_connection_password_impl(&connection_id, password, &state)
+}
+
+pub(crate) fn vault_set_connection_password_impl(connection_id: &str, password: String, state: &AuthState) -> Result<Connection, String> {
+    let password = Zeroizing::new(password);
+    if password.is_empty() {
+        return Err(tr!("Wprowadź niepuste hasło", "Enter a non-empty password").into());
+    }
+    let mgr = lock_auth(state)?;
+    let key = mgr.unlocked_key()?;
+    let encrypted = encrypt_string(key, &password)?;
+    update_vault(key, |v| {
+        let conn = v.connections.iter_mut().find(|c| c.id == connection_id)
+            .ok_or_else(|| tr!("Nie znaleziono połączenia", "Connection not found").to_string())?;
+        conn.password_encrypted = Some(encrypted);
+        conn.updated_at = chrono::Utc::now().to_rfc3339();
+        Ok(conn.clone())
+    })
 }
 
 pub(crate) fn vault_save_connection_impl(mut connection: Connection, raw_password: Option<String>, raw_private_key: Option<String>, raw_passphrase: Option<String>, state: &AuthState) -> Result<Connection, String> {
@@ -1104,7 +1131,7 @@ pub(crate) fn vault_change_master_password_impl(current_password: &str, new_pass
 
     let vault = {
         let _io = lock_io();
-        let mut vault = load_vault()?.ok_or(tr!("Sejf nie istnieje", "The vault does not exist"))?;
+        let vault = load_vault()?.ok_or(tr!("Sejf nie istnieje", "The vault does not exist"))?;
         if vault.metadata.salt_base64 != initial.metadata.salt_base64 {
             return Err(tr!("Plik sejfu zmienił się w trakcie operacji – spróbuj ponownie", "The vault file changed during the operation – try again").to_string());
         }
@@ -1112,7 +1139,8 @@ pub(crate) fn vault_change_master_password_impl(current_password: &str, new_pass
         // 1. Verify current password (canary) and file integrity.
         let canary =
             open_canary(&old_key, &vault.metadata).map_err(|_| tr!("Obecne Master Password jest nieprawidłowe", "The current Master Password is incorrect").to_string())?;
-        if canary.as_slice() != CANARY_PHRASE_V2.as_bytes() || !verify_vault_mac(&vault, &old_key) {
+        let mut vault = open_vault_envelope(vault, &old_key)?;
+        if ![CANARY_PHRASE_V2.as_bytes(), CANARY_PHRASE_V3.as_bytes()].contains(&canary.as_slice()) || !verify_vault_mac(&vault, &old_key) {
             return Err(integrity_error());
         }
 
@@ -1130,7 +1158,7 @@ pub(crate) fn vault_change_master_password_impl(current_password: &str, new_pass
 
         // 3. New salt + canary, PIN reset.
         vault.metadata.salt_base64 = BASE64.encode(new_salt);
-        set_canary_v2(&new_key, &mut vault.metadata)?;
+        set_current_canary(&new_key, &mut vault.metadata)?;
         clear_pin_metadata(&mut vault.metadata);
 
         // 4. Restore point (old password), then atomic, signed write.
@@ -1268,7 +1296,7 @@ mod lifecycle_tests {
         vault_set_pin_impl("1234", true, &state).unwrap();
         let file = raw_file();
         assert!(!file.contains("pin_wrapped_master_key_base64"));
-        assert!(file.contains("pin_encrypted_base64"));
+        assert!(!file.contains("pin_encrypted_base64"), "PIN configuration is inside the encrypted envelope");
         assert!(vault_unlock_pin_impl("1234", &state).is_err(), "PIN unlock only when PIN-locked");
         assert!(vault_lock_to_pin_impl(&state).unwrap());
         assert!(vault_unlock_pin_impl("0000", &state).unwrap_err().contains("Pozostało"));
@@ -1287,16 +1315,19 @@ mod lifecycle_tests {
         vault_unlock_pin_impl("1234", &state).unwrap();
 
         // --- integrity: external modification is detected ------------------------------------
-        let tampered = raw_file().replace("10.0.0.1", "6.6.6.6");
-        std::fs::write(&path, tampered).unwrap();
+        let original = raw_file();
+        assert!(!original.contains("10.0.0.1"), "host addresses must be encrypted too");
+        let mut tampered: serde_json::Value = serde_json::from_str(&original).unwrap();
+        tampered["metadata"]["auto_lock_timeout_mins"] = serde_json::json!(999);
+        std::fs::write(&path, tampered.to_string()).unwrap();
         assert!(vault_reveal_password_impl("c1", &state).unwrap_err().contains("VAULT_INTEGRITY_FAILED"));
         vault_lock(&state);
         assert!(vault_unlock_master_impl("password123", None, &state)
             .unwrap_err()
             .contains("VAULT_INTEGRITY_FAILED"));
-        let st = vault_unlock_master_impl("password123", Some(true), &state).unwrap();
-        assert!(st.security_warning.is_some());
-        assert!(!st.pin_enabled, "security settings reset after accepting a modified file");
+        assert!(vault_unlock_master_impl("password123", Some(true), &state).is_err(), "encrypted envelopes always require integrity");
+        std::fs::write(&path, original).unwrap();
+        vault_unlock_master_impl("password123", None, &state).unwrap();
         assert_eq!(vault_reveal_password_impl("c1", &state).unwrap(), "s3cret");
 
         // --- export / import ------------------------------------------------------------------
@@ -1336,6 +1367,23 @@ mod lifecycle_tests {
         vault_lock(&state);
         assert!(vault_unlock_master_impl("password123", None, &state).is_err());
         vault_unlock_master_impl("newpassword9", None, &state).unwrap();
+        assert_eq!(vault_reveal_password_impl("c1", &state).unwrap(), "s3cret");
+
+        // A signed v2 vault is upgraded without losing data; its backup remains restorable.
+        let migration_key = lock_auth(&state).unwrap().unlocked_key().unwrap().clone();
+        let mut v2 = load_vault_verified(&migration_key).unwrap();
+        v2.metadata.version = 2;
+        let (ct, nonce) = encrypt_bytes(&migration_key, CANARY_PHRASE_V2.as_bytes()).unwrap();
+        v2.metadata.canary_ciphertext_base64 = BASE64.encode(ct);
+        v2.metadata.canary_nonce_base64 = BASE64.encode(nonce);
+        v2.mac = None;
+        v2.mac = Some(crate::vault::cipher::compute_mac(&migration_key, &serde_json::to_vec(&v2).unwrap()).unwrap());
+        std::fs::write(&path, serde_json::to_string_pretty(&v2).unwrap()).unwrap();
+        assert!(raw_file().contains("10.0.0.1"));
+        vault_lock(&state);
+        vault_unlock_master_impl("newpassword9", None, &state).unwrap();
+        assert!(!raw_file().contains("10.0.0.1"));
+        assert_eq!(load_vault_verified(&migration_key).unwrap().metadata.version, 3);
         assert_eq!(vault_reveal_password_impl("c1", &state).unwrap(), "s3cret");
 
         // --- legacy v1 vault is migrated -----------------------------------------------------------
@@ -1420,6 +1468,43 @@ mod lifecycle_tests {
 
         let _ = std::fs::remove_file(&path);
         let _ = std::fs::remove_dir_all(&backups);
+    }
+
+    #[test]
+    fn prompted_password_is_encrypted_and_does_not_change_shared_credentials() {
+        let _serial = TEST_SERIAL.lock().unwrap_or_else(|p| p.into_inner());
+        let path = get_vault_path();
+        let _ = std::fs::remove_file(&path);
+        let state: AuthState = Mutex::new(AuthManager::new());
+        vault_init_impl("password123", &state).unwrap();
+        let mut first = conn("first", "server-a");
+        first.credential_id = Some("shared".into());
+        let mut second = conn("second", "server-b");
+        second.credential_id = Some("shared".into());
+        vault_save_connection_impl(first, None, None, None, &state).unwrap();
+        vault_save_connection_impl(second, None, None, None, &state).unwrap();
+        let key = lock_auth(&state).unwrap().unlocked_key().unwrap().clone();
+        update_vault(&key, |v| {
+            v.credentials.push(serde_json::from_value(serde_json::json!({
+                "id": "shared", "name": "shared", "username": "alice", "authType": "password",
+                "createdAt": "", "updatedAt": ""
+            })).unwrap());
+            Ok(())
+        }).unwrap();
+        assert!(vault_set_connection_password_impl("first", "".into(), &state).is_err());
+        assert!(vault_set_connection_password_impl("missing", "secret".into(), &state).is_err());
+        let saved = vault_set_connection_password_impl("first", "new connection password".into(), &state).unwrap();
+        assert_eq!(saved.host, "server-a");
+        assert_eq!(saved.credential_id.as_deref(), Some("shared"));
+        assert_eq!(vault_reveal_password_impl("first", &state).unwrap(), "new connection password");
+        assert_eq!(vault_reveal_password_impl("second", &state).unwrap(), "");
+        assert!(load_vault_verified(&key).unwrap().credentials[0].password_encrypted.is_none());
+        assert!(!raw_file().contains("new connection password"));
+        vault_lock(&state);
+        assert!(vault_set_connection_password_impl("first", "other".into(), &state).is_err());
+        vault_unlock_master_impl("password123", None, &state).unwrap();
+        assert_eq!(vault_reveal_password_impl("first", &state).unwrap(), "new connection password");
+        let _ = std::fs::remove_file(&path);
     }
 
     static TEST_SERIAL: Mutex<()> = Mutex::new(());

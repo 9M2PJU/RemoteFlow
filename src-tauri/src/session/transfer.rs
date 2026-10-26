@@ -27,6 +27,7 @@ const SEARCH_MAX_DEPTH: u32 = 12;
 // ---------------------------------------------------------------------------------------------
 
 struct Pooled {
+    identity: [u8; 32],
     _sess: ssh2::Session,
     sftp: ssh2::Sftp,
     last_used: Instant,
@@ -71,13 +72,14 @@ pub fn with_pooled_sftp<T>(
 ) -> Result<T, String> {
     let slot = slot_for(key);
     let mut guard = slot.lock().unwrap_or_else(|p| p.into_inner());
+    let identity = config_identity(config);
     for attempt in 0..2 {
-        if guard.as_ref().map(|p| p.last_used.elapsed() > POOL_IDLE_TIMEOUT).unwrap_or(false) {
+        if guard.as_ref().map(|p| p.identity != identity || p.last_used.elapsed() > POOL_IDLE_TIMEOUT).unwrap_or(false) {
             *guard = None;
         }
         if guard.is_none() {
             let (sess, sftp) = crate::session::sftp::sftp_connect(config)?;
-            *guard = Some(Pooled { _sess: sess, sftp, last_used: Instant::now() });
+            *guard = Some(Pooled { identity, _sess: sess, sftp, last_used: Instant::now() });
         }
         let pooled = guard.as_mut().expect("just set");
         match op(&pooled.sftp) {
@@ -97,6 +99,47 @@ pub fn with_pooled_sftp<T>(
         }
     }
     unreachable!("loop returns on the second attempt")
+}
+
+fn config_identity(config: &SshConnectionConfig) -> [u8; 32] {
+    use sha2::{Digest, Sha256};
+    let mut hash = Sha256::new();
+    hash.update(config.port.to_be_bytes());
+    for field in [Some(config.host.as_str()), Some(config.username.as_str()), Some(config.auth_type.as_str()),
+        config.password.as_deref(), config.private_key.as_deref(), config.passphrase.as_deref(), config.certificate.as_deref()] {
+        hash.update([u8::from(field.is_some())]);
+        let bytes = field.unwrap_or_default().as_bytes();
+        hash.update((bytes.len() as u64).to_be_bytes());
+        hash.update(bytes);
+    }
+    hash.finalize().into()
+}
+
+#[cfg(test)]
+mod pool_identity_tests {
+    use super::*;
+    use crate::session::ssh::HostKeyVerifier;
+    use crate::vault::known_hosts::HostTrust;
+
+    #[test]
+    fn changing_destination_or_credentials_invalidates_pooled_session() {
+        let config = SshConnectionConfig {
+            host: "server-a".into(), port: 22, username: "alice".into(), auth_type: "password".into(),
+            password: Some("old".into()), private_key: None, passphrase: None, certificate: None,
+            host_key_verifier: HostKeyVerifier(Arc::new(|_| Ok(HostTrust::Known))),
+        };
+        let original = config_identity(&config);
+        assert_eq!(original, config_identity(&config.clone()));
+        let changes: [fn(&mut SshConnectionConfig); 7] = [
+            |c| c.host = "server-b".into(), |c| c.port = 2222, |c| c.username = "bob".into(),
+            |c| c.password = Some("new".into()), |c| c.auth_type = "agent".into(),
+            |c| c.private_key = Some("key".into()), |c| c.certificate = Some("cert".into()),
+        ];
+        for change in changes {
+            let mut changed = config.clone(); change(&mut changed);
+            assert_ne!(original, config_identity(&changed));
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -736,6 +779,8 @@ mod sftp_e2e {
 
     fn config() -> SshConnectionConfig {
         SshConnectionConfig {
+            auth_type: "password".into(),
+            certificate: None,
             host: "127.0.0.1".into(),
             port: 2222,
             username: "rftest".into(),

@@ -183,6 +183,35 @@ struct ResolvedConnection {
     password: Option<String>,
     private_key: Option<String>,
     passphrase: Option<String>,
+    rdp_fingerprint: Option<String>,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ConnectionPasswordStatus {
+    connection_id: String,
+    name: String,
+    host: String,
+    port: u16,
+    requires_password: bool,
+    has_password: bool,
+}
+
+fn password_status(mut resolved: ResolvedConnection) -> ConnectionPasswordStatus {
+    let password = resolved.password.take().map(zeroize::Zeroizing::new);
+    ConnectionPasswordStatus {
+        connection_id: resolved.conn.id,
+        name: resolved.conn.name,
+        host: resolved.conn.host,
+        port: resolved.conn.port,
+        requires_password: resolved.conn.protocol == "rdp" || resolved.conn.protocol == "ssh" && resolved.conn.ssh_auth_type == "password",
+        has_password: password.as_deref().is_some_and(|p| !p.is_empty()),
+    }
+}
+
+#[tauri::command]
+pub fn connection_password_status(connection_id: String, auth_state: tauri::State<'_, AuthState>) -> Result<ConnectionPasswordStatus, String> {
+    Ok(password_status(resolve_connection(&auth_state, &connection_id)?))
 }
 
 fn read_key_file(path: &Option<String>) -> Option<String> {
@@ -201,8 +230,11 @@ fn resolve_connection(auth_state: &AuthState, connection_id: &str) -> Result<Res
         .unlocked_key()
         .map_err(|_| tr!("Magazyn poświadczeń jest zablokowany", "The credential store is locked").to_string())?;
     let vault = load_vault_verified(key)?;
+    resolve_connection_data(&vault, key, connection_id)
+}
 
-    let conn = vault
+fn resolve_connection_data(vault: &crate::vault::models::VaultData, key: &[u8; 32], connection_id: &str) -> Result<ResolvedConnection, String> {
+    let mut conn = vault
         .connections
         .iter()
         .find(|c| c.id == connection_id)
@@ -226,6 +258,9 @@ fn resolve_connection(auth_state: &AuthState, connection_id: &str) -> Result<Res
                 private_key = decrypt_opt(key, &cred.private_key_encrypted)?;
             }
             passphrase = decrypt_opt(key, &cred.private_key_passphrase_encrypted)?;
+            if conn.certificate_content.as_deref().is_none_or(|c| c.trim().is_empty()) {
+                conn.certificate_content = cred.certificate_content.clone();
+            }
         }
     }
 
@@ -235,14 +270,15 @@ fn resolve_connection(auth_state: &AuthState, connection_id: &str) -> Result<Res
     }
     if let Some(k) = read_key_file(&conn.key_file_path) {
         private_key = Some(k);
-    } else if private_key.is_none() {
-        private_key = decrypt_opt(key, &conn.private_key_encrypted)?;
+    } else if let Some(k) = decrypt_opt(key, &conn.private_key_encrypted)? {
+        private_key = Some(k);
     }
     if let Some(p) = decrypt_opt(key, &conn.private_key_passphrase_encrypted)? {
         passphrase = Some(p);
     }
 
     Ok(ResolvedConnection {
+        rdp_fingerprint: vault.metadata.known_hosts.get(&known_hosts::host_id("rdp", &conn.host, conn.port)).cloned(),
         conn,
         username,
         password,
@@ -329,6 +365,8 @@ pub fn session_connect(
 
         let (tx, rx) = std::sync::mpsc::channel();
         let config = SshConnectionConfig {
+            auth_type: conn.ssh_auth_type.clone(),
+            certificate: conn.certificate_content.clone(),
             host: host.clone(),
             port,
             username: resolved.username.clone(),
@@ -503,6 +541,8 @@ pub fn session_launch_external_rdp(
 
 fn rdp_config_from(resolved: ResolvedConnection, title: String, embed: Option<rdp::EmbedTarget>) -> rdp::RdpConnectionConfig {
     rdp::RdpConnectionConfig {
+        connection_id: resolved.conn.id.clone(),
+        certificate_fingerprint: resolved.rdp_fingerprint,
         title,
         host: resolved.conn.host.clone(),
         port: resolved.conn.port,
@@ -512,6 +552,47 @@ fn rdp_config_from(resolved: ResolvedConnection, title: String, embed: Option<rd
         rdp_settings: resolved.conn.rdp_settings.clone(),
         embed,
     }
+}
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RdpCertificateInfo {
+    connection_id: String,
+    host: String,
+    port: u16,
+    fingerprint: String,
+    previous_fingerprint: Option<String>,
+}
+
+#[tauri::command]
+pub async fn rdp_certificate_preview(connection_id: String, auth_state: tauri::State<'_, AuthState>) -> Result<RdpCertificateInfo, String> {
+    let resolved = resolve_connection(&auth_state, &connection_id)?;
+    if resolved.conn.protocol != "rdp" { return Err("Not an RDP connection".into()); }
+    let host = resolved.conn.host;
+    let port = resolved.conn.port;
+    let fingerprint = rdp_proxy::probe_certificate(&host, port).await?;
+    Ok(RdpCertificateInfo { connection_id, host, port, fingerprint, previous_fingerprint: resolved.rdp_fingerprint })
+}
+
+#[tauri::command]
+pub async fn rdp_certificate_trust(connection_id: String, host: String, port: u16, fingerprint: String,
+    previous_fingerprint: Option<String>, auth_state: tauri::State<'_, AuthState>) -> Result<(), String> {
+    let preview = rdp_certificate_preview(connection_id.clone(), auth_state.clone()).await?;
+    if preview.host != host || preview.port != port || preview.fingerprint != fingerprint {
+        return Err(tr!("Certyfikat lub adres serwera zmienił się. Sprawdź odcisk ponownie.", "The certificate or server address changed. Check the fingerprint again.").into());
+    }
+    let mgr = lock_auth(&auth_state)?;
+    let key = mgr.unlocked_key()?;
+    crate::vault::storage::update_vault(key, |v| {
+        let conn = v.connections.iter().find(|c| c.id == connection_id && c.protocol == "rdp" && c.host == host && c.port == port)
+            .ok_or("RDP connection changed")?;
+        let id = known_hosts::host_id("rdp", &conn.host, conn.port);
+        if v.metadata.known_hosts.get(&id) != previous_fingerprint.as_ref() { return Err("Trusted certificate changed; check it again".into()); }
+        v.metadata.known_hosts.insert(id, fingerprint);
+        Ok(())
+    })?;
+    known_hosts::remember_verified(&load_vault_verified(key)?.metadata.known_hosts);
+    Ok(())
 }
 
 /// FreeRDP configuration of a saved connection (credentials from the unlocked vault).
@@ -534,6 +615,8 @@ pub fn resolve_connection_ssh_config(
     let host = resolved.conn.host.clone();
     let port = resolved.conn.port;
     Ok(SshConnectionConfig {
+        auth_type: resolved.conn.ssh_auth_type.clone(),
+        certificate: resolved.conn.certificate_content.clone(),
         host: host.clone(),
         port,
         username: resolved.username,
@@ -1403,6 +1486,64 @@ pub fn app_maximize_window(window: tauri::Window) -> Result<(), String> {
 #[cfg(test)]
 mod key_file_pick_tests {
     use super::read_private_key_file;
+
+    #[test]
+    fn empty_password_check_decrypts_effective_credentials_and_skips_key_auth() {
+        use crate::vault::cipher::encrypt_string;
+        let key = [17u8; 32];
+        let mut vault: crate::vault::models::VaultData = serde_json::from_value(serde_json::json!({
+            "metadata": { "version": 3, "salt_base64": "", "canary_nonce_base64": "", "canary_ciphertext_base64": "",
+                "pin_enabled": false, "auto_lock_screen": true, "auto_lock_timeout_mins": 15, "max_pin_attempts": 3 },
+            "groups": [],
+            "connections": [{ "id": "c", "name": "server", "protocol": "ssh", "host": "server", "port": 22,
+                "username": "root", "credentialId": "profile", "sshAuthType": "password",
+                "portForwarding": [], "tags": [], "createdAt": "", "updatedAt": "" }],
+            "credentials": [{ "id": "profile", "name": "profile", "username": "alice", "authType": "password",
+                "passwordEncrypted": encrypt_string(&key, "inherited password").unwrap(), "createdAt": "", "updatedAt": "" }]
+        })).unwrap();
+        let status = || super::password_status(super::resolve_connection_data(&vault, &key, "c").unwrap());
+        assert!(status().requires_password && status().has_password);
+        vault.connections[0].password_encrypted = Some(encrypt_string(&key, "").unwrap());
+        let status = super::password_status(super::resolve_connection_data(&vault, &key, "c").unwrap());
+        assert!(status.requires_password && !status.has_password, "an encrypted empty string is still empty");
+        vault.connections[0].password_encrypted = Some(encrypt_string(&key, " ").unwrap());
+        assert!(super::password_status(super::resolve_connection_data(&vault, &key, "c").unwrap()).has_password, "spaces are valid password characters");
+        for method in ["key", "certificate", "agent"] {
+            vault.connections[0].ssh_auth_type = method.into();
+            assert!(!super::password_status(super::resolve_connection_data(&vault, &key, "c").unwrap()).requires_password);
+        }
+        vault.connections[0].protocol = "rdp".into();
+        vault.connections[0].password_encrypted = None;
+        vault.credentials[0].password_encrypted = None;
+        let status = super::password_status(super::resolve_connection_data(&vault, &key, "c").unwrap());
+        assert!(status.requires_password && !status.has_password);
+    }
+
+    #[test]
+    fn connection_key_overrides_profile_and_profile_certificate_is_inherited() {
+        use crate::vault::cipher::encrypt_string;
+        let key = [42u8; 32];
+        let direct = encrypt_string(&key, "connection key").unwrap();
+        let profile = encrypt_string(&key, "profile key").unwrap();
+        let mut vault: crate::vault::models::VaultData = serde_json::from_value(serde_json::json!({
+            "metadata": { "version": 2, "salt_base64": "", "canary_nonce_base64": "", "canary_ciphertext_base64": "",
+                "pin_enabled": false, "auto_lock_screen": true, "auto_lock_timeout_mins": 15, "max_pin_attempts": 3 },
+            "groups": [],
+            "connections": [{ "id": "c", "name": "server", "protocol": "ssh", "host": "server", "port": 22,
+                "username": "root", "credentialId": "profile", "sshAuthType": "certificate",
+                "privateKeyEncrypted": direct, "portForwarding": [], "tags": [], "createdAt": "", "updatedAt": "" }],
+            "credentials": [{ "id": "profile", "name": "profile", "username": "alice", "authType": "certificate",
+                "privateKeyEncrypted": profile, "certificateContent": "profile certificate", "createdAt": "", "updatedAt": "" }]
+        })).unwrap();
+        let resolved = super::resolve_connection_data(&vault, &key, "c").unwrap();
+        assert_eq!(resolved.private_key.as_deref(), Some("connection key"));
+        assert_eq!(resolved.conn.certificate_content.as_deref(), Some("profile certificate"));
+        vault.connections[0].private_key_encrypted = None;
+        vault.connections[0].certificate_content = Some("connection certificate".into());
+        let resolved = super::resolve_connection_data(&vault, &key, "c").unwrap();
+        assert_eq!(resolved.private_key.as_deref(), Some("profile key"));
+        assert_eq!(resolved.conn.certificate_content.as_deref(), Some("connection certificate"));
+    }
 
     #[test]
     fn only_private_keys_are_read() {

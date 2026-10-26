@@ -1,4 +1,6 @@
-use crate::vault::cipher::{compute_mac, verify_mac};
+use crate::vault::cipher::{compute_mac, verify_mac, encrypt_string, decrypt_string_z, CANARY_PHRASE_V3, encrypt_bytes};
+use base64::{Engine, engine::general_purpose::STANDARD as BASE64};
+use zeroize::Zeroizing;
 use crate::vault::models::VaultData;
 use std::fs;
 use std::io::Write;
@@ -183,8 +185,28 @@ pub(crate) fn write_atomic(path: &Path, bytes: &[u8]) -> Result<(), String> {
 /// Signs the vault with the master key and writes it atomically.
 /// Callers doing read-modify-write must hold [`lock_io`] (or use [`update_vault`]).
 pub fn save_vault_signed(data: &mut VaultData, key: &[u8; 32]) -> Result<(), String> {
+    data.encrypted_data = None;
+    if data.metadata.version < 3 {
+        let (ct, nonce) = encrypt_bytes(key, CANARY_PHRASE_V3.as_bytes())?;
+        data.metadata.version = 3;
+        data.metadata.canary_nonce_base64 = BASE64.encode(nonce);
+        data.metadata.canary_ciphertext_base64 = BASE64.encode(ct);
+    }
     sign_vault(data, key)?;
-    let json = serde_json::to_string_pretty(data).map_err(|e| tr!("Błąd serializacji sejfu: {}", "Vault serialisation error: {}", e))?;
+    // Encrypt connection names, hosts, usernames, notes, groups and trusted identities too.
+    // Only bootstrap / lock / backup settings remain in the authenticated public header, so
+    // the backup scheduler can still copy the encrypted file while the vault is locked.
+    let plaintext = Zeroizing::new(serde_json::to_string(data).map_err(|e| e.to_string())?);
+    let mut envelope = data.clone();
+    envelope.groups.clear();
+    envelope.connections.clear();
+    envelope.credentials.clear();
+    envelope.metadata.known_hosts.clear();
+    envelope.metadata.global_download_dir = None;
+    envelope.metadata.pin_encrypted_base64 = None;
+    envelope.encrypted_data = Some(encrypt_string(key, &plaintext)?);
+    sign_vault(&mut envelope, key)?;
+    let json = serde_json::to_string_pretty(&envelope).map_err(|e| tr!("Błąd serializacji sejfu: {}", "Vault serialisation error: {}", e))?;
     write_atomic(&get_vault_path(), json.as_bytes())
 }
 
@@ -213,10 +235,29 @@ pub fn integrity_error() -> String {
 /// Reads the vault and verifies its integrity MAC with the master key.
 pub fn load_vault_verified(key: &[u8; 32]) -> Result<VaultData, String> {
     let data = load_vault()?.ok_or(tr!("Sejf nie istnieje", "The vault does not exist"))?;
+    let data = open_vault_envelope(data, key)?;
     if !verify_vault_mac(&data, key) {
         return Err(integrity_error());
     }
     Ok(data)
+}
+
+/// Opens only authenticated v3 envelopes; legacy plaintext vaults are verified by their caller.
+/// Damaged encrypted data cannot be accepted with the legacy "accept modified" recovery option.
+pub fn open_vault_envelope(data: VaultData, key: &[u8; 32]) -> Result<VaultData, String> {
+    match data.encrypted_data.as_deref() {
+        Some(ciphertext) => {
+            if !verify_vault_mac(&data, key) { return Err(integrity_error()); }
+            let plaintext = decrypt_string_z(key, ciphertext).map_err(|_| integrity_error())?;
+            let opened: VaultData = serde_json::from_str(&plaintext).map_err(|_| integrity_error())?;
+            if opened.encrypted_data.is_some() || opened.metadata.version != 3 || !verify_vault_mac(&opened, key) {
+                return Err(integrity_error());
+            }
+            Ok(opened)
+        }
+        None if data.metadata.version >= 3 => Err(integrity_error()),
+        None => Ok(data),
+    }
 }
 
 /// Verified read-modify-write of the vault under the global I/O lock.

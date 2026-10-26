@@ -44,11 +44,13 @@ All connections, passwords and keys are kept in a local, encrypted vault. The ap
 
 ### Security
 - Vault encrypted with **AES-256-GCM**, key derived from the Master Password with **Argon2id**.
+- Format v3 also encrypts connection names, addresses, users, notes, groups and trusted server identities. The authenticated public header retains unlock, interface and backup settings. Older vaults are backed up and migrated after a successful unlock; existing backups keep their original format. Use version 1.6.1 or newer to open a v3 vault.
 - **HMAC-SHA256** integrity check of the whole vault file – modifications made outside the app are detected.
 - Quick unlock with a PIN (the master key wrapped by the PIN exists only in memory).
 - Automatic lock after inactivity and when the operating system is locked (Windows, Linux logind / ScreenSaver).
 - Periodic vault backups, restore from Settings.
 - Encrypted export / import of the vault.
+- FreeRDP certificate conflicts show the current SHA-256 fingerprint for verification and explicit approval. Reconnecting uses that exact fingerprint without disabling certificate checks or deleting the shared FreeRDP certificate cache.
 
 <img src="docs/screenshots/login-en.png" alt="RemoteFlow – login screen" width="600">
 
@@ -98,6 +100,10 @@ node scripts/check-i18n.mjs   # every UI text has an English translation
 cd src-tauri
 cargo test --lib              # unit tests
 cargo test --lib -- --ignored # integration tests (require local SSH/RDP test servers)
+```
+Linux compilation and unit tests can also run on Windows through Docker:
+```bash
+docker build -f docker/Dockerfile.linux --target verify .
 ```
 
 ## Where is my data?

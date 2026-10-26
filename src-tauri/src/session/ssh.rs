@@ -18,6 +18,8 @@ impl std::fmt::Debug for HostKeyVerifier {
 
 #[derive(Clone, Debug)]
 pub struct SshConnectionConfig {
+    pub auth_type: String,
+    pub certificate: Option<String>,
     pub host: String,
     pub port: u16,
     pub username: String,
@@ -109,10 +111,10 @@ impl Drop for TempKeyFile {
 /// On Unix the `ssh2` crate exposes this (OpenSSL backend). On Windows (WinCNG backend) the
 /// crate hides the method behind its OpenSSL features, although libssh2 itself supports it
 /// (WinCNG + crypt32), so the libssh2 function is called directly.
-fn pubkey_from_memory(sess: &ssh2::Session, username: &str, key: &str, passphrase: Option<&str>) -> bool {
+fn pubkey_from_memory(sess: &ssh2::Session, username: &str, public_key: Option<&str>, key: &str, passphrase: Option<&str>) -> bool {
     #[cfg(not(windows))]
     {
-        sess.userauth_pubkey_memory(username, None, key, passphrase).is_ok()
+        sess.userauth_pubkey_memory(username, public_key, key, passphrase).is_ok()
     }
     #[cfg(windows)]
     {
@@ -134,14 +136,19 @@ fn pubkey_from_memory(sess: &ssh2::Session, username: &str, key: &str, passphras
             Some(None) => return false,
             None => None,
         };
+        let public = match public_key.map(c_bytes) {
+            Some(Some(p)) => Some(p),
+            Some(None) => return false,
+            None => None,
+        };
         let mut raw = sess.raw();
         let rc = unsafe {
             libssh2_sys::libssh2_userauth_publickey_frommemory(
                 &mut *raw,
                 user.as_ptr() as *const _,
                 username.len() as _,
-                std::ptr::null(),
-                0,
+                public.as_ref().map(|p| p.as_ptr() as *const _).unwrap_or(std::ptr::null()),
+                public_key.map(str::len).unwrap_or(0),
                 priv_key.as_ptr() as *const _,
                 key.len() as _,
                 pass.as_ref().map(|p| p.as_ptr() as *const _).unwrap_or(std::ptr::null()),
@@ -159,6 +166,7 @@ const HANDSHAKE_TIMEOUT_MS: u32 = 20_000;
 const HANDSHAKE_TIMEOUT_MS: u32 = 1_500;
 
 pub fn ssh_connect_raw(config: &SshConnectionConfig) -> Result<ssh2::Session, String> {
+    validate_auth(config)?;
     // Host and port go to the resolver separately – "host:port" broke IPv6 literals (::1 -> "::1:22")
     let host = crate::session::bare_host(&config.host);
     let addr_str = crate::session::host_port(&config.host, config.port);
@@ -202,19 +210,25 @@ pub fn ssh_connect_raw(config: &SshConnectionConfig) -> Result<ssh2::Session, St
     let fingerprint = fingerprint_from_digest(digest);
     (config.host_key_verifier.0)(&fingerprint)?;
 
-    let mut authed = false;
-    if let Some(key_content) = &config.private_key {
+    if matches!(config.auth_type.as_str(), "key" | "certificate") {
+      if let Some(key_content) = &config.private_key {
         let trimmed = key_content.trim();
         if !trimmed.is_empty() {
             let passphrase = config.passphrase.as_deref().filter(|p| !p.is_empty());
+            let certificate = if config.auth_type == "certificate" { config.certificate.as_deref() } else { None };
+            // libssh2 expects a public certificate file for file-based authentication.
+            let certificate_file = certificate.map(|c| TempKeyFile::create(c.as_bytes())).transpose()
+                .map_err(|e| format!("SSH certificate: {}", e))?;
             let key_path = std::path::Path::new(trimmed);
             if !trimmed.contains('\n') && key_path.is_file() {
                 // The user's own key file: libssh2 reads it directly – no copy is ever written.
-                authed = sess.userauth_pubkey_file(&config.username, None, key_path, passphrase).is_ok();
+                let _ = sess.userauth_pubkey_file(&config.username, certificate_file.as_ref().map(TempKeyFile::path), key_path, passphrase);
             } else {
                 // Key stored in the vault: authenticate from memory on every platform
                 // (OpenSSL backend on Unix, WinCNG + crypt32 on Windows).
-                authed = pubkey_from_memory(&sess, &config.username, key_content, passphrase);
+                let authed = pubkey_from_memory(&sess, &config.username, certificate, key_content, passphrase);
+                #[cfg(not(windows))]
+                let _ = authed;
 
                 // WinCNG cannot decrypt passphrase-protected PEM keys held in memory, only from a
                 // file. Only in that case a short-lived, owner-only file is used and wiped right away.
@@ -222,23 +236,20 @@ pub fn ssh_connect_raw(config: &SshConnectionConfig) -> Result<ssh2::Session, St
                 {
                     if !authed && passphrase.is_some() {
                         if let Ok(tmp) = TempKeyFile::create(key_content.as_bytes()) {
-                            authed = sess.userauth_pubkey_file(&config.username, None, tmp.path(), passphrase).is_ok();
+                            let _ = sess.userauth_pubkey_file(&config.username, certificate_file.as_ref().map(TempKeyFile::path), tmp.path(), passphrase);
                         }
                     }
                 }
             }
         }
+      }
     }
 
-    if !authed {
-        if let Some(pwd) = &config.password {
-            if sess.userauth_password(&config.username, pwd).is_ok() {
-                authed = true;
-            }
-        }
+    if config.auth_type == "password" {
+        let _ = sess.userauth_password(&config.username, config.password.as_deref().unwrap_or_default());
     }
 
-    if !authed {
+    if config.auth_type == "agent" {
         let _ = sess.userauth_agent(&config.username);
     }
 
@@ -250,6 +261,24 @@ pub fn ssh_connect_raw(config: &SshConnectionConfig) -> Result<ssh2::Session, St
     }
 
     Ok(sess)
+}
+
+fn validate_auth(config: &SshConnectionConfig) -> Result<(), String> {
+    match config.auth_type.as_str() {
+        "password" | "agent" => Ok(()),
+        "key" | "certificate" => {
+            if config.private_key.as_deref().is_none_or(|k| k.trim().is_empty()) {
+                return Err(tr!("Brak klucza prywatnego SSH", "SSH private key is missing").into());
+            }
+            if config.auth_type == "certificate" && config.certificate.as_deref().is_none_or(|c| {
+                !c.split_whitespace().next().is_some_and(|kind| kind.ends_with("-cert-v01@openssh.com"))
+            }) {
+                return Err(tr!("Brak poprawnego certyfikatu OpenSSH", "A valid OpenSSH certificate is required").into());
+            }
+            Ok(())
+        }
+        _ => Err(tr!("Nieobsługiwany typ uwierzytelnienia SSH", "Unsupported SSH authentication type").into()),
+    }
 }
 
 /// Converts the complete UTF-8 prefix of `pending` to text and keeps an incomplete trailing
@@ -509,6 +538,24 @@ mod handshake_timeout_tests {
     use super::*;
     use crate::vault::known_hosts::HostTrust;
 
+    #[test]
+    fn selected_auth_method_requires_its_own_material() {
+        let mut cfg = SshConnectionConfig {
+            auth_type: "key".into(), certificate: None, host: "localhost".into(), port: 22,
+            username: "user".into(), password: Some("must not fall back".into()), private_key: None,
+            passphrase: None, host_key_verifier: HostKeyVerifier(Arc::new(|_| Ok(HostTrust::Known))),
+        };
+        assert!(validate_auth(&cfg).is_err());
+        cfg.private_key = Some("private key".into());
+        assert!(validate_auth(&cfg).is_ok());
+        cfg.auth_type = "certificate".into();
+        assert!(validate_auth(&cfg).is_err());
+        cfg.certificate = Some("ssh-ed25519-cert-v01@openssh.com AAAA comment".into());
+        assert!(validate_auth(&cfg).is_ok());
+        cfg.auth_type = "unknown".into();
+        assert!(validate_auth(&cfg).is_err());
+    }
+
     /// A server that accepts TCP but never speaks SSH must not block the thread forever.
     #[test]
     fn silent_server_times_out() {
@@ -519,6 +566,8 @@ mod handshake_timeout_tests {
             std::thread::sleep(std::time::Duration::from_secs(10));
         });
         let cfg = SshConnectionConfig {
+            auth_type: "password".into(),
+            certificate: None,
             host: "127.0.0.1".into(),
             port,
             username: "x".into(),
@@ -544,6 +593,8 @@ mod handshake_timeout_tests {
             std::thread::sleep(std::time::Duration::from_secs(5));
         });
         let cfg = SshConnectionConfig {
+            auth_type: "password".into(),
+            certificate: None,
             host: "::1".into(),
             port,
             username: "x".into(),
@@ -566,6 +617,8 @@ mod worker_e2e {
 
     fn cfg(password: &str) -> SshConnectionConfig {
         SshConnectionConfig {
+            auth_type: "password".into(),
+            certificate: None,
             host: "127.0.0.1".into(),
             port: 2222,
             username: "rftest".into(),
@@ -695,6 +748,8 @@ mod key_auth_e2e {
 
     fn cfg(key: String, passphrase: Option<&str>) -> SshConnectionConfig {
         SshConnectionConfig {
+            auth_type: "key".into(),
+            certificate: None,
             host: "127.0.0.1".into(),
             port: 2222,
             username: "rftest".into(),

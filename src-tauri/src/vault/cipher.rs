@@ -13,6 +13,7 @@ pub const CANARY_PHRASE_V1: &str = "REMOTELOCK_CANARY_V1";
 /// Canary used by format v2. A vault whose canary decrypts to this value MUST carry a valid MAC,
 /// so an attacker cannot silently downgrade a v2 vault to the legacy (unauthenticated) format.
 pub const CANARY_PHRASE_V2: &str = "REMOTELOCK_CANARY_V2";
+pub const CANARY_PHRASE_V3: &str = "REMOTELOCK_CANARY_V3";
 
 /// Minimum length of a new Master Password / export password.
 pub const MIN_MASTER_PASSWORD_LEN: usize = 8;

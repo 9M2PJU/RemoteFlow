@@ -240,6 +240,9 @@ pub struct VaultData {
     /// HMAC-SHA256 (key derived from the master key) over the whole vault with this field empty.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub mac: Option<String>,
+    /// Format v3 disk envelope. Never present in the decrypted in-memory vault.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub encrypted_data: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

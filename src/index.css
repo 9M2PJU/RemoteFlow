@@ -30,6 +30,20 @@ body {
 }
 
 /* Custom scrollbars */
+@keyframes session-text-pan {
+  0%, 15% { transform: translateX(0); }
+  85%, 100% { transform: translateX(var(--text-pan-distance)); }
+}
+
+.session-overflow-track[data-overflow="true"] {
+  animation: session-text-pan var(--text-pan-duration) ease-in-out infinite alternate;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .session-overflow-text { overflow-x: auto; }
+  .session-overflow-track[data-overflow="true"] { animation: none; }
+}
+
 ::-webkit-scrollbar {
   width: 6px;
   height: 6px;

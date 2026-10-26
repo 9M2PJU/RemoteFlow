@@ -104,7 +104,8 @@ export const FreeRdpEmbedViewer: React.FC<{ session: SessionInfo; isActive: bool
       const el = areaRef.current;
       const rect = rectOf();
       const running = statusRef.current === 'starting' || statusRef.current === 'connected';
-      let visible = !!el && !!rect && running && isActiveRef.current && document.visibilityState === 'visible';
+      let visible = !!el && !!rect && running && isActiveRef.current && document.visibilityState === 'visible'
+        && !document.getElementById('session-switcher');
       if (visible && el && rect) {
         visible = coveredFraction(el, el.getBoundingClientRect()) < 0.25;
       }
@@ -118,12 +119,14 @@ export const FreeRdpEmbedViewer: React.FC<{ session: SessionInfo; isActive: bool
     const ro = new ResizeObserver(sync);
     if (areaRef.current) ro.observe(areaRef.current);
     window.addEventListener('resize', sync);
+    window.addEventListener('remoteflow-session-switcher', sync);
     document.addEventListener('visibilitychange', sync);
     sync();
     return () => {
       clearInterval(id);
       ro.disconnect();
       window.removeEventListener('resize', sync);
+      window.removeEventListener('remoteflow-session-switcher', sync);
       document.removeEventListener('visibilitychange', sync);
     };
   }, [started, sid, rectOf]);
@@ -150,7 +153,7 @@ export const FreeRdpEmbedViewer: React.FC<{ session: SessionInfo; isActive: bool
     };
   }, [sid]);
 
-  const reconnect = () => {
+  const reconnect = useCallback(() => {
     api
       .rdpEmbedStop(sid)
       .catch(() => {})
@@ -159,7 +162,15 @@ export const FreeRdpEmbedViewer: React.FC<{ session: SessionInfo; isActive: bool
         setStarted(false);
         setAttempt((a) => a + 1);
       });
-  };
+  }, [sid]);
+
+  useEffect(() => {
+    const trusted = (event: Event) => {
+      if ((event as CustomEvent<string>).detail === sid) reconnect();
+    };
+    window.addEventListener('remoteflow-rdp-certificate-trusted', trusted);
+    return () => window.removeEventListener('remoteflow-rdp-certificate-trusted', trusted);
+  }, [sid, reconnect]);
 
   const openSeparate = () => {
     api.launchExternalRdp(session).catch(() => {});

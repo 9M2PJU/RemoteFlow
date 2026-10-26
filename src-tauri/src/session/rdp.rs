@@ -5,6 +5,8 @@ use std::sync::mpsc::Receiver;
 use tauri::{AppHandle, Emitter};
 
 pub struct RdpConnectionConfig {
+    pub connection_id: String,
+    pub certificate_fingerprint: Option<String>,
     pub title: String,
     pub host: String,
     pub port: u16,
@@ -169,10 +171,8 @@ pub fn spawn_rdp_session(
             // The password is never put on the command line (visible to every user via `ps`,
             // /proc/<pid>/cmdline). FreeRDP 2 and 3 read it from stdin with /from-stdin:force
             // ("Password:" prompt before connecting); it is written to the pipe after spawn.
-            if config.password.as_deref().is_some_and(|p| !p.is_empty()) {
-                stdin_password = config.password.clone();
-                cmd.arg("/from-stdin:force");
-            }
+            stdin_password = Some(config.password.clone().unwrap_or_default());
+            cmd.arg("/from-stdin:force");
             if let Some(dom) = &rdp_domain {
                 cmd.arg(format!("/d:{}", dom));
             }
@@ -183,7 +183,15 @@ pub fn spawn_rdp_session(
                 cmd.arg(format!("/t:RemoteFlow - {} ({}:{})", config.title, config.host, config.port));
             }
             // Trust-on-first-use instead of blindly accepting any certificate (MITM protection).
-            cmd.arg("/cert:tofu");
+            match config.certificate_fingerprint.as_deref().map(freerdp_certificate_arg).transpose() {
+                Ok(Some(arg)) => { cmd.arg(arg); }
+                Ok(None) => { cmd.arg("/cert:tofu"); }
+                Err(e) => {
+                    emit_log(e);
+                    let _ = app.emit(&format!("rdp-status-{}", sid), "error");
+                    return;
+                }
+            }
             if binary.contains("freerdp3") {
                 cmd.arg("/clipboard:direction-to:all,files-to:all");
             } else {
@@ -278,10 +286,20 @@ pub fn spawn_rdp_session(
         // Pipe stderr to frontend
         let sid_stderr = sid.clone();
         let app_stderr = app.clone();
+        let certificate_event = RdpCertificateError {
+            session_id: sid.clone(), connection_id: config.connection_id.clone(),
+            embedded: config.embed.is_some(),
+        };
         if let Some(err) = stderr {
             std::thread::spawn(move || {
                 let reader = BufReader::new(err);
+                let mut reported = false;
                 for line in reader.lines().flatten() {
+                    if !reported && is_certificate_error(&line) {
+                        reported = true;
+                        let _ = app_stderr.emit("rdp-certificate-error", certificate_event.clone());
+                        let _ = app_stderr.emit(&format!("rdp-status-{}", sid_stderr), "error");
+                    }
                     let _ = app_stderr.emit(&format!("rdp-data-{}", sid_stderr), line);
                 }
             });
@@ -301,7 +319,7 @@ pub fn spawn_rdp_session(
             match child.try_wait() {
                 Ok(Some(status)) => {
                     emit_log(tr!("ℹ️ Okno sesji RDP zostało zamknięte (kod: {}).", "ℹ️ The RDP session window was closed (code: {}).", status));
-                    let _ = app.emit(&format!("rdp-status-{}", sid), "disconnected");
+                    let _ = app.emit(&format!("rdp-status-{}", sid), if status.success() { "disconnected" } else { "error" });
                     return;
                 }
                 Ok(None) => {
@@ -316,9 +334,57 @@ pub fn spawn_rdp_session(
     });
 }
 
+#[derive(Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct RdpCertificateError {
+    session_id: String,
+    connection_id: String,
+    embedded: bool,
+}
+
+fn is_certificate_error(line: &str) -> bool {
+    let lower = line.to_ascii_lowercase();
+    lower.contains("certificate not trusted") || lower.contains("tls_print_certificate_error")
+        || lower.contains("remote host identification has changed") || lower.contains("certificate for") && lower.contains("has changed")
+}
+
+fn freerdp_certificate_arg(fingerprint: &str) -> Result<String, String> {
+    use base64::{Engine, engine::general_purpose::STANDARD_NO_PAD};
+    let digest = fingerprint.strip_prefix("SHA256:").and_then(|s| STANDARD_NO_PAD.decode(s).ok())
+        .filter(|d| d.len() == 32).ok_or("Invalid RDP SHA-256 fingerprint")?;
+    // FreeRDP 2 requires colon-separated bytes; FreeRDP 3 accepts both forms.
+    let hex = digest.iter().map(|b| format!("{:02x}", b)).collect::<Vec<_>>().join(":");
+    // A fingerprint allow-list alone still falls back to CA validation / the shared cache on
+    // mismatch. Use a fresh verification name so that only the explicitly pinned certificate
+    // can pass; no previously cached identity or valid certificate for the real host can win.
+    let name = format!("rf-{}.{}.invalid", uuid::Uuid::new_v4().simple(), uuid::Uuid::new_v4().simple());
+    Ok(format!("/cert:deny,name:{},fingerprint:sha256:{}", name, hex))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn certificate_errors_are_distinguished_from_other_tls_errors() {
+        assert!(is_certificate_error("[ERROR][com.freerdp.crypto] - [tls_print_certificate_error]: The fingerprint for the host key sent by the remote host is ca:23"));
+        assert!(is_certificate_error("certificate not trusted, aborting."));
+        assert!(!is_certificate_error("ERRCONNECT_TLS_CONNECT_FAILED"));
+    }
+
+    #[test]
+    fn explicit_freerdp_pin_is_validated_and_does_not_disable_verification() {
+        let fingerprint = crate::vault::cipher::sha256_fingerprint(b"certificate");
+        let arg = freerdp_certificate_arg(&fingerprint).unwrap();
+        assert!(arg.starts_with("/cert:deny,name:rf-"));
+        assert!(arg.contains(".invalid,fingerprint:sha256:"));
+        assert_ne!(arg, freerdp_certificate_arg(&fingerprint).unwrap(), "each launch isolates cache and name validation");
+        let hex = arg.split_once("fingerprint:sha256:").unwrap().1;
+        assert_eq!(hex.split(':').count(), 32);
+        assert!(hex.split(':').all(|byte| byte.len() == 2 && byte.chars().all(|c| c.is_ascii_hexdigit())));
+        assert!(freerdp_certificate_arg("SHA256:AAAA").is_err());
+        assert!(freerdp_certificate_arg("ignore").is_err());
+    }
 
     fn n(u: &str, d: Option<&str>) -> (String, Option<String>) {
         normalize_rdp_identity(u, d)

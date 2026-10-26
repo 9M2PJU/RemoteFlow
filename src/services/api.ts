@@ -1,4 +1,16 @@
 import { invoke } from '@tauri-apps/api/core';
+import { ConnectionPasswordStatus, PasswordPromptCancelled, requestConnectionPassword } from '../utils/passwordPrompt';
+
+// An explicit decision to use an empty password lasts for this session only.
+const emptyPasswordSessions = new Set<string>();
+
+export interface RdpCertificateInfo {
+  connectionId: string;
+  host: string;
+  port: number;
+  fingerprint: string;
+  previousFingerprint: string | null;
+}
 import { BackupEntry, BackupSettings, UiSettings, TransferSummary, SftpFileEntry, Connection, Credential, Group, ImportSummary, KnownHostEntry, SessionInfo, SftpListResponse, VaultData, VaultStatus } from '../types';
 
 export const isTauri = () => {
@@ -285,7 +297,8 @@ export const api = {
   },
 
   /** RDP password for the embedded client, read from the vault when (re)connecting. */
-  async getRdpSessionPassword(sessionId: string): Promise<string> {
+  async getRdpSessionPassword(sessionId: string, connectionId: string): Promise<string> {
+    await api.ensureConnectionPassword(connectionId, sessionId);
     if (isTauri()) {
       return (await invoke<string | null>('session_rdp_password', { sessionId })) || '';
     }
@@ -297,6 +310,33 @@ export const api = {
       return await invoke<string>('vault_reveal_password', { connectionId });
     }
     return 'SuperSecretP@ssw0rd2026!';
+  },
+
+  async connectionPasswordStatus(connectionId: string): Promise<ConnectionPasswordStatus> {
+    if (isTauri()) return invoke<ConnectionPasswordStatus>('connection_password_status', { connectionId });
+    const conn = mockConnections.find((c) => c.id === connectionId);
+    if (!conn) throw new Error('Connection not found');
+    const credential = mockCredentials.find((c) => c.id === conn.credentialId);
+    return { connectionId, name: conn.name, host: conn.host, port: conn.port,
+      requiresPassword: conn.protocol === 'rdp' || conn.sshAuthType === 'password',
+      hasPassword: Boolean(conn.passwordEncrypted ?? credential?.passwordEncrypted) };
+  },
+
+  async ensureConnectionPassword(connectionId: string, sessionId: string): Promise<void> {
+    const status = await api.connectionPasswordStatus(connectionId);
+    if (!status.requiresPassword || status.hasPassword) { emptyPasswordSessions.delete(sessionId); return; }
+    if (emptyPasswordSessions.has(sessionId)) return;
+    const decision = await requestConnectionPassword(status);
+    if (decision === 'cancel') throw new PasswordPromptCancelled();
+    if (decision === 'empty') emptyPasswordSessions.add(sessionId);
+  },
+
+  async setConnectionPassword(connectionId: string, password: string): Promise<Connection> {
+    if (isTauri()) return invoke<Connection>('vault_set_connection_password', { connectionId, password });
+    const index = mockConnections.findIndex((c) => c.id === connectionId);
+    if (index < 0 || !password.length) throw new Error('A connection and non-empty password are required');
+    mockConnections[index] = { ...mockConnections[index], passwordEncrypted: 'mock-saved-password', updatedAt: new Date().toISOString() };
+    return mockConnections[index];
   },
 
   async saveConnection(
@@ -368,6 +408,8 @@ export const api = {
     portForwardsDesc: string[],
     customPassphrase?: string
   ): Promise<SessionInfo> {
+    sessionId = sessionId || crypto.randomUUID();
+    await api.ensureConnectionPassword(connectionId, sessionId);
     if (isTauri()) {
       return await invoke<SessionInfo>('session_connect', {
         sessionId: sessionId || null,
@@ -407,6 +449,7 @@ export const api = {
   },
 
   async closeSession(sessionId: string): Promise<void> {
+    emptyPasswordSessions.delete(sessionId);
     if (isTauri()) {
       return await invoke<void>('session_close', { sessionId });
     }
@@ -414,6 +457,7 @@ export const api = {
   },
 
   async launchExternalRdp(session: SessionInfo): Promise<void> {
+    await api.ensureConnectionPassword(session.connectionId, session.sessionId);
     if (isTauri()) {
       return await invoke<void>('session_launch_external_rdp', {
         sessionId: session.sessionId,
@@ -424,6 +468,14 @@ export const api = {
         username: session.username,
       });
     }
+  },
+
+  async previewRdpCertificate(connectionId: string): Promise<RdpCertificateInfo> {
+    return invoke<RdpCertificateInfo>('rdp_certificate_preview', { connectionId });
+  },
+
+  async trustRdpCertificate(info: RdpCertificateInfo): Promise<void> {
+    return invoke<void>('rdp_certificate_trust', { ...info });
   },
 
   async exportVault(exportPassword?: string, allowPlaintext: boolean = false): Promise<string> {
@@ -852,6 +904,7 @@ export const api = {
 
   /** Starts FreeRDP inside the window over the given area (CSS px, relative to the web view). */
   async rdpEmbedStart(session: SessionInfo, rect: EmbedRect): Promise<void> {
+    await api.ensureConnectionPassword(session.connectionId, session.sessionId);
     if (isTauri()) {
       await invoke<void>('rdp_embed_start', {
         sessionId: session.sessionId,

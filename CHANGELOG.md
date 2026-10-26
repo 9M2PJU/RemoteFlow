@@ -4,6 +4,29 @@ Numer wersji: `MAJOR.MINOR.PATCH`. Każda zmiana podnosi co najmniej numer PATCH
 Wersja jest zapisana w trzech plikach, które muszą być zgodne (pilnuje tego test `version_tests` w `src-tauri/src/lib.rs`):
 `package.json` (wyświetlana w aplikacji), `src-tauri/tauri.conf.json` (instalator) i `src-tauri/Cargo.toml`.
 
+## 1.6.4 – grupy i pełny tekst na liście sesji
+- Lista otwartych sesji pokazuje grupę połączenia, wraz z pełną ścieżką zagnieżdżonych folderów. Połączenia poza grupami są oznaczone „Bez grupy”. Wyszukiwanie uwzględnia także nazwy grup.
+- Nazwa sesji, dane hosta i ścieżka grupy przewijają się automatycznie, gdy przekraczają szerokość wiersza. Krótki tekst pozostaje nieruchomy; przy ograniczeniu animacji w ustawieniach systemu tekst można przewijać ręcznie.
+
+## 1.6.3 – nawigacja między wieloma sesjami
+- Pasek zakładek ma przyciski przewijania w lewo i w prawo. Nieaktywny przycisk sygnalizuje początek lub koniec paska.
+- Przycisk z liczbą otwartych sesji pokazuje wszystkie zakładki, ich hosty, użytkowników, protokoły oraz stan połączenia. Wyszukiwarka i obsługa klawiatury ułatwiają odnalezienie i wybranie sesji, również w podzielonym widoku.
+- Wybrana zakładka jest automatycznie odsłaniana na pasku. Rozmiar paska i dostępność przewijania aktualizują się po zmianie rozmiaru okna, otwarciu, zamknięciu i przestawieniu zakładek.
+
+## 1.6.2 – monit o puste hasło
+- Przed logowaniem hasłem aplikacja sprawdza w backendzie efektywne hasło połączenia, uwzględniając profil poświadczeń i zaszyfrowany pusty ciąg. Brak hasła otwiera monit z wyborem: próba bez hasła, zapis nowego hasła i połączenie lub anulowanie.
+- Nowe hasło jest szyfrowane i zapisywane wyłącznie w wybranym połączeniu, bez zmiany współdzielonego profilu ani pozostałych ustawień. Wybór pustego hasła dotyczy bieżącej sesji; kolejna nowa sesja wymaga ponownego wyboru.
+- Monit obejmuje SSH z logowaniem hasłem oraz RDP (IronRDP, FreeRDP wbudowany i osobny). SSH używające klucza, certyfikatu lub agenta nie wymaga takiego monitu. Przy połączeniach grupowych monity są obsługiwane kolejno; blokada aplikacji anuluje oczekujące próby.
+
+## 1.6.1 – poprawki bezpieczeństwa i połączeń
+- Struktura połączeń zapamiętuje zwinięte grupy po ponownym uruchomieniu. Wyszukiwanie nie zmienia tego ustawienia.
+- FreeRDP: błąd niezaufanego lub zmienionego certyfikatu otwiera komunikat z aktualnym odciskiem SHA-256. Po zweryfikowaniu go u administratora można jawnie zaufać certyfikatowi i połączyć się ponownie. Odcisk jest ponownie sprawdzany przed zapisaniem w sejfie, a FreeRDP dostaje konkretny zaakceptowany odcisk zamiast ignorowania błędów certyfikatów. Dotyczy okna wbudowanego i osobnego.
+- SFTP: zmiana hosta, portu, użytkownika, metody uwierzytelnienia lub poświadczeń unieważnia sesję z puli. Klucz wpisany w połączeniu ma pierwszeństwo przed kluczem profilu poświadczeń.
+- SSH respektuje wybraną metodę uwierzytelnienia, bez niejawnego przechodzenia do hasła lub agenta. Certyfikat OpenSSH jest przekazywany do libssh2 wraz z kluczem prywatnym. Tunele mają włączony keepalive SSH.
+- Zamykanie proxy RDP anuluje również aktywnych klientów; negocjacja WebSocket ma limit czasu, a liczba klientów jest ograniczona.
+- Sejf v3 szyfruje także nazwy, hosty, użytkowników, notatki, grupy i listę zaufanych serwerów. Migracja starszego sejfu po poprawnym odblokowaniu wymaga utworzenia kopii. Publiczny nagłówek z ustawieniami odblokowania, interfejsu i kopii nadal jest objęty HMAC. Starsze kopie zachowują dotychczasowy format; sejfu v3 nie należy otwierać starszą wersją aplikacji.
+- Test kontroli tłumaczeń działa na Windows. Dodano testy regresji oraz etap `verify` w obrazie Docker dla Linuksa.
+
 ## 1.6.0 – FreeRDP w oknie aplikacji (Linux)
 - **Nowa opcja: Ustawienia → Klient RDP (Linux) → „FreeRDP w oknie”.** Sesja RDP jest wtedy rysowana przez natywnego klienta FreeRDP (wiele wątków, H.264 przez `/gfx`) w zakładce RemoteFlow – nie w osobnym oknie. Jest dużo szybszy od wbudowanego klienta (IronRDP/WebAssembly) przy zmianie okien, wideo i przewijaniu. Domyślnie nadal działa klient wbudowany; zmiana obowiązuje po ponownym uruchomieniu programu.
 - Jak to działa: nad obszarem sesji umieszczane jest natywne okno potomne (X11), do którego FreeRDP rysuje (`/parent-window`). Okno podąża za układem (podział ekranu, zmiana rozmiaru) i jest chowane, gdy zakładka nie jest widoczna albo obszar zasłania okno dialogowe. Klawiatura trafia do sesji, gdy kursor znajdzie się nad obrazem; kliknięcie w interfejs RemoteFlow oddaje ją z powrotem. Schowek i dysk `RemoteFlow` (`~/RemoteFlow_Shared`) obsługuje FreeRDP. Pasek sesji: ponowne połączenie, otwarcie w osobnym oknie, po rozłączeniu – ostatnie komunikaty FreeRDP.

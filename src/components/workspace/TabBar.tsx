@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useLayoutEffect, useRef } from 'react';
 import {
   Terminal,
   Monitor,
@@ -18,14 +18,19 @@ import {
   User,
   Check,
   AlertCircle,
+  ChevronLeft,
+  ChevronRight,
 } from 'lucide-react';
 import { api } from '../../services/api';
-import { SessionInfo, WorkspaceLayout } from '../../types';
+import { Connection, Group, SessionInfo, WorkspaceLayout } from '../../types';
 import { useT } from '../../i18n';
 import { useMenuPosition } from '../../utils/useMenuPosition';
+import { SessionSwitcher } from './SessionSwitcher';
 
 interface Props {
   sessions: SessionInfo[];
+  connections: Connection[];
+  groups: Group[];
   activeSessionId: string | null;
   layout: WorkspaceLayout;
   paneSlots: string[];
@@ -57,6 +62,8 @@ const getSlotCount = (layout: WorkspaceLayout): number => {
 
 export const TabBar: React.FC<Props> = ({
   sessions,
+  connections,
+  groups,
   activeSessionId,
   layout,
   paneSlots,
@@ -93,6 +100,43 @@ export const TabBar: React.FC<Props> = ({
   const menuStyle = useMenuPosition(menuRef, contextMenu);
   const isDraggingRef = useRef(false);
   const slotCount = getSlotCount(layout);
+  const tabsRef = useRef<HTMLDivElement>(null);
+  const tabRefs = useRef(new Map<string, HTMLDivElement>());
+  const [scrollable, setScrollable] = useState({ left: false, right: false });
+  const sessionOrder = sessions.map((session) => session.sessionId).join('\0');
+
+  useLayoutEffect(() => {
+    const strip = tabsRef.current;
+    if (!strip) return;
+    const update = () => {
+      const left = strip.scrollLeft > 1;
+      const right = strip.scrollLeft + strip.clientWidth < strip.scrollWidth - 1;
+      setScrollable((previous) => previous.left === left && previous.right === right ? previous : { left, right });
+    };
+    const observer = new ResizeObserver(update);
+    observer.observe(strip);
+    for (const child of strip.children) observer.observe(child);
+    strip.addEventListener('scroll', update, { passive: true });
+    update();
+    return () => { observer.disconnect(); strip.removeEventListener('scroll', update); };
+  }, [sessionOrder]);
+
+  const revealTab = (sessionId: string | null) => {
+    const strip = tabsRef.current;
+    const selected = sessionId ? tabRefs.current.get(sessionId) : null;
+    if (!strip || !selected) return;
+    const viewport = strip.getBoundingClientRect();
+    const tab = selected.getBoundingClientRect();
+    if (tab.left < viewport.left) strip.scrollLeft += tab.left - viewport.left;
+    else if (tab.right > viewport.right) strip.scrollLeft += tab.right - viewport.right;
+  };
+
+  useLayoutEffect(() => { revealTab(activeSessionId); }, [activeSessionId, sessionOrder]);
+
+  const scrollTabs = (direction: number) => {
+    const strip = tabsRef.current;
+    if (strip) strip.scrollBy({ left: direction * Math.max(160, strip.clientWidth * 0.75), behavior: 'smooth' });
+  };
 
   const handleCopyPassword = async (session: SessionInfo) => {
     try {
@@ -182,7 +226,7 @@ export const TabBar: React.FC<Props> = ({
   return (
     <div
       onContextMenu={(e) => e.preventDefault()}
-      className="flex h-10 items-center justify-between border-b border-slate-800 bg-slate-950/90 px-2 select-none z-30"
+      className="relative z-30 flex h-10 min-w-0 shrink-0 items-center justify-between border-b border-slate-800 bg-slate-950/90 px-2 select-none"
     >
       {/* If sidebar is collapsed, show quick restore button */}
       {isSidebarCollapsed && onToggleSidebar && (
@@ -198,8 +242,14 @@ export const TabBar: React.FC<Props> = ({
       )}
 
       {/* Scrollable Tabs Container */}
+      <button type="button" aria-label={t('Przewiń zakładki w lewo')} title={t('Przewiń zakładki w lewo')}
+        disabled={!scrollable.left} onClick={() => scrollTabs(-1)}
+        className="mr-1 flex h-7 w-7 shrink-0 items-center justify-center rounded text-slate-300 hover:bg-slate-800 disabled:cursor-default disabled:opacity-25">
+        <ChevronLeft className="h-4 w-4" />
+      </button>
       <div
-        className="flex flex-1 items-center gap-1 overflow-x-auto no-scrollbar py-1"
+        ref={tabsRef} aria-label={t('Zakładki połączeń')}
+        className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto no-scrollbar py-1"
         onDragOver={(e) => {
           if (draggedSessionId) {
             e.preventDefault();
@@ -232,6 +282,11 @@ export const TabBar: React.FC<Props> = ({
           return (
             <div
               key={session.sessionId}
+              ref={(element) => {
+                if (element) tabRefs.current.set(session.sessionId, element); else tabRefs.current.delete(session.sessionId);
+              }}
+              data-session-id={session.sessionId}
+              aria-current={isActive ? 'true' : undefined}
               draggable={true}
               onDragStart={(e) => {
                 isDraggingRef.current = true;
@@ -426,9 +481,18 @@ export const TabBar: React.FC<Props> = ({
           );
         })}
       </div>
+      <button type="button" aria-label={t('Przewiń zakładki w prawo')} title={t('Przewiń zakładki w prawo')}
+        disabled={!scrollable.right} onClick={() => scrollTabs(1)}
+        className="ml-1 flex h-7 w-7 shrink-0 items-center justify-center rounded text-slate-300 hover:bg-slate-800 disabled:cursor-default disabled:opacity-25">
+        <ChevronRight className="h-4 w-4" />
+      </button>
 
       {/* Right Controls: Split Layout Switcher, Fullscreen Toggle, Close All */}
       <div className="flex items-center gap-2 pl-2 shrink-0">
+        <SessionSwitcher sessions={sessions} connections={connections} groups={groups} activeSessionId={activeSessionId} onSelectSession={(id) => {
+          onSelectSession(id);
+          revealTab(id);
+        }} />
         {/* Layout Switcher Buttons */}
         <div className="flex items-center rounded-lg border border-slate-800 bg-slate-900/90 p-0.5">
           <button

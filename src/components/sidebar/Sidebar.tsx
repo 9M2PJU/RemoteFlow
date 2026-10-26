@@ -61,7 +61,20 @@ export const Sidebar: React.FC<Props> = ({
   onNewGroup,
 }) => {
   const t = useT();
-  const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>({});
+  const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>(() => {
+    try {
+      const saved: unknown = JSON.parse(localStorage.getItem('remoteflow-collapsed-groups') || '{}');
+      if (saved && typeof saved === 'object' && !Array.isArray(saved)) {
+        return Object.fromEntries(Object.entries(saved).filter(([, value]) => value === true));
+      }
+    } catch { /* Storage unavailable or damaged: use the default expanded tree. */ }
+    return {};
+  });
+  useEffect(() => {
+    try {
+      localStorage.setItem('remoteflow-collapsed-groups', JSON.stringify(collapsedGroups));
+    } catch { /* The tree remains usable when storage is unavailable. */ }
+  }, [collapsedGroups]);
   const [dragOverGroupId, setDragOverGroupId] = useState<string | null | 'root'>(null);
   const [draggingConnectionId, setDraggingConnectionId] = useState<string | null>(null);
 
