@@ -109,7 +109,7 @@ docker build -f docker/Dockerfile.linux --target verify .
 ## Gdzie są moje dane?
 Sejf (`vault.json`) jest zapisywany obok pliku programu (tryb przenośny), jeśli ten folder jest zapisywalny,
 w przeciwnym razie w katalogu konfiguracji użytkownika (`%APPDATA%\remoteflow` na Windows, `~/.config/remoteflow` na Linuksie).
-Kopie zapasowe trafiają do folderu `backups` obok sejfu. **Nigdy nie umieszczaj `vault.json` w repozytorium** – plik jest wykluczony w `.gitignore`.
+Kopie zapasowe trafiają do folderu `backups` obok sejfu. 
 
 ## Stos technologiczny
 | Warstwa | Technologie |
