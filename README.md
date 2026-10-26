@@ -109,7 +109,7 @@ docker build -f docker/Dockerfile.linux --target verify .
 ## Where is my data?
 The vault (`vault.json`) is stored next to the executable (portable mode) when that folder is writable,
 otherwise in the user configuration directory (`%APPDATA%\remoteflow` on Windows, `~/.config/remoteflow` on Linux).
-Backups are kept in the `backups` folder next to the vault. **Never commit `vault.json` to a repository** – it is excluded in `.gitignore`.
+Backups are kept in the `backups` folder next to the vault. 
 
 ## Technology stack
 | Layer | Technologies |
