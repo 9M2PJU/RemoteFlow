@@ -94,6 +94,17 @@ docker build -f docker/Dockerfile.linux --target export --output type=local,dest
 ```
 albo po prostu uruchom `build-linux-docker.bat` na Windows. Pakiety trafią do folderu `dist-linux/`.
 
+### Ikona i skrót dla wersji portable na Linuksie
+Wersja portable nie dodaje automatycznie wpisu do menu systemowego. W paczce z Dockera znajdują się także `install-linux-desktop.sh` i `remoteflow.png`. Zachowaj je obok programu i uruchom bez `sudo`:
+```bash
+bash ./install-linux-desktop.sh
+```
+Dla AppImage lub programu w innym katalogu podaj jego ścieżkę:
+```bash
+bash ./install-linux-desktop.sh "/pełna/ścieżka/RemoteFlow.AppImage"
+```
+Plik programu musi mieć prawo wykonywania. Skrypt zapisuje skrót i ikonę w `${XDG_DATA_HOME:-$HOME/.local/share}`. Nie przenosi programu ani sejfu. Następnie uruchom RemoteFlow z menu aplikacji; stary przypięty skrót usuń i przypnij ponownie. Po przeniesieniu programu uruchom skrypt ponownie. Aby usunąć integrację, usuń pliki `applications/remoteflow.desktop` i `icons/hicolor/512x512/apps/remoteflow.png` z tego katalogu.
+
 ### Testy
 ```bash
 node scripts/check-i18n.mjs   # każdy tekst interfejsu ma tłumaczenie angielskie

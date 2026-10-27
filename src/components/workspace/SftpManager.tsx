@@ -161,9 +161,9 @@ export const SftpManager: React.FC<Props> = ({
   const busyRef = useRef<string | null>(null);
   const showBusyNotice = useCallback(() => {
     setConfirm({
-      title: t('Trwa kopiowanie'),
+      title: t('Trwa operacja SFTP'),
       message: t(
-        'Aktualnie trwa kopiowanie ({what}). Poczekaj na zakończenie, a następnie ponownie przeciągnij lub wyślij kolejne pliki.',
+        'Aktualnie trwa operacja: {what}. Poczekaj na jej zakończenie.',
         { what: busyRef.current ?? 'transfer' }
       ),
       label: 'OK',
@@ -472,6 +472,7 @@ export const SftpManager: React.FC<Props> = ({
 
   const deleteRemote = (paths: string[]) => {
     if (paths.length === 0) return;
+    if (busyRef.current) { showBusyNotice(); return; }
     setConfirm({
       title: t('Usunąć z serwera?'),
       message:
@@ -480,13 +481,30 @@ export const SftpManager: React.FC<Props> = ({
         (paths.length > 6 ? '…' : ''),
       label: t('Usuń'),
       run: async () => {
+        if (busyRef.current) { showBusyNotice(); return; }
+        let completed = 0;
+        const label = t('Usuwanie z serwera: {current}/{total} — {path}', { current: 1, total: paths.length, path: paths[0] });
+        busyRef.current = label;
+        setBusy(label);
+        setStatus(null);
+        setProgress(null);
         try {
-          await api.sftpDeletePaths(connectionId, paths);
-          showStatus(t('Usunięto {length} elementów', { length: paths.length }));
-          loadRemote(remote.path);
+          for (const path of paths) {
+            const current = t('Usuwanie z serwera: {current}/{total} — {path}', { current: completed + 1, total: paths.length, path });
+            busyRef.current = current;
+            setBusy(current);
+            await api.sftpDeletePaths(connectionId, [path]);
+            completed++;
+          }
+          const text = t('Usunięto {length} elementów', { length: completed });
+          showStatus(text);
+          onNotify?.(text);
         } catch (err: any) {
-          showStatus(t('Błąd usuwania: {p0}', { p0: err?.message || err }), 'error');
-          loadRemote(remote.path);
+          showStatus(t('Błąd usuwania po {completed}/{total} elementach: {error}', { completed, total: paths.length, error: err?.message || err }), 'error');
+        } finally {
+          await loadRemote(remote.path);
+          busyRef.current = null;
+          setBusy(null);
         }
       },
     });
@@ -652,11 +670,11 @@ export const SftpManager: React.FC<Props> = ({
       </div>
 
       {/* Status bar */}
-      <div className="flex h-7 shrink-0 items-center gap-2 border-t border-slate-800 bg-slate-900 px-3 text-[11px]">
+      <div role="status" aria-live="polite" className="flex h-7 shrink-0 items-center gap-2 border-t border-slate-800 bg-slate-900 px-3 text-[11px]">
         {busy ? (
           <>
             <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin text-cyan-400" />
-            <span className="truncate text-cyan-200">
+            <span className="truncate text-cyan-200" title={busy}>
               {busy}
               {progress ? t(' — {files} gotowych, teraz: {current}', { files: progress.files, current: progress.current }) : ''}
             </span>

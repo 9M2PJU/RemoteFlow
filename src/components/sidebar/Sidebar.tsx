@@ -18,13 +18,16 @@ import {
   Copy,
   CopyPlus,
   MoreHorizontal,
+  ArrowDownAZ,
+  ChevronsDown,
+  ChevronsUp,
   KeyRound,
   User,
 } from 'lucide-react';
 import { api } from '../../services/api';
 import { anchorFromElement, DialogAnchor } from '../dialogs/ConfirmDialog';
 import { Connection, Group } from '../../types';
-import { useT } from '../../i18n';
+import { locale, useT } from '../../i18n';
 import { useMenuPosition } from '../../utils/useMenuPosition';
 
 interface Props {
@@ -65,6 +68,18 @@ export const Sidebar: React.FC<Props> = ({
   onNewGroup,
 }) => {
   const t = useT();
+  const [sortedGroups, setSortedGroups] = useState<Record<string, boolean>>(() => {
+    try {
+      const saved: unknown = JSON.parse(localStorage.getItem('remoteflow-sorted-groups') || '{}');
+      if (saved && typeof saved === 'object' && !Array.isArray(saved)) {
+        return Object.fromEntries(Object.entries(saved).filter(([, value]) => value === true));
+      }
+    } catch { /* Keep the original order if storage is unavailable. */ }
+    return {};
+  });
+  useEffect(() => {
+    try { localStorage.setItem('remoteflow-sorted-groups', JSON.stringify(sortedGroups)); } catch { /* optional persistence */ }
+  }, [sortedGroups]);
   const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>(() => {
     try {
       const saved: unknown = JSON.parse(localStorage.getItem('remoteflow-collapsed-groups') || '{}');
@@ -138,6 +153,11 @@ export const Sidebar: React.FC<Props> = ({
       ...prev,
       [groupId]: !prev[groupId],
     }));
+  };
+
+  const collapseAll = (collapsed: boolean) => {
+    const setter = searchQuery.trim() ? setSearchCollapsedGroups : setCollapsedGroups;
+    setter(collapsed ? Object.fromEntries(groups.map((group) => [group.id, true])) : {});
   };
 
   const query = searchQuery.trim().toLowerCase();
@@ -240,6 +260,7 @@ export const Sidebar: React.FC<Props> = ({
 
   const renderGroupNode = (group: Group, depth: number = 0) => {
     const directConns = filteredConnections.filter((c) => c.groupId === group.id);
+    if (sortedGroups[group.id]) directConns.sort((a, b) => a.name.localeCompare(b.name, locale(), { numeric: true, sensitivity: 'base' }));
     const childGroups = getChildGroups(group.id);
     const allGroupConns = getAllGroupConnectionsRecursive(group.id);
     const isCollapsed = isSearching ? !!searchCollapsedGroups[group.id] : !!collapsedGroups[group.id];
@@ -299,15 +320,22 @@ export const Sidebar: React.FC<Props> = ({
           >
             {group.name}
           </span>
-          <span className="ml-1 shrink-0 font-mono text-[9px] text-slate-500 group-hover:opacity-0 transition-opacity">
+          <span className="ml-1 shrink-0 font-mono text-[9px] text-slate-500 group-hover:opacity-0 group-focus-within:opacity-0 transition-opacity">
             {allGroupConns.length}
           </span>
 
           {/* Actions appear over the counter on hover */}
           <div
-            className="absolute right-1 top-1/2 -translate-y-1/2 flex items-center gap-0.5 rounded bg-side-hover2 pl-1 opacity-0 pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto transition-opacity"
+            className="absolute right-1 top-1/2 -translate-y-1/2 flex items-center gap-0.5 rounded bg-side-hover2 pl-1 opacity-0 pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto group-focus-within:opacity-100 group-focus-within:pointer-events-auto transition-opacity"
             onClick={(e) => e.stopPropagation()}
           >
+            <button type="button"
+              onClick={() => setSortedGroups((prev) => ({ ...prev, [group.id]: !prev[group.id] }))}
+              title={t('Sortuj połączenia po nazwie (A–Z)')} aria-label={t('Sortuj połączenia po nazwie (A–Z)')}
+              aria-pressed={!!sortedGroups[group.id]}
+              className={`flex h-4.5 w-4.5 items-center justify-center rounded hover:bg-slate-700 ${sortedGroups[group.id] ? 'text-cyan-300 bg-cyan-500/20' : 'text-slate-400'}`}>
+              <ArrowDownAZ className="h-3 w-3" />
+            </button>
             <button
               onClick={() => onConnectAllInGroup(group, allGroupConns)}
               title={t("Połącz ze wszystkimi w '{name}' ({length})", { name: group.name, length: allGroupConns.length })}
@@ -412,6 +440,18 @@ export const Sidebar: React.FC<Props> = ({
         </div>
 
         {/* Action Buttons: Nowy Folder and Nowe Połączenie */}
+        <div className="mb-1.5 flex items-center justify-end gap-1">
+          <button type="button" onClick={() => collapseAll(false)} disabled={groups.length === 0}
+            title={t('Rozwiń wszystkie grupy')} aria-label={t('Rozwiń wszystkie grupy')}
+            className="rounded p-1 text-slate-400 hover:bg-slate-700 hover:text-cyan-300 disabled:opacity-30">
+            <ChevronsDown className="h-3.5 w-3.5" />
+          </button>
+          <button type="button" onClick={() => collapseAll(true)} disabled={groups.length === 0}
+            title={t('Zwiń wszystkie grupy')} aria-label={t('Zwiń wszystkie grupy')}
+            className="rounded p-1 text-slate-400 hover:bg-slate-700 hover:text-cyan-300 disabled:opacity-30">
+            <ChevronsUp className="h-3.5 w-3.5" />
+          </button>
+        </div>
         <div className="flex items-center gap-1.5">
           <button
             onClick={() => (onNewGroup ? onNewGroup() : onAddSubgroup(''))}

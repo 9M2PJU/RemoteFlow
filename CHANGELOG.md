@@ -4,6 +4,14 @@ Numer wersji: `MAJOR.MINOR.PATCH`. Każda zmiana podnosi co najmniej numer PATCH
 Wersja jest zapisana w trzech plikach, które muszą być zgodne (pilnuje tego test `version_tests` w `src-tauri/src/lib.rs`):
 `package.json` (wyświetlana w aplikacji), `src-tauri/tauri.conf.json` (instalator) i `src-tauri/Cargo.toml`.
 
+## 1.6.10 – sterowanie grupami i status usuwania SFTP
+- Każda grupa ma zapamiętywaną opcję sortowania połączeń A–Z; wyłączenie przywraca pierwotną kolejność. Nagłówek drzewa pozwala zwinąć lub rozwinąć wszystkie grupy wraz z podgrupami.
+- Usuwanie z serwera SFTP pokazuje aktualną ścieżkę i numer pozycji, blokuje kolejne transfery/usuwanie do zakończenia i odświeża widok także po błędzie. Licznik dotyczy zaznaczonych pozycji; katalogi są usuwane wraz z zawartością.
+
+## 1.6.9 – ikona wersji portable na Linuksie
+- Paczka linuksowa zawiera skrypt rejestrujący skrót i ikonę wersji portable dla bieżącego użytkownika, także dla AppImage.
+- Duża ikona PNG jest pierwszą ikoną osadzaną w oknie i trafia do pakietów systemowych.
+
 ## 1.6.8 – kompaktowe menu połączeń
 - W podzielonym widoku wybór sesji korzysta z kompaktowej listy z wyszukiwaniem, przewijaniem i informacją o grupie zamiast systemowej listy rozwijanej.
 - W strukturze połączeń pozostają szybkie akcje połączenia i nowej karty. Menu „⋯” udostępnia pozostałe opcje; przyciski nie zasłaniają nazw ani liczników tuneli.

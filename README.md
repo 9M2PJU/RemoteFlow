@@ -94,6 +94,9 @@ docker build -f docker/Dockerfile.linux --target export --output type=local,dest
 ```
 or simply run `build-linux-docker.bat` on Windows. The packages land in `dist-linux/`.
 
+### Linux portable desktop icon
+The portable build does not automatically create an application menu entry. Keep `install-linux-desktop.sh` and `remoteflow.png` from the Docker output beside the executable, then run `bash ./install-linux-desktop.sh` without sudo. For an AppImage or another location, pass its executable path as the first argument. Launch RemoteFlow from the application menu and re-pin any old dock shortcut. Run the script again after moving the executable. It only creates `applications/remoteflow.desktop` and `icons/hicolor/512x512/apps/remoteflow.png` under `${XDG_DATA_HOME:-$HOME/.local/share}`; removing these two files removes the integration.
+
 ### Tests
 ```bash
 node scripts/check-i18n.mjs   # every UI text has an English translation
