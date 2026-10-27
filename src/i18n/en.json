@@ -801,6 +801,7 @@
   "Szukaj nazwy, grupy, hosta lub użytkownika...": "Search by name, group, host or user...",
   "Klonuj połączenie": "Clone connection",
   "Opcje połączenia": "Connection options",
+  "Sejf został zablokowany. Odblokuj aplikację i ponownie zapisz zmiany.": "The vault was locked. Unlock the app and save your changes again.",
   "Sortuj połączenia po nazwie (A–Z)": "Sort connections by name (A–Z)",
   "Rozwiń wszystkie grupy": "Expand all groups",
   "Zwiń wszystkie grupy": "Collapse all groups",

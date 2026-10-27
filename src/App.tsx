@@ -623,7 +623,22 @@ const t = useT();
     rawKey?: string,
     rawPassphrase?: string
   ) => {
-    const saved = await api.saveConnection(conn, rawPassword, rawKey, rawPassphrase);
+    // The backend can lock between the last UI event and this submit. Reconcile
+    // the lock screen without closing the editor or throwing away its draft.
+    const status = await api.getStatus();
+    if (!status.isUnlocked) {
+      setVaultStatus(status);
+      throw new Error(t('Sejf został zablokowany. Odblokuj aplikację i ponownie zapisz zmiany.'));
+    }
+    let saved: Connection;
+    try {
+      saved = await api.saveConnection(conn, rawPassword, rawKey, rawPassphrase);
+    } catch (error) {
+      // Also cover a lock arriving after the status check but before the write.
+      const latest = await api.getStatus().catch(() => null);
+      if (latest && !latest.isUnlocked) setVaultStatus(latest);
+      throw error;
+    }
     setConnections((prev) => {
       const idx = prev.findIndex((c) => c.id === saved.id);
       return idx >= 0 ? prev.map((c) => (c.id === saved.id ? saved : c)) : [...prev, saved];
@@ -786,23 +801,28 @@ const t = useT();
         setCredentials([]);
         setSessions([]);
         setActiveSessionId(null);
+        setIsConnModalOpen(false);
+        setEditingConn(null);
+        setIsGroupModalOpen(false);
+        setEditingGroup(null);
+        setIsCredentialsModalOpen(false);
+        setIsSettingsModalOpen(false);
+        setIsImportExportModalOpen(false);
       }}
     />
   ) : null;
 
-  // No open sessions: the lock screen replaces the whole UI (as before).
-  // With open sessions the workspace must NOT be unmounted – that destroyed the SSH terminals
-  // (black screen and lost scrollback after unlocking) and the RDP viewers. The lock screen is
-  // then an opaque overlay and the UI underneath is made inert (no focus, no keyboard input).
-  if (!vaultStatus || (needsMasterPassword && sessions.length === 0)) {
+  // Keep editors and session viewers mounted across both PIN and full locks.
+  // Unmounting an unfinished editor discarded its draft on Master Password unlock.
+  if (!vaultStatus) {
     return masterPasswordScreen;
   }
 
   return (
     <>
     <div
-      inert={needsMasterPassword}
-      aria-hidden={needsMasterPassword}
+      inert={!vaultStatus.isUnlocked}
+      aria-hidden={!vaultStatus.isUnlocked}
       className="flex h-screen w-screen flex-col bg-slate-950 text-slate-100 overflow-hidden font-sans"
     >
       {securityWarning && (
@@ -926,26 +946,6 @@ const t = useT();
         </main>
       </div>
 
-      {/* PIN Lock Overlay (when screen lock or manual lock triggered) */}
-      {vaultStatus.isPinLocked && (
-        <PinModal
-          onUnlocked={async (updated) => {
-            setVaultStatus(updated);
-            if (updated.isUnlocked) {
-              await api.maximizeWindow();
-              loadData();
-            }
-            setTimeout(() => {
-              window.dispatchEvent(new CustomEvent('remoteflow-focus-terminal'));
-            }, 100);
-          }}
-          onUseMasterPassword={async () => {
-            await api.lockVault();
-            setVaultStatus((prev) => (prev ? { ...prev, isPinLocked: false, isUnlocked: false } : null));
-          }}
-        />
-      )}
-
       {/* Confirmation before closing connections */}
       <ConfirmDialog
         isOpen={pendingClose !== null}
@@ -1033,7 +1033,26 @@ const t = useT();
         onClose={() => setPassphrasePrompt(null)}
       />
     </div>
-    {masterPasswordScreen}
+    {/* Outside the inert workspace and above every editor/menu, including portals. */}
+    {!vaultStatus.isUnlocked && <div className="fixed inset-0 z-[200]" data-vault-lock-screen>
+      {masterPasswordScreen}
+      {vaultStatus.isPinLocked && <PinModal
+        onUnlocked={async (updated) => {
+          setVaultStatus(updated);
+          if (updated.isUnlocked) {
+            await api.maximizeWindow();
+            loadData();
+          }
+          setTimeout(() => {
+            window.dispatchEvent(new CustomEvent('remoteflow-focus-terminal'));
+          }, 100);
+        }}
+        onUseMasterPassword={async () => {
+          await api.lockVault();
+          setVaultStatus((prev) => (prev ? { ...prev, isPinLocked: false, isUnlocked: false } : null));
+        }}
+      />}
+    </div>}
     <RdpCertificateDialog sessions={sessions} unlocked={!!vaultStatus?.isUnlocked} />
     <EmptyPasswordDialog unlocked={!!vaultStatus?.isUnlocked} onSaved={(saved) => {
       setConnections((prev) => prev.map((conn) => conn.id === saved.id ? saved : conn));

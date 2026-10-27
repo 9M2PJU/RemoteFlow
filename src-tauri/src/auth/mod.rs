@@ -1332,6 +1332,50 @@ mod lifecycle_tests {
     }
 
     #[test]
+    fn connection_draft_can_be_saved_after_idle_unlock() {
+        let _serial = TEST_SERIAL.lock().unwrap_or_else(|p| p.into_inner());
+        let path = get_vault_path();
+        let _ = std::fs::remove_file(&path);
+        let state: AuthState = Mutex::new(AuthManager::new());
+        vault_init_impl("password123", &state).unwrap();
+        let mut draft = vault_save_connection_impl(
+            conn("draft", "10.0.0.1"), Some("original-secret".into()), None, None, &state,
+        ).unwrap();
+        vault_set_pin_impl("1234", true, &state).unwrap();
+        draft.name = "Unfinished edit".into();
+        draft.host = "10.0.0.2".into();
+        {
+            let mut mgr = state.lock().unwrap();
+            mgr.idle_timeout_mins = 1;
+            mgr.last_activity = std::time::Instant::now() - std::time::Duration::from_secs(61);
+        }
+        let before = raw_file();
+        assert_eq!(lock_if_idle(&state), Some(true));
+        assert!(vault_save_connection_impl(draft.clone(), None, None, None, &state).is_err());
+        assert_eq!(raw_file(), before, "a locked editor cannot write");
+        assert!(vault_unlock_pin_impl("0000", &state).is_err());
+        vault_unlock_pin_impl("1234", &state).unwrap();
+        assert_eq!(lock_if_idle(&state), None, "unlock resets the inactivity timer");
+        draft = vault_save_connection_impl(draft, None, None, None, &state).unwrap();
+        assert_eq!(draft.host, "10.0.0.2");
+        assert_eq!(vault_reveal_password_impl("draft", &state).unwrap(), "original-secret");
+
+        // The same draft also survives switching from PIN to Master Password.
+        vault_lock(&state);
+        draft.notes = Some("Resumed after Master Password".into());
+        assert!(vault_save_connection_impl(draft.clone(), Some("new-secret".into()), None, None, &state).is_err());
+        vault_unlock_master_impl("password123", None, &state).unwrap();
+        let saved = vault_save_connection_impl(draft, Some("new-secret".into()), None, None, &state).unwrap();
+        assert_eq!(saved.notes.as_deref(), Some("Resumed after Master Password"));
+        assert_eq!(vault_reveal_password_impl("draft", &state).unwrap(), "new-secret");
+        vault_lock(&state);
+        vault_unlock_master_impl("password123", None, &state).unwrap();
+        assert_eq!(vault_reveal_password_impl("draft", &state).unwrap(), "new-secret");
+        assert!(!raw_file().contains("new-secret"));
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
     fn full_lifecycle() {
         let _serial = TEST_SERIAL.lock().unwrap_or_else(|p| p.into_inner());
         let path = get_vault_path();

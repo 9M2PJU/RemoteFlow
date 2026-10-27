@@ -4,6 +4,11 @@ Numer wersji: `MAJOR.MINOR.PATCH`. Każda zmiana podnosi co najmniej numer PATCH
 Wersja jest zapisana w trzech plikach, które muszą być zgodne (pilnuje tego test `version_tests` w `src-tauri/src/lib.rs`):
 `package.json` (wyświetlana w aplikacji), `src-tauri/tauri.conf.json` (instalator) i `src-tauri/Cargo.toml`.
 
+## 1.6.11 – wznowienie edycji po blokadzie sejfu
+- Ekrany blokady PIN i Master Password są nad formularzami, a zablokowany interfejs nie przyjmuje kliknięć ani klawiatury.
+- Niedokończona edycja pozostaje w pamięci podczas blokady także bez aktywnych sesji. Po odblokowaniu można ją dokończyć i zapisać; reset sejfu zamyka formularze.
+- Zapis połączenia sprawdza aktualny stan sejfu i przy blokadzie przywraca ekran odblokowania bez porzucania edycji.
+
 ## 1.6.10 – sterowanie grupami i status usuwania SFTP
 - Każda grupa ma zapamiętywaną opcję sortowania połączeń A–Z; wyłączenie przywraca pierwotną kolejność. Nagłówek drzewa pozwala zwinąć lub rozwinąć wszystkie grupy wraz z podgrupami.
 - Usuwanie z serwera SFTP pokazuje aktualną ścieżkę i numer pozycji, blokuje kolejne transfery/usuwanie do zakończenia i odświeża widok także po błędzie. Licznik dotyczy zaznaczonych pozycji; katalogi są usuwane wraz z zawartością.
