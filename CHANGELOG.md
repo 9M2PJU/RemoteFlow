@@ -4,6 +4,13 @@ Numer wersji: `MAJOR.MINOR.PATCH`. Każda zmiana podnosi co najmniej numer PATCH
 Wersja jest zapisana w trzech plikach, które muszą być zgodne (pilnuje tego test `version_tests` w `src-tauri/src/lib.rs`):
 `package.json` (wyświetlana w aplikacji), `src-tauri/tauri.conf.json` (instalator) i `src-tauri/Cargo.toml`.
 
+## 1.6.13 – pozycja potwierdzenia usuwania
+- Potwierdzenie usunięcia połączenia pojawia się obok jego wiersza w drzewie, zamiast obok pozycji w menu kontekstowym. Analogicznie poprawiono usuwanie grup.
+
+## 1.6.12 – menu kontekstowe grup
+- Akcje grup przeniesiono z przycisków do menu pod prawym przyciskiem myszy, w stylu menu połączeń. Menu zawiera także rozwinięcie i zwinięcie wszystkich grup; usunięto te przyciski z nagłówka drzewa.
+- Lewy przycisk nadal zwija i rozwija grupę. Menu obsługuje klawiaturę (Shift+F10, strzałki, Enter, Escape) oraz mieści się w granicach okna.
+
 ## 1.6.11 – wznowienie edycji po blokadzie sejfu
 - Ekrany blokady PIN i Master Password są nad formularzami, a zablokowany interfejs nie przyjmuje kliknięć ani klawiatury.
 - Niedokończona edycja pozostaje w pamięci podczas blokady także bez aktywnych sesji. Po odblokowaniu można ją dokończyć i zapisać; reset sejfu zamyka formularze.

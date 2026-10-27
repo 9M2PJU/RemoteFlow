@@ -21,6 +21,7 @@ import {
   ArrowDownAZ,
   ChevronsDown,
   ChevronsUp,
+  Check,
   KeyRound,
   User,
 } from 'lucide-react';
@@ -68,6 +69,30 @@ export const Sidebar: React.FC<Props> = ({
   onNewGroup,
 }) => {
   const t = useT();
+  const [groupMenu, setGroupMenu] = useState<{ groupId: string; x: number; y: number } | null>(null);
+  const groupMenuRef = useRef<HTMLDivElement>(null);
+  const groupMenuTrigger = useRef<HTMLElement | null>(null);
+  const groupMenuStyle = useMenuPosition(groupMenuRef, groupMenu);
+  useEffect(() => {
+    if (!groupMenu) return;
+    groupMenuRef.current?.querySelector<HTMLButtonElement>('button:not(:disabled)')?.focus();
+    const outside = (event: MouseEvent) => {
+      if (!groupMenuRef.current?.contains(event.target as Node)) setGroupMenu(null);
+    };
+    const escape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        setGroupMenu(null);
+        groupMenuTrigger.current?.focus();
+      }
+    };
+    window.addEventListener('mousedown', outside);
+    window.addEventListener('keydown', escape);
+    return () => {
+      window.removeEventListener('mousedown', outside);
+      window.removeEventListener('keydown', escape);
+    };
+  }, [groupMenu]);
   const [sortedGroups, setSortedGroups] = useState<Record<string, boolean>>(() => {
     try {
       const saved: unknown = JSON.parse(localStorage.getItem('remoteflow-sorted-groups') || '{}');
@@ -298,7 +323,26 @@ export const Sidebar: React.FC<Props> = ({
         <div
           style={{ paddingLeft: rowPadding(depth) }}
           title={t('Folder: {name} ({length} połączeń)', { name: group.name, length: allGroupConns.length })}
+          role="button" tabIndex={0} aria-expanded={!isCollapsed}
+          aria-label={t('Folder: {name} ({length} połączeń)', { name: group.name, length: allGroupConns.length })}
           onClick={() => toggleGroupCollapse(group.id)}
+          onContextMenu={(event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            groupMenuTrigger.current = event.currentTarget;
+            setGroupMenu({ groupId: group.id, x: event.clientX, y: event.clientY + 2 });
+          }}
+          onKeyDown={(event) => {
+            if (event.key === 'ContextMenu' || (event.shiftKey && event.key === 'F10')) {
+              event.preventDefault();
+              const rect = event.currentTarget.getBoundingClientRect();
+              groupMenuTrigger.current = event.currentTarget;
+              setGroupMenu({ groupId: group.id, x: rect.left, y: rect.bottom + 2 });
+            } else if (event.key === 'Enter' || event.key === ' ') {
+              event.preventDefault();
+              toggleGroupCollapse(group.id);
+            }
+          }}
           className={`group relative flex items-center gap-1 pr-1.5 h-6 cursor-pointer select-none transition-colors ${
             depth === 0
               ? 'bg-side-hover hover:bg-side-hover2 border-y border-slate-800/80'
@@ -320,59 +364,9 @@ export const Sidebar: React.FC<Props> = ({
           >
             {group.name}
           </span>
-          <span className="ml-1 shrink-0 font-mono text-[9px] text-slate-500 group-hover:opacity-0 group-focus-within:opacity-0 transition-opacity">
+          <span className="ml-1 shrink-0 font-mono text-[9px] text-slate-500">
             {allGroupConns.length}
           </span>
-
-          {/* Actions appear over the counter on hover */}
-          <div
-            className="absolute right-1 top-1/2 -translate-y-1/2 flex items-center gap-0.5 rounded bg-side-hover2 pl-1 opacity-0 pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto group-focus-within:opacity-100 group-focus-within:pointer-events-auto transition-opacity"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <button type="button"
-              onClick={() => setSortedGroups((prev) => ({ ...prev, [group.id]: !prev[group.id] }))}
-              title={t('Sortuj połączenia po nazwie (A–Z)')} aria-label={t('Sortuj połączenia po nazwie (A–Z)')}
-              aria-pressed={!!sortedGroups[group.id]}
-              className={`flex h-4.5 w-4.5 items-center justify-center rounded hover:bg-slate-700 ${sortedGroups[group.id] ? 'text-cyan-300 bg-cyan-500/20' : 'text-slate-400'}`}>
-              <ArrowDownAZ className="h-3 w-3" />
-            </button>
-            <button
-              onClick={() => onConnectAllInGroup(group, allGroupConns)}
-              title={t("Połącz ze wszystkimi w '{name}' ({length})", { name: group.name, length: allGroupConns.length })}
-              disabled={allGroupConns.length === 0}
-              className="flex h-4.5 w-4.5 items-center justify-center rounded text-emerald-400 hover:bg-emerald-500/20 disabled:opacity-30"
-            >
-              <Play className="h-2.5 w-2.5 fill-current" />
-            </button>
-            <button
-              onClick={() => onAddConnectionToGroup(group.id)}
-              title={t('Dodaj połączenie do tego folderu')}
-              className="flex h-4.5 w-4.5 items-center justify-center rounded text-slate-400 hover:bg-slate-700 hover:text-white"
-            >
-              <Plus className="h-3 w-3" />
-            </button>
-            <button
-              onClick={() => onAddSubgroup(group.id)}
-              title={t('Dodaj podfolder (zagnieżdżona grupa)')}
-              className="flex h-4.5 w-4.5 items-center justify-center rounded text-amber-400/80 hover:bg-amber-500/20 hover:text-amber-300"
-            >
-              <FolderPlus className="h-3 w-3" />
-            </button>
-            <button
-              onClick={() => onEditGroup(group)}
-              title={t('Edytuj folder')}
-              className="flex h-4.5 w-4.5 items-center justify-center rounded text-slate-400 hover:bg-slate-700 hover:text-white"
-            >
-              <Edit2 className="h-2.5 w-2.5" />
-            </button>
-            <button
-              onClick={(e) => onDeleteGroup(group.id, anchorFromElement(e.currentTarget))}
-              title={t('Usuń folder')}
-              className="flex h-4.5 w-4.5 items-center justify-center rounded text-slate-400 hover:bg-red-500/20 hover:text-red-400"
-            >
-              <Trash2 className="h-2.5 w-2.5" />
-            </button>
-          </div>
         </div>
 
         {/* Children: subgroups first, then connections – with a guide line in the group colour */}
@@ -398,6 +392,11 @@ export const Sidebar: React.FC<Props> = ({
       </div>
     );
   };
+
+  const menuGroup = groups.find((group) => group.id === groupMenu?.groupId);
+  const menuConnections = menuGroup ? getAllGroupConnectionsRecursive(menuGroup.id) : [];
+  const menuGroupCollapsed = menuGroup && (isSearching ? searchCollapsedGroups[menuGroup.id] : collapsedGroups[menuGroup.id]);
+  const menuItemClass = 'flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left hover:bg-slate-800 hover:text-white transition-colors disabled:opacity-30 disabled:cursor-default';
 
   return (
     <aside
@@ -440,18 +439,6 @@ export const Sidebar: React.FC<Props> = ({
         </div>
 
         {/* Action Buttons: Nowy Folder and Nowe Połączenie */}
-        <div className="mb-1.5 flex items-center justify-end gap-1">
-          <button type="button" onClick={() => collapseAll(false)} disabled={groups.length === 0}
-            title={t('Rozwiń wszystkie grupy')} aria-label={t('Rozwiń wszystkie grupy')}
-            className="rounded p-1 text-slate-400 hover:bg-slate-700 hover:text-cyan-300 disabled:opacity-30">
-            <ChevronsDown className="h-3.5 w-3.5" />
-          </button>
-          <button type="button" onClick={() => collapseAll(true)} disabled={groups.length === 0}
-            title={t('Zwiń wszystkie grupy')} aria-label={t('Zwiń wszystkie grupy')}
-            className="rounded p-1 text-slate-400 hover:bg-slate-700 hover:text-cyan-300 disabled:opacity-30">
-            <ChevronsUp className="h-3.5 w-3.5" />
-          </button>
-        </div>
         <div className="flex items-center gap-1.5">
           <button
             onClick={() => (onNewGroup ? onNewGroup() : onAddSubgroup(''))}
@@ -572,6 +559,69 @@ export const Sidebar: React.FC<Props> = ({
             : 'bg-transparent hover:bg-cyan-500/50 active:bg-cyan-400'
         }`}
       />
+      {groupMenu && menuGroup && <div ref={groupMenuRef} style={groupMenuStyle}
+        role="menu" aria-label={t('Opcje grupy: {name}', { name: menuGroup.name })}
+        className="fixed z-50 w-56 rounded-xl border border-slate-700 bg-slate-900 p-1 shadow-2xl backdrop-blur-md"
+        onKeyDown={(event) => {
+          if (['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) {
+            event.preventDefault();
+            const buttons = Array.from(event.currentTarget.querySelectorAll<HTMLButtonElement>('button:not(:disabled)'));
+            const index = buttons.indexOf(document.activeElement as HTMLButtonElement);
+            const next = event.key === 'Home' ? 0 : event.key === 'End' ? buttons.length - 1
+              : (index + (event.key === 'ArrowDown' ? 1 : -1) + buttons.length) % buttons.length;
+            buttons[next]?.focus();
+          } else if (event.key === 'Tab') setGroupMenu(null);
+        }}>
+        <div className="truncate border-b border-slate-800 px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wider text-slate-500" title={menuGroup.name}>
+          {menuGroup.name}
+        </div>
+        <div className="space-y-0.5 py-1 text-xs text-slate-200">
+          <button type="button" role="menuitem" disabled={menuConnections.length === 0} className={menuItemClass}
+            onClick={() => { setGroupMenu(null); onConnectAllInGroup(menuGroup, menuConnections); }}>
+            <Play className="h-3.5 w-3.5 shrink-0 fill-current text-emerald-400" />
+            <span>{t('Połącz ze wszystkimi ({length})', { length: menuConnections.length })}</span>
+          </button>
+          <button type="button" role="menuitem" className={menuItemClass}
+            onClick={() => { setGroupMenu(null); onAddConnectionToGroup(menuGroup.id); }}>
+            <Plus className="h-3.5 w-3.5 shrink-0 text-cyan-400" /><span>{t('Dodaj połączenie')}</span>
+          </button>
+          <button type="button" role="menuitem" className={menuItemClass}
+            onClick={() => { setGroupMenu(null); onAddSubgroup(menuGroup.id); }}>
+            <FolderPlus className="h-3.5 w-3.5 shrink-0 text-amber-400" /><span>{t('Dodaj podgrupę')}</span>
+          </button>
+          <div role="separator" className="my-1 border-t border-slate-800" />
+          <button type="button" role="menuitemcheckbox" aria-checked={!!sortedGroups[menuGroup.id]} className={menuItemClass}
+            onClick={() => {
+              setSortedGroups((prev) => ({ ...prev, [menuGroup.id]: !prev[menuGroup.id] }));
+              setGroupMenu(null);
+            }}>
+            <ArrowDownAZ className="h-3.5 w-3.5 shrink-0 text-cyan-400" /><span>{t('Sortuj po nazwie (A–Z)')}</span>
+            {sortedGroups[menuGroup.id] && <Check className="ml-auto h-3.5 w-3.5 shrink-0 text-cyan-400" />}
+          </button>
+          <button type="button" role="menuitem" className={menuItemClass}
+            onClick={() => { toggleGroupCollapse(menuGroup.id); setGroupMenu(null); }}>
+            {menuGroupCollapsed ? <ChevronDown className="h-3.5 w-3.5 shrink-0" /> : <ChevronRight className="h-3.5 w-3.5 shrink-0" />}
+            <span>{menuGroupCollapsed ? t('Rozwiń grupę') : t('Zwiń grupę')}</span>
+          </button>
+          <button type="button" role="menuitem" className={menuItemClass}
+            onClick={() => { collapseAll(false); setGroupMenu(null); }}>
+            <ChevronsDown className="h-3.5 w-3.5 shrink-0 text-cyan-400" /><span>{t('Rozwiń wszystkie grupy')}</span>
+          </button>
+          <button type="button" role="menuitem" className={menuItemClass}
+            onClick={() => { collapseAll(true); setGroupMenu(null); }}>
+            <ChevronsUp className="h-3.5 w-3.5 shrink-0 text-cyan-400" /><span>{t('Zwiń wszystkie grupy')}</span>
+          </button>
+          <div role="separator" className="my-1 border-t border-slate-800" />
+          <button type="button" role="menuitem" className={menuItemClass}
+            onClick={() => { setGroupMenu(null); onEditGroup(menuGroup); }}>
+            <Edit2 className="h-3.5 w-3.5 shrink-0 text-slate-400" /><span>{t('Edytuj folder')}</span>
+          </button>
+          <button type="button" role="menuitem" className={`${menuItemClass} hover:bg-red-500/20 hover:text-red-400`}
+            onClick={() => { onDeleteGroup(menuGroup.id, anchorFromElement(groupMenuTrigger.current)); setGroupMenu(null); }}>
+            <Trash2 className="h-3.5 w-3.5 shrink-0 text-red-400" /><span>{t('Usuń folder')}</span>
+          </button>
+        </div>
+      </div>}
     </aside>
   );
 };
@@ -602,6 +652,7 @@ const ConnectionItem: React.FC<ConnectionItemProps> = ({
   const activeTunnelsCount = connection.portForwarding.filter((p) => p.enabled).length;
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
   const optionsRef = useRef<HTMLButtonElement>(null);
+  const rowRef = useRef<HTMLDivElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
   const menuStyle = useMenuPosition(menuRef, contextMenu);
   const [isCloning, setIsCloning] = useState(false);
@@ -633,6 +684,7 @@ const ConnectionItem: React.FC<ConnectionItemProps> = ({
   return (
     <>
       <div
+        ref={rowRef}
         draggable={true}
         onDragStart={onDragStart}
         onDragEnd={onDragEnd}
@@ -810,8 +862,8 @@ const ConnectionItem: React.FC<ConnectionItemProps> = ({
             </button>
 
             <button
-              onClick={(e) => {
-                onDelete(connection.id, anchorFromElement(e.currentTarget));
+              onClick={() => {
+                onDelete(connection.id, anchorFromElement(rowRef.current));
                 setContextMenu(null);
               }}
               className="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 hover:bg-red-500/20 hover:text-red-400 transition-colors"
