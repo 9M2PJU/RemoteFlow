@@ -4,6 +4,15 @@ Numer wersji: `MAJOR.MINOR.PATCH`. Każda zmiana podnosi co najmniej numer PATCH
 Wersja jest zapisana w trzech plikach, które muszą być zgodne (pilnuje tego test `version_tests` w `src-tauri/src/lib.rs`):
 `package.json` (wyświetlana w aplikacji), `src-tauri/tauri.conf.json` (instalator) i `src-tauri/Cargo.toml`.
 
+## 1.6.17 – poprawki z audytu kodu
+- **SSH – metoda logowania zgodna z profilem poświadczeń.** Połączenie bez własnego hasła lub klucza używa metody swojego profilu (wcześniej typ był kopiowany tylko przy wyborze profilu, więc późniejsza zmiana profilu np. na klucz psuła logowanie). Własne hasło/klucz połączenia i wybór „Agent SSH” mają pierwszeństwo. Tę samą regułę stosują backend, monit o puste hasło i pytanie o hasło klucza.
+- **Agent SSH do wyboru w połączeniu** (ssh-agent, Pageant, KeePassXC/1Password). Od 1.6.1 SSH nie przechodzi już niejawnie do agenta, a tej metody nie dało się wybrać. Import z mRemoteNG ustawia agenta dla połączeń SSH bez zapisanego hasła (klucze PuTTY/Pageant).
+- **FreeRDP w oknie nie zasłania wyskakujących elementów.** Sesja jest chowana, gdy na jej obszar nachodzi dowolne menu, okno dialogowe, lista lub powiadomienie (np. menu kontekstowe zakładki) – wcześniej tylko lista sesji i elementy zasłaniające ≥25% obszaru.
+- **Zwykłe zakończenie sesji FreeRDP nie jest błędem.** Kody wyjścia wylogowania/rozłączenia (0–5, 11, 12) dają „Sesja RDP zakończona”; błędy (np. 131 połączenie, 132 logowanie, 143 TLS/certyfikat) – „Błąd połączenia”.
+- **Nieudana kopia przed migracją do v3 nie blokuje odblokowania.** Sejf v2 otwiera się z ostrzeżeniem i jest konwertowany przy pierwszym zapisie, który ponawia kopię (bez kopii zapis jest odrzucany z czytelnym komunikatem). Test: folder kopii zablokowany plikiem.
+- **Certyfikat RDP w sejfie od pierwszego połączenia FreeRDP.** Przed uruchomieniem FreeRDP certyfikat serwera jest odczytywany i zapamiętywany (TOFU, wspólne z wbudowanym klientem), więc FreeRDP jest od razu przypięty do odcisku zamiast korzystać z własnego magazynu. Gdy serwer nie odpowiada, FreeRDP sprawdza certyfikat sam.
+- Komunikaty backendu przy zaufaniu certyfikatu RDP, błędnym odcisku i certyfikacie SSH są tłumaczone (PL/EN).
+
 ## 1.6.16 – tło podczas nawiązywania RDP na Linuksie
 - Natywny kontener FreeRDP otrzymuje nieprzezroczyste, ciemne tło i jest czyszczony przed pokazaniem, również przy ponownym użyciu. Eliminuje to pozostawione piksele poprzedniej sesji SSH podczas inicjalizacji okna.
 - Osłony ładowania RDP i obszar pulpitu mają pełne tło zgodne z motywem; wyłączono animowanie widoczności paneli podczas przełączania kart.

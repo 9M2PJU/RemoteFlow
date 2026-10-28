@@ -183,7 +183,39 @@ pub fn spawn_rdp_session(
                 cmd.arg(format!("/t:RemoteFlow - {} ({}:{})", config.title, config.host, config.port));
             }
             // Trust-on-first-use instead of blindly accepting any certificate (MITM protection).
-            match config.certificate_fingerprint.as_deref().map(freerdp_certificate_arg).transpose() {
+            // The server identity lives in the vault (shared with the embedded client): on the
+            // first connection the certificate is read here and remembered, so FreeRDP is pinned
+            // to it from the start instead of keeping its own, separate TOFU store.
+            let mut pinned = config.certificate_fingerprint.clone();
+            if pinned.is_none() {
+                match tauri::async_runtime::block_on(crate::session::rdp_proxy::probe_certificate(&config.host, config.port)) {
+                    Ok(fingerprint) => {
+                        let verifier = crate::session::make_host_verifier(&app, "rdp", config.host.clone(), config.port);
+                        match (verifier.0)(&fingerprint) {
+                            Ok(_) => {
+                                emit_log(tr!(
+                                    "🔐 Zapamiętano certyfikat serwera RDP (pierwsze połączenie): {}",
+                                    "🔐 RDP server certificate remembered (first connection): {}",
+                                    fingerprint
+                                ));
+                                pinned = Some(fingerprint);
+                            }
+                            Err(e) => {
+                                emit_log(e);
+                                let _ = app.emit(&format!("rdp-status-{}", sid), "error");
+                                return;
+                            }
+                        }
+                    }
+                    // Unreachable server etc. – FreeRDP reports the problem itself
+                    Err(e) => emit_log(tr!(
+                        "⚠️ Nie udało się wcześniej odczytać certyfikatu serwera ({}). FreeRDP sprawdzi go samodzielnie (TOFU).",
+                        "⚠️ Could not read the server certificate in advance ({}). FreeRDP will check it itself (TOFU).",
+                        e
+                    )),
+                }
+            }
+            match pinned.as_deref().map(freerdp_certificate_arg).transpose() {
                 Ok(Some(arg)) => { cmd.arg(arg); }
                 Ok(None) => { cmd.arg("/cert:tofu"); }
                 Err(e) => {
@@ -319,7 +351,12 @@ pub fn spawn_rdp_session(
             match child.try_wait() {
                 Ok(Some(status)) => {
                     emit_log(tr!("ℹ️ Okno sesji RDP zostało zamknięte (kod: {}).", "ℹ️ The RDP session window was closed (code: {}).", status));
-                    let _ = app.emit(&format!("rdp-status-{}", sid), if status.success() { "disconnected" } else { "error" });
+                    let normal = if binary.contains("freerdp") {
+                        freerdp_ended_normally(status.code())
+                    } else {
+                        status.success()
+                    };
+                    let _ = app.emit(&format!("rdp-status-{}", sid), if normal { "disconnected" } else { "error" });
                     return;
                 }
                 Ok(None) => {
@@ -342,6 +379,14 @@ struct RdpCertificateError {
     embedded: bool,
 }
 
+/// FreeRDP exit codes of a session that simply ended (xfreerdp `XF_EXIT_*`): 0 success,
+/// 1 disconnect, 2 logoff, 3 idle timeout, 4 logon timeout, 5 connection replaced by another
+/// session, 11/12 disconnect / logoff by the user. Everything else (e.g. 131 connection failed,
+/// 132 authentication failure, 143 TLS / certificate failure, a signal) is an error.
+fn freerdp_ended_normally(code: Option<i32>) -> bool {
+    matches!(code, Some(0..=5) | Some(11) | Some(12))
+}
+
 fn is_certificate_error(line: &str) -> bool {
     let lower = line.to_ascii_lowercase();
     lower.contains("certificate not trusted") || lower.contains("tls_print_certificate_error")
@@ -351,7 +396,7 @@ fn is_certificate_error(line: &str) -> bool {
 fn freerdp_certificate_arg(fingerprint: &str) -> Result<String, String> {
     use base64::{Engine, engine::general_purpose::STANDARD_NO_PAD};
     let digest = fingerprint.strip_prefix("SHA256:").and_then(|s| STANDARD_NO_PAD.decode(s).ok())
-        .filter(|d| d.len() == 32).ok_or("Invalid RDP SHA-256 fingerprint")?;
+        .filter(|d| d.len() == 32).ok_or_else(|| tr!("Nieprawidłowy odcisk SHA-256 certyfikatu RDP zapisany w sejfie", "Invalid RDP certificate SHA-256 fingerprint stored in the vault").to_string())?;
     // FreeRDP 2 requires colon-separated bytes; FreeRDP 3 accepts both forms.
     let hex = digest.iter().map(|b| format!("{:02x}", b)).collect::<Vec<_>>().join(":");
     // A fingerprint allow-list alone still falls back to CA validation / the shared cache on
@@ -364,6 +409,17 @@ fn freerdp_certificate_arg(fingerprint: &str) -> Result<String, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn freerdp_logoff_is_not_an_error() {
+        for code in [0, 1, 2, 3, 4, 5, 11, 12] {
+            assert!(freerdp_ended_normally(Some(code)), "{code}");
+        }
+        for code in [6, 7, 131, 132, 143] {
+            assert!(!freerdp_ended_normally(Some(code)), "{code}");
+        }
+        assert!(!freerdp_ended_normally(None), "killed by a signal");
+    }
 
     #[test]
     fn certificate_errors_are_distinguished_from_other_tls_errors() {

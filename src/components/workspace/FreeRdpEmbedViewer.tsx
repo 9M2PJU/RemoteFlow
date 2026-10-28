@@ -15,6 +15,27 @@ import { useT } from '../../i18n';
 
 type Status = 'starting' | 'connected' | 'disconnected' | 'error';
 
+/** Floating page elements: menus, dialogs, lists, notifications (positioned `fixed`). */
+const POPUP_SELECTOR = '.fixed, [data-popup], [role="menu"], [role="dialog"], [role="listbox"], [role="tooltip"]';
+
+/**
+ * Does a floating element overlap the session area? The native FreeRDP window always stays above
+ * the web content, so even a small context menu or notification over the area would be hidden
+ * under it – the session is hidden while such an element is shown.
+ */
+function popupOverArea(area: HTMLElement, r: DOMRect): boolean {
+  for (const el of document.querySelectorAll<HTMLElement>(POPUP_SELECTOR)) {
+    if (area.contains(el) || el.contains(area)) continue;
+    const b = el.getBoundingClientRect();
+    if (b.width < 2 || b.height < 2) continue;
+    if (b.right <= r.left || b.left >= r.right || b.bottom <= r.top || b.top >= r.bottom) continue;
+    const style = getComputedStyle(el);
+    if (style.display === 'none' || style.visibility === 'hidden' || style.opacity === '0') continue;
+    return true;
+  }
+  return false;
+}
+
 /** Part of the area (0..1) covered by other page elements, sampled on a grid. */
 function coveredFraction(area: HTMLElement, r: DOMRect): number {
   const cols = 5;
@@ -107,7 +128,8 @@ export const FreeRdpEmbedViewer: React.FC<{ session: SessionInfo; isActive: bool
       let visible = !!el && !!rect && running && isActiveRef.current && document.visibilityState === 'visible'
         && !document.querySelector('[data-session-switcher]');
       if (visible && el && rect) {
-        visible = coveredFraction(el, el.getBoundingClientRect()) < 0.25;
+        const r = el.getBoundingClientRect();
+        visible = !popupOverArea(el, r) && coveredFraction(el, r) < 0.25;
       }
       const r = rect ?? { x: 0, y: 0, width: 0, height: 0 };
       const key = `${Math.round(r.x)},${Math.round(r.y)},${Math.round(r.width)},${Math.round(r.height)},${visible}`;

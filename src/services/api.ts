@@ -2,6 +2,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { ConnectionPasswordStatus, PasswordPromptCancelled, requestConnectionPassword } from '../utils/passwordPrompt';
 import { getLang } from '../i18n';
 import { selectExportData } from '../utils/exportScope';
+import { effectiveSshAuthType } from '../utils/sshAuth';
 
 // An explicit decision to use an empty password lasts for this session only.
 const emptyPasswordSessions = new Set<string>();
@@ -320,7 +321,7 @@ export const api = {
     if (!conn) throw new Error('Connection not found');
     const credential = mockCredentials.find((c) => c.id === conn.credentialId);
     return { connectionId, name: conn.name, host: conn.host, port: conn.port,
-      requiresPassword: conn.protocol === 'rdp' || conn.sshAuthType === 'password',
+      requiresPassword: conn.protocol === 'rdp' || effectiveSshAuthType(conn, credential) === 'password',
       hasPassword: Boolean(conn.passwordEncrypted ?? credential?.passwordEncrypted) };
   },
 

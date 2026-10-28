@@ -187,6 +187,14 @@ pub(crate) fn write_atomic(path: &Path, bytes: &[u8]) -> Result<(), String> {
 pub fn save_vault_signed(data: &mut VaultData, key: &[u8; 32]) -> Result<(), String> {
     data.encrypted_data = None;
     if data.metadata.version < 3 {
+        // First write of a pre-v3 vault converts it: keep the old file restorable first (older
+        // RemoteFlow versions cannot open v3). Callers hold the I/O lock.
+        crate::vault::backup::backup_while_locked(&crate::vault::models::BackupSettings::default(), "pre-migration-v3", true)
+            .map_err(|e| tr!(
+                "Nie udało się utworzyć kopii sejfu przed zmianą formatu na v3 ({}). Zwolnij miejsce na dysku lub sprawdź uprawnienia folderu kopii.",
+                "Could not back up the vault before converting it to format v3 ({}). Free disk space or check the permissions of the backup folder.",
+                e
+            ))?;
         let (ct, nonce) = encrypt_bytes(key, CANARY_PHRASE_V3.as_bytes())?;
         data.metadata.version = 3;
         data.metadata.canary_nonce_base64 = BASE64.encode(nonce);

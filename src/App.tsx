@@ -21,6 +21,7 @@ import { RdpCertificateDialog } from './components/dialogs/RdpCertificateDialog'
 import { EmptyPasswordDialog } from './components/dialogs/EmptyPasswordDialog';
 import { PasswordPromptCancelled } from './utils/passwordPrompt';
 import { useT } from './i18n';
+import { effectiveSshAuthType } from './utils/sshAuth';
 
 export const App: React.FC = () => {
 const t = useT();
@@ -168,11 +169,8 @@ const t = useT();
   const handleConnect = async (conn: Connection, allowDuplicate = false, customPassphrase?: string) => {
     // Check if key passphrase prompt is needed
     const cred = conn.credentialId ? credentials.find((c) => c.id === conn.credentialId) : undefined;
-    const isKeyAuth =
-      conn.protocol === 'ssh' &&
-      (conn.sshAuthType === 'key' ||
-        conn.sshAuthType === 'certificate' ||
-        Boolean(conn.credentialId && cred && (cred.authType === 'key' || cred.authType === 'certificate')));
+    const authType = effectiveSshAuthType(conn, cred);
+    const isKeyAuth = conn.protocol === 'ssh' && (authType === 'key' || authType === 'certificate');
     const needsPassphrasePrompt =
       isKeyAuth &&
       (Boolean(conn.promptKeyPassphrase) || Boolean(conn.credentialId && cred?.promptKeyPassphrase));

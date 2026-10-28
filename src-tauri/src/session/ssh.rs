@@ -218,7 +218,7 @@ pub fn ssh_connect_raw(config: &SshConnectionConfig) -> Result<ssh2::Session, St
             let certificate = if config.auth_type == "certificate" { config.certificate.as_deref() } else { None };
             // libssh2 expects a public certificate file for file-based authentication.
             let certificate_file = certificate.map(|c| TempKeyFile::create(c.as_bytes())).transpose()
-                .map_err(|e| format!("SSH certificate: {}", e))?;
+                .map_err(|e| tr!("Nie można przygotować certyfikatu SSH: {}", "Cannot prepare the SSH certificate: {}", e))?;
             let key_path = std::path::Path::new(trimmed);
             if !trimmed.contains('\n') && key_path.is_file() {
                 // The user's own key file: libssh2 reads it directly – no copy is ever written.

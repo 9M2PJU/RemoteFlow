@@ -26,7 +26,7 @@ The application uses **Tauri 2 and Rust** for the native backend, **React 19 and
 
 ### SSH
 - Built-in terminal (xterm.js) with a full 16-colour palette – `mc`, `htop` and similar tools render correctly.
-- Authentication with password, private key (with optional passphrase prompt), certificate or SSH agent.
+- Authentication with password, private key (with optional passphrase prompt), OpenSSH certificate or SSH agent. The method chosen in the connection is used without falling back to others; a connection without its own secret follows the method of its credential profile.
 - Port forwarding: local, remote and dynamic (SOCKS5).
 - Copy/paste from the context menu and keyboard, middle-click paste of the terminal selection.
 - Server host keys verified on first use (TOFU) – the password is sent only to a trusted server.
@@ -57,7 +57,7 @@ The application uses **Tauri 2 and Rust** for the native backend, **React 19 and
 - Unfinished connection edits survive a lock and can be saved after unlocking with PIN or Master Password.
 - Periodic vault backups, restore from Settings.
 - Password-protected `.rfvault` export / import of all connections or selected groups, including subgroups and relevant credential profiles. Connections outside groups can be included separately. Optional plaintext JSON export requires explicit confirmation.
-- FreeRDP certificate conflicts show the current SHA-256 fingerprint for verification and explicit approval. Reconnecting uses that exact fingerprint without disabling certificate checks or deleting the shared FreeRDP certificate cache.
+- FreeRDP is pinned to the server certificate stored in the vault (remembered on the first connection, shared with the embedded client). Certificate conflicts show the current SHA-256 fingerprint for verification and explicit approval. Reconnecting uses that exact fingerprint without disabling certificate checks or deleting the shared FreeRDP certificate cache.
 
 <img src="docs/screenshots/login-en.png" alt="RemoteFlow – login screen" width="600">
 

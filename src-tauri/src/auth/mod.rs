@@ -393,8 +393,21 @@ pub(crate) fn vault_unlock_master_impl(master_password: &str, accept_modified: O
         if dirty {
             // Keep the file exactly as it was before migration / accepting external changes.
             let reason = if migrating { "pre-migration-v3" } else { "pre-accept-modified" };
-            backup_while_locked(&BackupSettings::default(), reason, true)?;
-            save_vault_signed(&mut vault, &key)?;
+            match backup_while_locked(&BackupSettings::default(), reason, true) {
+                Ok(_) => save_vault_signed(&mut vault, &key)?,
+                // A v2 vault stays readable without migration: unlock it and convert it on the
+                // first write (which retries the copy, see `save_vault_signed`) instead of locking
+                // the user out because of a full disk or a read-only backup folder.
+                Err(e) if migrating && canary.as_slice() == CANARY_PHRASE_V2.as_bytes() => {
+                    eprintln!("[RemoteFlow] Kopia przed migracją do v3 nie powiodła się: {}", e);
+                    warnings.push(tr!(
+                        "Nie udało się utworzyć kopii sejfu przed zmianą formatu na v3 ({}). Sejf został odblokowany w dotychczasowym formacie; zapis zmian wymaga udanej kopii – zwolnij miejsce na dysku lub sprawdź uprawnienia folderu kopii.",
+                        "Could not back up the vault before converting it to format v3 ({}). The vault was unlocked in its current format; saving changes requires a successful backup – free disk space or check the permissions of the backup folder.",
+                        e
+                    ));
+                }
+                Err(e) => return Err(e),
+            }
         }
         vault
     };
@@ -1581,6 +1594,51 @@ mod lifecycle_tests {
 
         let _ = std::fs::remove_file(&path);
         let _ = std::fs::remove_dir_all(&backups);
+    }
+
+    #[test]
+    fn failed_pre_migration_backup_does_not_lock_the_user_out() {
+        let _serial = TEST_SERIAL.lock().unwrap_or_else(|p| p.into_inner());
+        let path = get_vault_path();
+        let backups = path.with_file_name("backups");
+        let _ = std::fs::remove_file(&path);
+        let _ = std::fs::remove_dir_all(&backups);
+        let _ = std::fs::remove_file(&backups);
+        let state: AuthState = Mutex::new(AuthManager::new());
+        vault_init_impl("password123", &state).unwrap();
+        vault_save_connection_impl(conn("c1", "10.0.0.1"), Some("s3cret".into()), None, None, &state).unwrap();
+        // Turn the file into a signed v2 vault (as written by RemoteFlow < 1.6.1)
+        let key = lock_auth(&state).unwrap().unlocked_key().unwrap().clone();
+        let mut v2 = load_vault_verified(&key).unwrap();
+        v2.metadata.version = 2;
+        let (ct, nonce) = encrypt_bytes(&key, CANARY_PHRASE_V2.as_bytes()).unwrap();
+        v2.metadata.canary_ciphertext_base64 = BASE64.encode(ct);
+        v2.metadata.canary_nonce_base64 = BASE64.encode(nonce);
+        v2.mac = None;
+        v2.mac = Some(crate::vault::cipher::compute_mac(&key, &serde_json::to_vec(&v2).unwrap()).unwrap());
+        std::fs::write(&path, serde_json::to_string_pretty(&v2).unwrap()).unwrap();
+        vault_lock(&state);
+
+        // The backup folder cannot be created (a file is in the way)
+        let _ = std::fs::remove_dir_all(&backups);
+        std::fs::write(&backups, b"not a folder").unwrap();
+        let status = vault_unlock_master_impl("password123", None, &state).unwrap();
+        assert!(status.security_warning.unwrap_or_default().contains("v3"), "the user is told why");
+        assert!(raw_file().contains("10.0.0.1"), "not converted without a backup");
+        assert_eq!(vault_reveal_password_impl("c1", &state).unwrap(), "s3cret", "the vault is usable");
+        assert!(vault_save_connection_impl(conn("c2", "10.0.0.2"), None, None, None, &state).is_err(),
+            "writing (= converting) still requires the backup");
+        assert!(raw_file().contains("10.0.0.1"));
+
+        // Once the backup works, the first write converts the vault and keeps a restorable copy
+        std::fs::remove_file(&backups).unwrap();
+        vault_save_connection_impl(conn("c2", "10.0.0.2"), None, None, None, &state).unwrap();
+        assert!(!raw_file().contains("10.0.0.1"));
+        let copies: Vec<_> = std::fs::read_dir(&backups).unwrap().flatten().collect();
+        assert!(copies.iter().any(|e| e.file_name().to_string_lossy().contains("pre-migration-v3")));
+        assert!(copies.iter().any(|e| std::fs::read_to_string(e.path()).unwrap().contains("10.0.0.1")));
+        let _ = std::fs::remove_dir_all(&backups);
+        let _ = std::fs::remove_file(&path);
     }
 
     #[test]

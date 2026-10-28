@@ -116,7 +116,8 @@ export function parseMRemoteNGXml(xmlString: string): MRemoteNGParseResult {
         username: username.trim(),
         // Still mRemoteNG ciphertext – decrypted in the Rust backend during import.
         passwordEncrypted: rawPassword ? rawPassword : undefined,
-        sshAuthType: 'password',
+        // Without a stored password mRemoteNG used PuTTY/Pageant keys – RemoteFlow uses the SSH agent
+        sshAuthType: protocol === 'ssh' && !rawPassword ? 'agent' : 'password',
         portForwarding: [],
         rdpSettings: protocol === 'rdp' ? {
           width: 1920,

@@ -240,6 +240,10 @@ fn resolve_connection_data(vault: &crate::vault::models::VaultData, key: &[u8; 3
     let mut private_key: Option<String> = None;
     let mut passphrase: Option<String> = None;
 
+    // Login method actually used (see `effective_ssh_auth_type`)
+    let linked = conn.credential_id.as_ref().and_then(|id| vault.credentials.iter().find(|c| c.id == *id));
+    conn.ssh_auth_type = effective_ssh_auth_type(&conn, linked.map(|c| c.auth_type.as_str()));
+
     // Reusable credential (lower priority)
     if let Some(cred_id) = &conn.credential_id {
         if let Some(cred) = vault.credentials.iter().find(|c| c.id == *cred_id) {
@@ -279,6 +283,23 @@ fn resolve_connection_data(vault: &crate::vault::models::VaultData, key: &[u8; 3
         private_key,
         passphrase,
     })
+}
+
+/// SSH login method of a connection. SSH no longer falls back from one method to another, so the
+/// method must match the material that will be used:
+/// - "agent" chosen in the connection always means the SSH agent;
+/// - a connection with its own secret (password, key or key file) uses its own method – its secret
+///   overrides the profile;
+/// - otherwise a linked credential profile decides (its type may have been changed after the
+///   connection was linked to it – earlier the method was only copied when choosing the profile).
+pub(crate) fn effective_ssh_auth_type(conn: &Connection, credential_auth_type: Option<&str>) -> String {
+    let own_secret = conn.password_encrypted.is_some()
+        || conn.private_key_encrypted.is_some()
+        || conn.key_file_path.as_deref().is_some_and(|p| !p.trim().is_empty());
+    match credential_auth_type {
+        Some(profile) if conn.ssh_auth_type != "agent" && !own_secret && !profile.is_empty() => profile.to_string(),
+        _ => conn.ssh_auth_type.clone(),
+    }
 }
 
 /// Builds a TOFU verifier for a server identity ("ssh" or "rdp").
@@ -561,7 +582,7 @@ pub struct RdpCertificateInfo {
 #[tauri::command]
 pub async fn rdp_certificate_preview(connection_id: String, auth_state: tauri::State<'_, AuthState>) -> Result<RdpCertificateInfo, String> {
     let resolved = resolve_connection(&auth_state, &connection_id)?;
-    if resolved.conn.protocol != "rdp" { return Err("Not an RDP connection".into()); }
+    if resolved.conn.protocol != "rdp" { return Err(tr!("To nie jest połączenie RDP", "Not an RDP connection").into()); }
     let host = resolved.conn.host;
     let port = resolved.conn.port;
     let fingerprint = rdp_proxy::probe_certificate(&host, port).await?;
@@ -579,9 +600,9 @@ pub async fn rdp_certificate_trust(connection_id: String, host: String, port: u1
     let key = mgr.unlocked_key()?;
     crate::vault::storage::update_vault(key, |v| {
         let conn = v.connections.iter().find(|c| c.id == connection_id && c.protocol == "rdp" && c.host == host && c.port == port)
-            .ok_or("RDP connection changed")?;
+            .ok_or_else(|| tr!("Połączenie RDP zmieniło się – sprawdź certyfikat ponownie", "The RDP connection changed – check the certificate again").to_string())?;
         let id = known_hosts::host_id("rdp", &conn.host, conn.port);
-        if v.metadata.known_hosts.get(&id) != previous_fingerprint.as_ref() { return Err("Trusted certificate changed; check it again".into()); }
+        if v.metadata.known_hosts.get(&id) != previous_fingerprint.as_ref() { return Err(tr!("Zaufany certyfikat zmienił się w międzyczasie – sprawdź go ponownie", "The trusted certificate changed in the meantime – check it again").into()); }
         v.metadata.known_hosts.insert(id, fingerprint);
         Ok(())
     })?;
@@ -1512,6 +1533,36 @@ mod key_file_pick_tests {
         vault.credentials[0].password_encrypted = None;
         let status = super::password_status(super::resolve_connection_data(&vault, &key, "c").unwrap());
         assert!(status.requires_password && !status.has_password);
+    }
+
+    #[test]
+    fn login_method_follows_profile_unless_connection_has_own_secret() {
+        use crate::vault::cipher::encrypt_string;
+        let key = [7u8; 32];
+        let mut vault: crate::vault::models::VaultData = serde_json::from_value(serde_json::json!({
+            "metadata": { "version": 3, "salt_base64": "", "canary_nonce_base64": "", "canary_ciphertext_base64": "",
+                "pin_enabled": false, "auto_lock_screen": true, "auto_lock_timeout_mins": 15, "max_pin_attempts": 3 },
+            "groups": [],
+            "connections": [{ "id": "c", "name": "server", "protocol": "ssh", "host": "server", "port": 22,
+                "username": "root", "credentialId": "profile", "sshAuthType": "password",
+                "portForwarding": [], "tags": [], "createdAt": "", "updatedAt": "" }],
+            "credentials": [{ "id": "profile", "name": "profile", "username": "alice", "authType": "key",
+                "privateKeyEncrypted": encrypt_string(&key, "profile key").unwrap(), "createdAt": "", "updatedAt": "" }]
+        })).unwrap();
+        // Profile changed to a key after linking: the key is used and no password is requested
+        let resolved = super::resolve_connection_data(&vault, &key, "c").unwrap();
+        assert_eq!(resolved.conn.ssh_auth_type, "key");
+        assert!(!super::password_status(resolved).requires_password);
+        // The connection's own password overrides the profile
+        vault.connections[0].password_encrypted = Some(encrypt_string(&key, "own").unwrap());
+        assert_eq!(super::resolve_connection_data(&vault, &key, "c").unwrap().conn.ssh_auth_type, "password");
+        // Agent chosen in the connection always wins; without a profile the connection decides
+        vault.connections[0].password_encrypted = None;
+        vault.connections[0].ssh_auth_type = "agent".into();
+        assert_eq!(super::resolve_connection_data(&vault, &key, "c").unwrap().conn.ssh_auth_type, "agent");
+        vault.connections[0].ssh_auth_type = "password".into();
+        vault.connections[0].credential_id = None;
+        assert_eq!(super::resolve_connection_data(&vault, &key, "c").unwrap().conn.ssh_auth_type, "password");
     }
 
     #[test]

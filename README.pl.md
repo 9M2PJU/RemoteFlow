@@ -26,7 +26,7 @@ Aplikacja wykorzystuje **Tauri 2 i Rust** jako natywny backend, **React 19 i Typ
 
 ### SSH
 - Wbudowany terminal (xterm.js) z pełną paletą 16 kolorów – `mc`, `htop` i podobne narzędzia wyświetlają się poprawnie.
-- Uwierzytelnianie hasłem, kluczem prywatnym (z opcjonalnym pytaniem o hasło klucza), certyfikatem lub agentem SSH.
+- Uwierzytelnianie hasłem, kluczem prywatnym (z opcjonalnym pytaniem o hasło klucza), certyfikatem OpenSSH lub agentem SSH. Używana jest metoda wybrana w połączeniu, bez przechodzenia do innych; połączenie bez własnego hasła/klucza korzysta z metody swojego profilu poświadczeń.
 - Przekierowanie portów: lokalne, zdalne i dynamiczne (SOCKS5).
 - Kopiowanie i wklejanie z menu kontekstowego i klawiatury, wklejanie zaznaczenia środkowym przyciskiem myszy.
 - Weryfikacja klucza serwera przy pierwszym połączeniu (TOFU) – hasło jest wysyłane tylko do zaufanego serwera.
@@ -56,7 +56,7 @@ Aplikacja wykorzystuje **Tauri 2 i Rust** jako natywny backend, **React 19 i Typ
 - Automatyczna blokada po bezczynności i po zablokowaniu systemu operacyjnego (Windows, Linux logind / ScreenSaver).
 - Niedokończona edycja połączenia zostaje zachowana podczas blokady i można ją zapisać po odblokowaniu PIN-em lub hasłem głównym.
 - Okresowe kopie zapasowe sejfu i przywracanie z Ustawień.
-- Konflikt certyfikatu FreeRDP otwiera komunikat z odciskiem SHA-256 do sprawdzenia u administratora. Po jawnej akceptacji można połączyć się ponownie z zaakceptowanym certyfikatem, bez wyłączania weryfikacji i usuwania wspólnego magazynu certyfikatów FreeRDP.
+- FreeRDP jest przypięty do certyfikatu serwera zapisanego w sejfie (zapamiętywanego przy pierwszym połączeniu, wspólnego z wbudowanym klientem). Konflikt certyfikatu FreeRDP otwiera komunikat z odciskiem SHA-256 do sprawdzenia u administratora. Po jawnej akceptacji można połączyć się ponownie z zaakceptowanym certyfikatem, bez wyłączania weryfikacji i usuwania wspólnego magazynu certyfikatów FreeRDP.
 - Eksport i import chroniony hasłem w formacie `.rfvault`: wszystkie połączenia lub wybrane grupy wraz z podgrupami i odpowiednimi profilami poświadczeń. Połączenia bez grupy można dołączyć osobno. Opcjonalny eksport do jawnego JSON wymaga wyraźnego potwierdzenia.
 
 <img src="docs/screenshots/login.png" alt="RemoteFlow – ekran logowania" width="600">

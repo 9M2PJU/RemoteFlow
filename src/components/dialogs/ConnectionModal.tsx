@@ -931,8 +931,8 @@ export const ConnectionModal: React.FC<Props> = ({
                       <label className="block text-xs font-semibold text-slate-300 mb-1.5">
                         {t('Metoda logowania SSH')}
                       </label>
-                      <div className="grid grid-cols-3 gap-2">
-                        {(['password', 'key', 'certificate'] as SshAuthType[]).map((type) => (
+                      <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                        {(['password', 'key', 'certificate', 'agent'] as SshAuthType[]).map((type) => (
                           <button
                             key={type}
                             type="button"
@@ -947,13 +947,20 @@ export const ConnectionModal: React.FC<Props> = ({
                               ? t('Hasło')
                               : type === 'key'
                               ? t('Klucz prywatny')
-                              : t('Certyfikat SSH CA')}
+                              : type === 'certificate'
+                              ? t('Certyfikat SSH CA')
+                              : t('Agent SSH')}
                           </button>
                         ))}
                       </div>
+                      {sshAuthType === 'agent' && (
+                        <p className="mt-1.5 text-[11px] leading-relaxed text-slate-500">
+                          {t('Klucze z agenta SSH (ssh-agent, Pageant, agent KeePassXC/1Password). Hasło i klucze zapisane w połączeniu nie są wtedy używane.')}
+                        </p>
+                      )}
                     </div>
 
-                    {sshAuthType !== 'password' && (
+                    {(sshAuthType === 'key' || sshAuthType === 'certificate') && (
                       <div className="space-y-4 rounded-xl border border-slate-800 bg-slate-950/40 p-4">
                         {/* Hidden file input for web fallback */}
                         <input
