@@ -26,7 +26,6 @@ pub struct EmbedRect {
 mod imp {
     use super::EmbedRect;
     use gtk::glib::object::Cast;
-    use gtk::glib::translate::ToGlibPtr;
     use gtk::prelude::*;
     use x11::xlib;
     use std::cell::RefCell;
@@ -43,6 +42,12 @@ mod imp {
         /// destroyed: destroying a container that had FreeRDP's (foreign) window inside crashed
         /// GDK's X event handling shortly afterwards.
         static POOL: RefCell<Vec<gdk::Window>> = const { RefCell::new(Vec::new()) };
+        /// Sessions whose area is visible in the UI (frontend `update`). The container itself is
+        /// shown only once FreeRDP's window exists in it – until then the page shows its own
+        /// "connecting" placeholder. Showing an empty native window earlier exposed whatever was
+        /// drawn there before (e.g. the SSH terminal of the previous tab) and appeared before the
+        /// web view had even repainted the new tab.
+        static WANTED: RefCell<HashMap<String, bool>> = RefCell::new(HashMap::new());
         /// The keyboard-focus watcher runs while containers exist.
         static WATCHING: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
     }
@@ -104,6 +109,55 @@ mod imp {
                 xlib::XFree(children as *mut _);
             }
             result
+        }
+    }
+
+    /// FreeRDP's window of this session inside the container, if it already exists. A reused
+    /// container can still hold the window of the previous process (reconnect) – and X11 may
+    /// even give the new window the same id – so the window is matched by its `_NET_WM_PID`.
+    fn session_window(session_id: &str, container: &gdk::Window) -> Option<xlib::Window> {
+        let cx = xid_of(container)?;
+        let pid = super::process_of(session_id)?;
+        with_x(|dpy| unsafe {
+            let atom = xlib::XInternAtom(dpy, c"_NET_WM_PID".as_ptr(), xlib::True);
+            if atom == 0 {
+                return None;
+            }
+            let mut root = 0;
+            let mut parent = 0;
+            let mut children: *mut xlib::Window = std::ptr::null_mut();
+            let mut n: u32 = 0;
+            if xlib::XQueryTree(dpy, cx, &mut root, &mut parent, &mut children, &mut n) == 0 || children.is_null() {
+                return None;
+            }
+            let list = std::slice::from_raw_parts(children, n as usize).to_vec();
+            xlib::XFree(children as *mut _);
+            list.into_iter().rev().find(|&w| {
+                let mut actual_type = 0;
+                let mut format = 0;
+                let mut items = 0;
+                let mut after = 0;
+                let mut data: *mut u8 = std::ptr::null_mut();
+                let ok = xlib::XGetWindowProperty(
+                    dpy, w, atom, 0, 1, xlib::False, xlib::XA_CARDINAL,
+                    &mut actual_type, &mut format, &mut items, &mut after, &mut data,
+                ) == 0;
+                let found = ok && !data.is_null() && format == 32 && items == 1 && *(data as *const std::os::raw::c_ulong) as u32 == pid;
+                if !data.is_null() {
+                    xlib::XFree(data as *mut _);
+                }
+                found
+            })
+        })
+        .flatten()
+    }
+
+    /// Shows the container when the UI wants it and FreeRDP's window is ready.
+    fn show_if_ready(session_id: &str, window: &gdk::Window) {
+        let wanted = WANTED.with(|w| w.borrow().get(session_id).copied().unwrap_or(false));
+        if wanted && !window.is_visible() && session_window(session_id, window).is_some() {
+            window.show();
+            window.raise();
         }
     }
 
@@ -175,11 +229,16 @@ mod imp {
         }
         let app = app.clone();
         gtk::glib::timeout_add_local(std::time::Duration::from_millis(100), move || {
-            let containers: Vec<gdk::Window> = CONTAINERS.with(|c| c.borrow().values().cloned().collect());
-            if containers.is_empty() {
+            let entries: Vec<(String, gdk::Window)> =
+                CONTAINERS.with(|c| c.borrow().iter().map(|(k, v)| (k.clone(), v.clone())).collect());
+            if entries.is_empty() {
                 WATCHING.with(|w| w.set(false));
                 return gtk::glib::ControlFlow::Break;
             }
+            for (sid, win) in &entries {
+                show_if_ready(sid, win);
+            }
+            let containers: Vec<gdk::Window> = entries.into_iter().map(|(_, w)| w).collect();
             let active = app
                 .get_webview_window("main")
                 .and_then(|w| w.gtk_window().ok())
@@ -265,20 +324,17 @@ mod imp {
             CONTAINERS.with(|c| c.borrow_mut().insert(session_id.to_string(), window.clone()));
             window
         });
+        // Not shown yet: `show_if_ready` maps it once FreeRDP's window exists and the UI wants it.
+        window.hide();
         window.move_resize(px(rect.x) + ox, px(rect.y) + oy, w, h);
-        // A native X11 child with no background keeps whatever pixels occupied this
-        // area before it was mapped (often the previous SSH terminal). Give both new
-        // and pooled containers an opaque background before showing them.
-        let background = gdk::ffi::GdkRGBA { red: 0.0, green: 0.0, blue: 0.0, alpha: 1.0 };
-        unsafe { gdk::ffi::gdk_window_set_background_rgba(window.to_glib_none().0, &background) };
-        // GDK and the focus/clear helper use separate X connections. Complete GDK's
-        // create/background requests before clearing on the other connection.
+        // Opaque background set directly on the X window (GDK 3 may leave native child windows
+        // without one, so the area would keep the previous pixels while FreeRDP starts).
+        // GDK and this helper use separate X connections – finish GDK's requests first.
         window.display().sync();
         if let Some(xid) = xid_of(&window) {
-            with_x(|dpy| unsafe { xlib::XClearWindow(dpy, xid) });
+            with_x(|dpy| unsafe { xlib::XSetWindowBackground(dpy, xid, 0) });
         }
-        window.show();
-        window.raise();
+        WANTED.with(|w| w.borrow_mut().insert(session_id.to_string(), false));
         watch_focus(app);
         let xid = window
             .downcast_ref::<gdkx11::X11Window>()
@@ -290,7 +346,9 @@ mod imp {
     /// Position, size and visibility of a container. Must run on the GTK main thread.
     pub fn update(app: &AppHandle, session_id: &str, rect: EmbedRect, visible: bool) {
         let Some(window) = CONTAINERS.with(|c| c.borrow().get(session_id).cloned()) else { return };
-        if !visible || rect.width < 2.0 || rect.height < 2.0 {
+        let visible = visible && rect.width >= 2.0 && rect.height >= 2.0;
+        WANTED.with(|w| w.borrow_mut().insert(session_id.to_string(), visible));
+        if !visible {
             if window.is_visible() {
                 take_focus_back(app, Some(&window));
                 window.hide();
@@ -299,14 +357,18 @@ mod imp {
         }
         let (ox, oy) = host(app).map(|(_, x, y)| (x, y)).unwrap_or((0, 0));
         window.move_resize(px(rect.x) + ox, px(rect.y) + oy, px(rect.width).max(1), px(rect.height).max(1));
-        window.show();
-        window.raise();
+        if window.is_visible() {
+            window.raise();
+        } else {
+            show_if_ready(session_id, &window);
+        }
     }
 
     pub fn destroy(app: &AppHandle, session_id: &str) {
         let Some(window) = CONTAINERS.with(|c| c.borrow().get(session_id).cloned()) else { return };
         take_focus_back(app, Some(&window));
         CONTAINERS.with(|c| c.borrow_mut().remove(session_id));
+        WANTED.with(|w| w.borrow_mut().remove(session_id));
         window.hide();
         POOL.with(|p| p.borrow_mut().push(window));
     }
@@ -339,8 +401,31 @@ pub fn xfreerdp_installed() -> bool {
     }
 }
 
+/// FreeRDP process drawing in each session container (set by `rdp::spawn_rdp_session`).
+static PROCESSES: std::sync::Mutex<Option<std::collections::HashMap<String, u32>>> = std::sync::Mutex::new(None);
+
+pub fn register_process(session_id: &str, pid: u32) {
+    if let Ok(mut map) = PROCESSES.lock() {
+        map.get_or_insert_with(Default::default).insert(session_id.to_string(), pid);
+    }
+}
+
+#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
+fn process_of(session_id: &str) -> Option<u32> {
+    PROCESSES.lock().ok()?.as_ref()?.get(session_id).copied()
+}
+
+fn forget_process(session_id: &str) {
+    if let Ok(mut map) = PROCESSES.lock() {
+        if let Some(m) = map.as_mut() {
+            m.remove(session_id);
+        }
+    }
+}
+
 /// Removes the container of a session (any thread).
 pub fn destroy_container(app: &tauri::AppHandle, session_id: &str) {
+    forget_process(session_id);
     #[cfg(target_os = "linux")]
     {
         let sid = session_id.to_string();

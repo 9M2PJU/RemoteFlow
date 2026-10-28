@@ -4,6 +4,12 @@ Numer wersji: `MAJOR.MINOR.PATCH`. Każda zmiana podnosi co najmniej numer PATCH
 Wersja jest zapisana w trzech plikach, które muszą być zgodne (pilnuje tego test `version_tests` w `src-tauri/src/lib.rs`):
 `package.json` (wyświetlana w aplikacji), `src-tauri/tauri.conf.json` (instalator) i `src-tauri/Cargo.toml`.
 
+## 1.6.18 – FreeRDP w oknie: bez prześwitywania poprzedniej karty
+- **Przyczyna (odtworzona w teście z przechwytywaniem klatek co ~130 ms):** natywne okno FreeRDP pojawiało się, zanim widok aplikacji zdążył narysować nową kartę RDP – przez ułamek sekundy nad wciąż widoczną kartą SSH (pasek kart i terminal) leżał pusty prostokąt, a w środowiskach z kompozytorem także jego niewyczyszczona zawartość. Poprawka 1.6.16 tylko ustawiała tło kontenera (a czyszczenie przed jego pokazaniem nie działało), nie zmieniała kolejności.
+- Kontener jest teraz pokazywany dopiero gdy: (1) widok narysował kartę RDP (dwie klatki animacji + 50 ms po pokazaniu karty – także przy przełączaniu z innej karty) i (2) w kontenerze istnieje już okno FreeRDP tej sesji (rozpoznawane po `_NET_WM_PID`, bo po ponownym połączeniu X11 potrafi nadać nowemu oknu ten sam identyfikator co poprzedniemu). Do tego czasu widać planszę „Uruchamianie FreeRDP…”; gdy połączenie się nie uda, kontener w ogóle się nie pojawia.
+- Tło kontenera jest ustawiane bezpośrednio w X11 (czarne), niezależnie od GDK.
+- Osadzony FreeRDP kończy się razem z RemoteFlow także po awarii lub zabiciu programu (`PR_SET_PDEATHSIG`) – wcześniej zostawał osierocony proces.
+
 ## 1.6.17 – poprawki z audytu kodu
 - **SSH – metoda logowania zgodna z profilem poświadczeń.** Połączenie bez własnego hasła lub klucza używa metody swojego profilu (wcześniej typ był kopiowany tylko przy wyborze profilu, więc późniejsza zmiana profilu np. na klucz psuła logowanie). Własne hasło/klucz połączenia i wybór „Agent SSH” mają pierwszeństwo. Tę samą regułę stosują backend, monit o puste hasło i pytanie o hasło klucza.
 - **Agent SSH do wyboru w połączeniu** (ssh-agent, Pageant, KeePassXC/1Password). Od 1.6.1 SSH nie przechodzi już niejawnie do agenta, a tej metody nie dało się wybrać. Import z mRemoteNG ustawia agenta dla połączeń SSH bez zapisanego hasła (klucze PuTTY/Pageant).

@@ -67,6 +67,9 @@ export const FreeRdpEmbedViewer: React.FC<{ session: SessionInfo; isActive: bool
   isActiveRef.current = isActive;
   const statusRef = useRef(status);
   statusRef.current = status;
+  // The native window may cover the area only after the web view has really painted this tab –
+  // otherwise it appears over the previous tab (e.g. the SSH terminal) for a moment.
+  const paintedRef = useRef(false);
 
   const rectOf = useCallback((): EmbedRect | null => {
     const el = areaRef.current;
@@ -125,7 +128,7 @@ export const FreeRdpEmbedViewer: React.FC<{ session: SessionInfo; isActive: bool
       const el = areaRef.current;
       const rect = rectOf();
       const running = statusRef.current === 'starting' || statusRef.current === 'connected';
-      let visible = !!el && !!rect && running && isActiveRef.current && document.visibilityState === 'visible'
+      let visible = !!el && !!rect && running && isActiveRef.current && paintedRef.current && document.visibilityState === 'visible'
         && !document.querySelector('[data-session-switcher]');
       if (visible && el && rect) {
         const r = el.getBoundingClientRect();
@@ -157,6 +160,28 @@ export const FreeRdpEmbedViewer: React.FC<{ session: SessionInfo; isActive: bool
   useEffect(() => {
     lastSent.current = '';
   }, [isActive, status]);
+
+  // Tab shown: wait until the browser has presented a frame with this tab (two animation frames
+  // plus a short margin for the compositor) before the native window may appear.
+  useEffect(() => {
+    paintedRef.current = false;
+    lastSent.current = '';
+    if (!isActive) return;
+    let cancelled = false;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const raf = requestAnimationFrame(() => requestAnimationFrame(() => {
+      timer = setTimeout(() => {
+        if (cancelled) return;
+        paintedRef.current = true;
+        lastSent.current = '';
+      }, 50);
+    }));
+    return () => {
+      cancelled = true;
+      cancelAnimationFrame(raf);
+      if (timer) clearTimeout(timer);
+    };
+  }, [isActive]);
 
   // FreeRDP takes the keyboard when the pointer enters the session; a click on the web content
   // (outside the native window) gives it back to RemoteFlow.

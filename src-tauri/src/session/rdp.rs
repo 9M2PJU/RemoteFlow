@@ -159,6 +159,20 @@ pub fn spawn_rdp_session(
         emit_log(tr!("✓ Wykryto klienta RDP: {}", "✓ RDP client found: {}", binary));
 
         let mut cmd = Command::new(&binary);
+        // FreeRDP drawing inside the RemoteFlow window cannot outlive it: if RemoteFlow ends
+        // without closing the tab (crash, kill), the kernel ends FreeRDP too. The spawning thread
+        // waits for the process for its whole life, so the signal is tied to the right thread.
+        #[cfg(target_os = "linux")]
+        if config.embed.is_some() {
+            use std::os::unix::process::CommandExt;
+            // SAFETY: prctl is async-signal-safe; nothing else runs between fork and exec.
+            unsafe {
+                cmd.pre_exec(|| {
+                    libc::prctl(libc::PR_SET_PDEATHSIG, libc::SIGKILL);
+                    Ok(())
+                });
+            }
+        }
 
         let (rdp_user, rdp_domain) = normalize_rdp_identity(&config.username, config.domain.as_deref());
         let mut stdin_password: Option<String> = None;
@@ -278,6 +292,9 @@ pub fn spawn_rdp_session(
 
         let mut child = match cmd.spawn() {
             Ok(c) => {
+                if config.embed.is_some() {
+                    crate::session::rdp_embed::register_process(&sid, c.id());
+                }
                 emit_log(tr!("⚡ Uruchomiono natywne okno sesji RDP (PID: {}).", "⚡ Native RDP session window started (PID: {}).", c.id()));
                 let _ = app.emit(&format!("rdp-status-{}", sid), "connected");
                 c
