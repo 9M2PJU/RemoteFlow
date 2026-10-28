@@ -2,9 +2,11 @@
 
 **English** | [Polski](README.pl.md)
 
-RemoteFlow is a cross-platform **SSH, SFTP and RDP connection manager** for Windows and Linux, inspired by mRemoteNG.
-All connections, passwords and keys are kept in a local, encrypted vault. The app is built with
-**Tauri 2 + Rust** (backend) and **React 19 + TypeScript** (UI).
+RemoteFlow is a desktop **SSH, SFTP and RDP connection manager for Windows and Linux**, inspired by mRemoteNG. It brings remote terminals, remote desktops, file transfers and SSH tunnels into one tabbed workspace with split-screen layouts.
+
+Organise hosts into nested groups, reuse credential profiles and switch between active sessions without opening separate client windows. Connection settings, passwords and stored private keys are kept in a local encrypted vault protected by a Master Password.
+
+The application uses **Tauri 2 and Rust** for the native backend, **React 19 and TypeScript** for the interface, **xterm.js** for SSH terminals and **IronRDP/WebAssembly** for the embedded RDP client. Linux also supports an embedded native FreeRDP client.
 
 ![RemoteFlow – main window](docs/screenshots/main-en.png)
 
@@ -13,10 +15,14 @@ All connections, passwords and keys are kept in a local, encrypted vault. The ap
 ### Connections and workspace
 - Polish and English user interface – switch the language in the header, on the login screen or in Settings (applied instantly).
 - Dark or light theme (Settings), optionally with a dark terminal in the light theme.
-- Connection tree with nested folders, colours, search (name, host, IP, tags) and drag & drop.
-- Tabs and split-screen layouts: single, horizontal, vertical, 3 columns and 2×2 grid.
+- Connection tree with nested groups, colours, search (name, host, IP, tags) and drag & drop. Group expansion and per-group A–Z sorting are remembered between launches.
+- Group context menus: connect to a group, add hosts or subgroups, sort, edit, delete, and expand or collapse all groups.
+- Clone a saved connection configuration or open another session using the same connection.
+- Tabs and split-screen layouts: single, horizontal, vertical, 3 columns and 2×2 grid. Drag tabs between panes and choose a session for each pane.
+- Tab scroll buttons and a searchable list of open sessions with group paths, host details and connection status. Long labels scroll to reveal their contents.
 - Reusable credential profiles shared by many connections.
-- Optional confirmations before closing connections and the application (configurable).
+- Before password-based login with an empty password, choose to continue without one or enter and save a password for that connection.
+- Compact confirmations beside the affected connection or tab, with optional prompts before closing sessions and the application.
 
 ### SSH
 - Built-in terminal (xterm.js) with a full 16-colour palette – `mc`, `htop` and similar tools render correctly.
@@ -30,7 +36,7 @@ All connections, passwords and keys are kept in a local, encrypted vault. The ap
 - Multi-selection (click, Ctrl, Shift, Ctrl+A) and one-click upload / download of files and whole folders.
 - Drag & drop between the panes, onto folders and from the system file manager.
 - Filtering and recursive search on both sides, creating folders on both sides, deleting on the server.
-- Progress in the status bar, overwrite confirmation, right-click context menu.
+- Transfer progress, overwrite confirmation and right-click context menus. Server deletion shows the current path and selected-item counter, followed by a result or error; folders are deleted recursively.
 - Start folders saved per connection (local and server); by default the home folders are opened.
 
 ### RDP
@@ -48,8 +54,9 @@ All connections, passwords and keys are kept in a local, encrypted vault. The ap
 - **HMAC-SHA256** integrity check of the whole vault file – modifications made outside the app are detected.
 - Quick unlock with a PIN (the master key wrapped by the PIN exists only in memory).
 - Automatic lock after inactivity and when the operating system is locked (Windows, Linux logind / ScreenSaver).
+- Unfinished connection edits survive a lock and can be saved after unlocking with PIN or Master Password.
 - Periodic vault backups, restore from Settings.
-- Encrypted export / import of the vault.
+- Password-protected `.rfvault` export / import of all connections or selected groups, including subgroups and relevant credential profiles. Connections outside groups can be included separately. Optional plaintext JSON export requires explicit confirmation.
 - FreeRDP certificate conflicts show the current SHA-256 fingerprint for verification and explicit approval. Reconnecting uses that exact fingerprint without disabling certificate checks or deleting the shared FreeRDP certificate cache.
 
 <img src="docs/screenshots/login-en.png" alt="RemoteFlow – login screen" width="600">
@@ -61,7 +68,7 @@ All connections, passwords and keys are kept in a local, encrypted vault. The ap
 ## Download
 
 Ready-made builds are published on the [Releases](https://github.com/jacek-nikiel/RemoteFlow/releases) page (when available).
-Requirements: Windows 10/11 x64 (WebView2 is included in the system) or a Linux distribution with WebKitGTK 4.1.
+Requirements: Windows 10/11 x64 with the Microsoft Edge WebView2 Runtime, or Linux with WebKitGTK 4.1 and GTK 3. Embedding the native Linux RDP client additionally requires FreeRDP and X11/XWayland.
 
 Linux: if the window flickers, stays blank or the console shows `DRM_IOCTL_MODE_CREATE_DUMB failed` / `Failed to create GBM buffer`, switch *Settings → Colour theme → Window rendering (Linux)* to *Compatible* (or start once with `REMOTEFLOW_SAFE_RENDERING=1 remoteflow`).
 
@@ -78,7 +85,7 @@ Linux: if the window flickers, stays blank or the console shows `DRM_IOCTL_MODE_
 
 ### Commands
 ```bash
-npm install
+npm ci
 npm run tauri dev      # development mode
 npm run tauri build    # release build + installers
 ```
@@ -100,7 +107,10 @@ The portable build does not automatically create an application menu entry. Keep
 ### Tests
 ```bash
 node scripts/check-i18n.mjs   # every UI text has an English translation
+npm run build                # strict TypeScript checks and production UI build
+python3 scripts/test-linux-desktop.py # portable desktop integration (Linux)
 cd src-tauri
+cargo check --all-targets     # compiler diagnostics for the current platform
 cargo test --lib              # unit tests
 cargo test --lib -- --ignored # integration tests (require local SSH/RDP test servers)
 ```
@@ -121,7 +131,7 @@ Backups are kept in the `backups` folder next to the vault.
 | Backend | Rust 2024, tokio, ssh2 (libssh2), rustls + native-tls, tokio-tungstenite, ironrdp-rdcleanpath |
 | Cryptography | argon2, aes-gcm, hmac + sha2, zeroize |
 | UI | React 19, TypeScript, Vite 8, Tailwind CSS 4, lucide-react |
-| Terminal / RDP | xterm.js 6, IronRDP (WebAssembly) |
+| Terminal / RDP | xterm.js 6, IronRDP (WebAssembly), optional FreeRDP on Linux and system RDP clients |
 | Platform | clipboard-win (Windows), zbus / GTK (Linux) |
 
 ## Versioning

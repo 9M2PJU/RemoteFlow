@@ -160,18 +160,6 @@ export interface KnownHostEntry {
   fingerprint: string;
 }
 
-export interface ExportPayload {
-  format: string;
-  version: number;
-  isEncrypted: boolean;
-  saltBase64?: string;
-  nonceBase64?: string;
-  ciphertextBase64?: string;
-  groups?: Group[];
-  connections?: Connection[];
-  exportedAt: string;
-}
-
 export interface SftpFileEntry {
   name: string;
   path: string;

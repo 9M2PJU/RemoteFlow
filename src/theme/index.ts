@@ -83,7 +83,6 @@ const subscribe = (cb: () => void) => {
 };
 
 export const useThemeState = (): ThemeState => useSyncExternalStore(subscribe, getThemeState, getThemeState);
-export const useTheme = (): Theme => useThemeState().theme;
 
 /** true when the SSH terminal should use its light colours. */
 export const useLightTerminal = (): boolean => {

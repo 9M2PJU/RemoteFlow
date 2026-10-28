@@ -20,7 +20,7 @@ use session::{
     app_exit, app_maximize_window, clipboard_read_files, clipboard_read_text, clipboard_write_text,
     local_list_dir, open_shared_folder, pick_local_folder, pick_private_key_file,
     read_local_paths_for_rdp_clipboard, save_dropped_file_to_shared, session_close,
-    session_connect, session_launch_external_rdp, session_list, session_rdp_password, session_resize,
+    session_connect, session_launch_external_rdp, session_rdp_password, session_resize,
     session_send_input, sftp_list, sftp_upload_file, sftp_upload_paths, SessionManager,
 };
 use session::clipstage::{clipboard_sequence, rdp_clip_stage_begin, rdp_clip_stage_commit, rdp_clip_stage_dir, rdp_clip_stage_file};
@@ -86,7 +86,6 @@ pub fn run() {
             vault_backup_now,
             vault_list_backups,
             vault_restore_backup,
-            session_list,
             session_rdp_password,
             session_connect,
             session_send_input,

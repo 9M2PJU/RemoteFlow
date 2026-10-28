@@ -408,13 +408,6 @@ export const api = {
     mockConnections = mockConnections.map(c => c.groupId === groupId ? { ...c, groupId: null } : c);
   },
 
-  async listSessions(): Promise<SessionInfo[]> {
-    if (isTauri()) {
-      return await invoke<SessionInfo[]>('session_list');
-    }
-    return mockSessions;
-  },
-
   async connectSession(
     sessionId: string | null | undefined,
     connectionId: string,

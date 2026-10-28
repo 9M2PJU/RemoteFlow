@@ -150,7 +150,7 @@ pub(crate) fn winproc_where(bin: &str) -> std::io::Result<std::process::Output> 
 }
 
 /// RDP password for the embedded client, read from the vault at the moment of (re)connecting.
-/// It is not kept in `SessionInfo` (returned by `session_list`), so once the vault is locked it
+/// It is not kept in `SessionInfo`, so once the vault is locked it
 /// can no longer be obtained – a reconnect then needs an unlocked vault.
 #[tauri::command]
 pub fn session_rdp_password(
@@ -168,12 +168,6 @@ pub fn session_rdp_password(
         session.connection_id.clone()
     };
     Ok(resolve_connection(&auth_state, &connection_id)?.password)
-}
-
-#[tauri::command]
-pub fn session_list(state: tauri::State<'_, SessionState>) -> Result<Vec<SessionInfo>, String> {
-    let mgr = state.lock().map_err(|e| e.to_string())?;
-    Ok(mgr.sessions.values().cloned().collect())
 }
 
 /// Credentials and connection data resolved from the (integrity-verified) vault.
@@ -891,6 +885,7 @@ pub async fn save_dropped_file_to_shared(
     .map_err(|e| e.to_string())?
 }
 
+#[cfg(target_os = "linux")]
 fn decode_file_uri(uri: &str) -> Option<String> {
     let raw = uri.strip_prefix("file://")?;
     let mut bytes = Vec::with_capacity(raw.len());

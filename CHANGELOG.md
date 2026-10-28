@@ -4,6 +4,11 @@ Numer wersji: `MAJOR.MINOR.PATCH`. Każda zmiana podnosi co najmniej numer PATCH
 Wersja jest zapisana w trzech plikach, które muszą być zgodne (pilnuje tego test `version_tests` w `src-tauri/src/lib.rs`):
 `package.json` (wyświetlana w aplikacji), `src-tauri/tauri.conf.json` (instalator) i `src-tauri/Cargo.toml`.
 
+## 1.6.14 – aktualna dokumentacja i porządki w kodzie
+- Uaktualniono polski i angielski opis aplikacji, funkcji, technologii oraz wymagań i poleceń weryfikacji.
+- Usunięto nieużywane zależności `clsx` i `tailwind-merge`, metodę i polecenie `session_list`, frontendowy typ `ExportPayload`, hook `useTheme`, zbędny znacznik czasu aktywności i dziewięć nieaktualnych tłumaczeń.
+- Dekoder URI schowka jest kompilowany tylko na Linuksie, gdzie jest używany.
+
 ## 1.6.13 – pozycja potwierdzenia usuwania
 - Potwierdzenie usunięcia połączenia pojawia się obok jego wiersza w drzewie, zamiast obok pozycji w menu kontekstowym. Analogicznie poprawiono usuwanie grup.
 

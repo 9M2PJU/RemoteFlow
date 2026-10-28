@@ -56,9 +56,6 @@ const t = useT();
   const [isImportExportModalOpen, setIsImportExportModalOpen] = useState(false);
   const [passphrasePrompt, setPassphrasePrompt] = useState<{ conn: Connection; allowDuplicate: boolean } | null>(null);
 
-  // Inactivity tracking
-  const lastActivityRef = useRef<number>(Date.now());
-
   // Load vault status on mount
   const checkStatus = useCallback(async () => {
     try {
@@ -140,7 +137,6 @@ const t = useT();
     let lastReport = 0;
     const updateActivity = () => {
       const now = Date.now();
-      lastActivityRef.current = now;
       if (now - lastReport > 15000) {
         lastReport = now;
         api.touchActivity().catch(() => {});

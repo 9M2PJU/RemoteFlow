@@ -2,9 +2,11 @@
 
 [English](README.md) | **Polski**
 
-RemoteFlow to wieloplatformowy **menedżer połączeń SSH, SFTP i RDP** dla systemów Windows i Linux, inspirowany mRemoteNG.
-Wszystkie połączenia, hasła i klucze są przechowywane w lokalnym, zaszyfrowanym sejfie. Aplikacja jest zbudowana w oparciu o
-**Tauri 2 + Rust** (backend) oraz **React 19 + TypeScript** (interfejs).
+RemoteFlow to desktopowy **menedżer połączeń SSH, SFTP i RDP dla systemów Windows i Linux**, inspirowany mRemoteNG. Łączy zdalne terminale, pulpity, przesyłanie plików i tunele SSH w jednym obszarze roboczym z zakładkami i podziałem ekranu.
+
+Pozwala organizować hosty w zagnieżdżone grupy, korzystać ze wspólnych profili poświadczeń i przełączać aktywne sesje bez otwierania osobnych okien klientów. Konfiguracje połączeń, hasła i zapisane klucze prywatne są przechowywane w lokalnym, zaszyfrowanym sejfie chronionym hasłem głównym (Master Password).
+
+Aplikacja wykorzystuje **Tauri 2 i Rust** jako natywny backend, **React 19 i TypeScript** do budowy interfejsu, **xterm.js** do terminali SSH oraz **IronRDP/WebAssembly** jako wbudowanego klienta RDP. Na Linuksie obsługuje również osadzony, natywny klient FreeRDP.
 
 ![RemoteFlow – okno główne](docs/screenshots/main.png)
 
@@ -13,10 +15,14 @@ Wszystkie połączenia, hasła i klucze są przechowywane w lokalnym, zaszyfrowa
 ### Połączenia i obszar roboczy
 - Interfejs po polsku i angielsku – zmiana języka w nagłówku, na ekranie logowania lub w Ustawieniach (działa od razu).
 - Ciemny lub jasny motyw (Ustawienia), opcjonalnie z ciemnym terminalem w jasnym motywie.
-- Drzewo połączeń z zagnieżdżonymi folderami, kolorami, wyszukiwaniem (nazwa, host, IP, tagi) i przeciąganiem.
-- Zakładki i podział ekranu: pojedynczy, poziomy, pionowy, 3 kolumny i siatka 2×2.
+- Drzewo połączeń z zagnieżdżonymi grupami, kolorami, wyszukiwaniem (nazwa, host, IP, tagi) i przeciąganiem. Stan rozwinięcia grup i sortowanie A–Z w wybranych grupach są zapamiętywane po restarcie.
+- Menu kontekstowe grup: połączenie z hostami w grupie, dodawanie hostów i podgrup, sortowanie, edycja, usuwanie oraz rozwijanie i zwijanie wszystkich grup.
+- Klonowanie zapisanej konfiguracji połączenia lub otwieranie kolejnej sesji tego samego połączenia.
+- Zakładki i podział ekranu: pojedynczy, poziomy, pionowy, 3 kolumny i siatka 2×2. Przeciąganie zakładek między panelami i wybór sesji dla każdego panelu.
+- Przyciski przewijania zakładek i przeszukiwalna lista otwartych sesji ze ścieżką grupy, danymi hosta i stanem połączenia. Długie etykiety przewijają się, odsłaniając zawartość.
 - Wspólne profile poświadczeń używane przez wiele połączeń.
-- Opcjonalne potwierdzenia przy zamykaniu połączeń i programu (do wyłączenia w Ustawieniach).
+- Przy logowaniu hasłem, jeśli hasło jest puste, wybór między próbą połączenia bez hasła a wprowadzeniem i zapisaniem hasła dla danego połączenia.
+- Małe okna potwierdzenia przy wskazanym połączeniu lub zakładce; pytania o zamknięcie sesji i programu można wyłączyć w Ustawieniach.
 
 ### SSH
 - Wbudowany terminal (xterm.js) z pełną paletą 16 kolorów – `mc`, `htop` i podobne narzędzia wyświetlają się poprawnie.
@@ -30,7 +36,7 @@ Wszystkie połączenia, hasła i klucze są przechowywane w lokalnym, zaszyfrowa
 - Zaznaczanie wielu elementów (klik, Ctrl, Shift, Ctrl+A) i wysyłanie / pobieranie plików oraz całych katalogów jednym kliknięciem.
 - Przeciąganie między panelami, na katalogi oraz z systemowego menedżera plików.
 - Filtrowanie i wyszukiwanie w podkatalogach po obu stronach, tworzenie katalogów po obu stronach, usuwanie na serwerze.
-- Postęp na pasku stanu, pytanie o nadpisanie, menu pod prawym przyciskiem myszy.
+- Postęp transferów, pytanie o nadpisanie i menu kontekstowe. Usuwanie z serwera pokazuje aktualną ścieżkę i licznik zaznaczonych pozycji, a następnie wynik lub błąd; katalogi są usuwane wraz z zawartością.
 - Katalogi startowe zapamiętywane osobno dla każdego połączenia (lokalny i na serwerze); domyślnie otwierane są katalogi domowe.
 
 ### RDP
@@ -48,9 +54,10 @@ Wszystkie połączenia, hasła i klucze są przechowywane w lokalnym, zaszyfrowa
 - Kontrola integralności całego pliku sejfu **HMAC-SHA256** – zmiany wprowadzone poza aplikacją są wykrywane.
 - Szybkie odblokowanie kodem PIN (klucz główny zabezpieczony PIN-em istnieje wyłącznie w pamięci).
 - Automatyczna blokada po bezczynności i po zablokowaniu systemu operacyjnego (Windows, Linux logind / ScreenSaver).
+- Niedokończona edycja połączenia zostaje zachowana podczas blokady i można ją zapisać po odblokowaniu PIN-em lub hasłem głównym.
 - Okresowe kopie zapasowe sejfu i przywracanie z Ustawień.
 - Konflikt certyfikatu FreeRDP otwiera komunikat z odciskiem SHA-256 do sprawdzenia u administratora. Po jawnej akceptacji można połączyć się ponownie z zaakceptowanym certyfikatem, bez wyłączania weryfikacji i usuwania wspólnego magazynu certyfikatów FreeRDP.
-- Szyfrowany eksport i import sejfu.
+- Eksport i import chroniony hasłem w formacie `.rfvault`: wszystkie połączenia lub wybrane grupy wraz z podgrupami i odpowiednimi profilami poświadczeń. Połączenia bez grupy można dołączyć osobno. Opcjonalny eksport do jawnego JSON wymaga wyraźnego potwierdzenia.
 
 <img src="docs/screenshots/login.png" alt="RemoteFlow – ekran logowania" width="600">
 
@@ -61,7 +68,7 @@ Wszystkie połączenia, hasła i klucze są przechowywane w lokalnym, zaszyfrowa
 ## Pobieranie
 
 Gotowe wersje są publikowane na stronie [Releases](https://github.com/jacek-nikiel/RemoteFlow/releases) (gdy będą dostępne).
-Wymagania: Windows 10/11 x64 (WebView2 jest wbudowany w system) lub dystrybucja Linuksa z WebKitGTK 4.1.
+Wymagania: Windows 10/11 x64 ze środowiskiem Microsoft Edge WebView2 Runtime lub Linux z WebKitGTK 4.1 i GTK 3. Osadzanie natywnego klienta RDP na Linuksie wymaga dodatkowo FreeRDP i X11/XWayland.
 
 Linux: jeśli okno miga, jest puste albo w konsoli pojawia się `DRM_IOCTL_MODE_CREATE_DUMB failed` / `Failed to create GBM buffer`, przełącz *Ustawienia → Motyw kolorystyczny → Renderowanie okna (Linux)* na *Zgodne* (albo uruchom raz `REMOTEFLOW_SAFE_RENDERING=1 remoteflow`).
 
@@ -78,7 +85,7 @@ Linux: jeśli okno miga, jest puste albo w konsoli pojawia się `DRM_IOCTL_MODE_
 
 ### Polecenia
 ```bash
-npm install
+npm ci
 npm run tauri dev      # tryb deweloperski
 npm run tauri build    # wersja produkcyjna + instalatory
 ```
@@ -108,7 +115,10 @@ Plik programu musi mieć prawo wykonywania. Skrypt zapisuje skrót i ikonę w `$
 ### Testy
 ```bash
 node scripts/check-i18n.mjs   # każdy tekst interfejsu ma tłumaczenie angielskie
+npm run build                # ścisła kontrola TypeScript i produkcyjna kompilacja interfejsu
+python3 scripts/test-linux-desktop.py # integracja portable z pulpitem (Linux)
 cd src-tauri
+cargo check --all-targets     # diagnostyka kompilatora dla bieżącego systemu
 cargo test --lib              # testy jednostkowe
 cargo test --lib -- --ignored # testy integracyjne (wymagają lokalnych serwerów testowych SSH/RDP)
 ```
@@ -129,7 +139,7 @@ Kopie zapasowe trafiają do folderu `backups` obok sejfu.
 | Backend | Rust 2024, tokio, ssh2 (libssh2), rustls + native-tls, tokio-tungstenite, ironrdp-rdcleanpath |
 | Kryptografia | argon2, aes-gcm, hmac + sha2, zeroize |
 | Interfejs | React 19, TypeScript, Vite 8, Tailwind CSS 4, lucide-react |
-| Terminal / RDP | xterm.js 6, IronRDP (WebAssembly) |
+| Terminal / RDP | xterm.js 6, IronRDP (WebAssembly), opcjonalnie FreeRDP na Linuksie i systemowe klienty RDP |
 | Zależne od systemu | clipboard-win (Windows), zbus / GTK (Linux) |
 
 ## Wersjonowanie
