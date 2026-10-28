@@ -217,9 +217,9 @@ export const FreeRdpEmbedViewer: React.FC<{ session: SessionInfo; isActive: bool
       </div>
 
       {/* The native FreeRDP window is placed exactly over this element */}
-      <div ref={areaRef} className="relative min-h-0 flex-1">
+      <div ref={areaRef} className="relative min-h-0 flex-1 bg-rdp-bg">
         {status === 'starting' && (
-          <div className="absolute inset-0 flex items-center justify-center gap-2 text-xs text-slate-400">
+          <div role="status" className="absolute inset-0 flex items-center justify-center gap-2 bg-rdp-bg text-xs text-slate-400">
             <Loader2 className="h-4 w-4 animate-spin text-cyan-400" />
             {t('Uruchamianie FreeRDP...')}
           </div>

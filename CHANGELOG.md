@@ -4,6 +4,14 @@ Numer wersji: `MAJOR.MINOR.PATCH`. Każda zmiana podnosi co najmniej numer PATCH
 Wersja jest zapisana w trzech plikach, które muszą być zgodne (pilnuje tego test `version_tests` w `src-tauri/src/lib.rs`):
 `package.json` (wyświetlana w aplikacji), `src-tauri/tauri.conf.json` (instalator) i `src-tauri/Cargo.toml`.
 
+## 1.6.16 – tło podczas nawiązywania RDP na Linuksie
+- Natywny kontener FreeRDP otrzymuje nieprzezroczyste, ciemne tło i jest czyszczony przed pokazaniem, również przy ponownym użyciu. Eliminuje to pozostawione piksele poprzedniej sesji SSH podczas inicjalizacji okna.
+- Osłony ładowania RDP i obszar pulpitu mają pełne tło zgodne z motywem; wyłączono animowanie widoczności paneli podczas przełączania kart.
+
+## 1.6.15 – wymagania uruchomieniowe Linuksa
+- Dodano polską i angielską instrukcję instalacji bibliotek dla Ubuntu 22.04/24.04/26.04 i CachyOS/Arch, opartą na zależnościach gotowej binarki.
+- Rozdzielono biblioteki obowiązkowe, narzędzia wybranych funkcji (FreeRDP, wybór plików, agent SSH, AppImage) oraz zależności do kompilacji. Dodano diagnostykę brakujących bibliotek.
+
 ## 1.6.14 – aktualna dokumentacja i porządki w kodzie
 - Uaktualniono polski i angielski opis aplikacji, funkcji, technologii oraz wymagań i poleceń weryfikacji.
 - Usunięto nieużywane zależności `clsx` i `tailwind-merge`, metodę i polecenie `session_list`, frontendowy typ `ExportPayload`, hook `useTheme`, zbędny znacznik czasu aktywności i dziewięć nieaktualnych tłumaczeń.

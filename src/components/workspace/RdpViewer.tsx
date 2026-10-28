@@ -2570,7 +2570,7 @@ export const RdpViewer: React.FC<Props> = ({ session, isActive }) => {
 
         {/* Loading / Connecting Overlay */}
         {isConnecting && (
-          <div className="absolute inset-0 bg-slate-950/85 backdrop-blur-sm flex flex-col items-center justify-center z-10 p-6 text-center">
+          <div role="status" className="absolute inset-0 bg-rdp-bg flex flex-col items-center justify-center z-10 p-6 text-center">
             <div className="relative flex items-center justify-center mb-4">
               <div className="h-16 w-16 rounded-2xl bg-blue-500/10 border border-blue-500/20 flex items-center justify-center text-blue-400 shadow-xl shadow-blue-500/10">
                 <Monitor className="h-8 w-8 animate-pulse" />

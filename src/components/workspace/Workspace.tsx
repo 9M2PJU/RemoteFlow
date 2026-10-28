@@ -35,7 +35,7 @@ const FreeRdpEmbedViewer = lazy(() =>
 );
 
 const ViewerLoading: React.FC<{ label: string }> = ({ label }) => (
-  <div className="flex h-full w-full items-center justify-center bg-slate-950 text-xs text-slate-400">
+  <div role="status" className="flex h-full w-full items-center justify-center bg-rdp-bg text-xs text-slate-400">
     {label}
   </div>
 );
@@ -478,7 +478,7 @@ export const Workspace: React.FC<Props> = ({
             onDragOver={(e) => handleDragOver(e, paneIndex)}
             onDragLeave={(e) => handleDragLeave(e, paneIndex)}
             onDrop={(e) => handleDrop(e, paneIndex)}
-            className={`relative flex flex-col rounded-xl border overflow-hidden transition-all bg-slate-950 min-w-0 min-h-0 ${
+            className={`relative flex flex-col rounded-xl border overflow-hidden transition-colors bg-slate-950 min-w-0 min-h-0 ${
               isPaneActive
                 ? 'border-cyan-500/60 shadow-xl shadow-cyan-950/40 ring-1 ring-cyan-500/40'
                 : 'border-slate-800/90 hover:border-slate-700'
@@ -567,7 +567,7 @@ export const Workspace: React.FC<Props> = ({
             )}
 
             {/* Session Terminal / RDP Canvas Content */}
-            <div className="relative flex-1 w-full h-full overflow-hidden min-w-0 min-h-0">
+            <div className={`relative flex-1 w-full h-full overflow-hidden min-w-0 min-h-0 ${session.protocol === 'rdp' ? 'bg-rdp-bg' : ''}`}>
               {session.protocol === 'ssh' ? (
                 <Suspense fallback={<ViewerLoading label={t('Ładowanie terminala...')} />}>
                   <SshTerminal session={session} isActive={isVisible} splitLayout={layout !== 'single'} />

@@ -26,6 +26,7 @@ pub struct EmbedRect {
 mod imp {
     use super::EmbedRect;
     use gtk::glib::object::Cast;
+    use gtk::glib::translate::ToGlibPtr;
     use gtk::prelude::*;
     use x11::xlib;
     use std::cell::RefCell;
@@ -265,6 +266,17 @@ mod imp {
             window
         });
         window.move_resize(px(rect.x) + ox, px(rect.y) + oy, w, h);
+        // A native X11 child with no background keeps whatever pixels occupied this
+        // area before it was mapped (often the previous SSH terminal). Give both new
+        // and pooled containers an opaque background before showing them.
+        let background = gdk::ffi::GdkRGBA { red: 0.0, green: 0.0, blue: 0.0, alpha: 1.0 };
+        unsafe { gdk::ffi::gdk_window_set_background_rgba(window.to_glib_none().0, &background) };
+        // GDK and the focus/clear helper use separate X connections. Complete GDK's
+        // create/background requests before clearing on the other connection.
+        window.display().sync();
+        if let Some(xid) = xid_of(&window) {
+            with_x(|dpy| unsafe { xlib::XClearWindow(dpy, xid) });
+        }
         window.show();
         window.raise();
         watch_focus(app);

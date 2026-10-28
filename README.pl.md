@@ -70,6 +70,8 @@ Aplikacja wykorzystuje **Tauri 2 i Rust** jako natywny backend, **React 19 i Typ
 Gotowe wersje są publikowane na stronie [Releases](https://github.com/jacek-nikiel/RemoteFlow/releases) (gdy będą dostępne).
 Wymagania: Windows 10/11 x64 ze środowiskiem Microsoft Edge WebView2 Runtime lub Linux z WebKitGTK 4.1 i GTK 3. Osadzanie natywnego klienta RDP na Linuksie wymaga dodatkowo FreeRDP i X11/XWayland.
 
+**Dla użytkowników Linuksa:** przygotowano [listę pakietów i polecenia instalacji](docs/LINUX.pl.md) dla Ubuntu i CachyOS/Arch, wraz z opcjonalnym FreeRDP, oknami wyboru plików i wymaganiami AppImage. To osobna lista od zależności do kompilacji opisanych poniżej.
+
 Linux: jeśli okno miga, jest puste albo w konsoli pojawia się `DRM_IOCTL_MODE_CREATE_DUMB failed` / `Failed to create GBM buffer`, przełącz *Ustawienia → Motyw kolorystyczny → Renderowanie okna (Linux)* na *Zgodne* (albo uruchom raz `REMOTEFLOW_SAFE_RENDERING=1 remoteflow`).
 
 ## Budowanie ze źródeł
