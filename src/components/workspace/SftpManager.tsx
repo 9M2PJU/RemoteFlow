@@ -22,6 +22,7 @@ import {
   MinusSquare,
   Pin,
   PinOff,
+  SquareTerminal,
   RefreshCw,
   Search,
   Server,
@@ -31,6 +32,7 @@ import {
 } from 'lucide-react';
 import { listen } from '@tauri-apps/api/event';
 import { getCurrentWebview } from '@tauri-apps/api/webview';
+import { getOscCwd } from '../../utils/terminalCwd';
 import { api, isTauri } from '../../services/api';
 import { SftpFileEntry, TransferProgress, TransferSummary } from '../../types';
 import { ConfirmDialog } from '../dialogs/ConfirmDialog';
@@ -77,6 +79,8 @@ interface Props {
   onClose: () => void;
   connectionId: string;
   connectionTitle: string;
+  /** SSH terminal tab the manager was opened from – "directory from the terminal" */
+  terminalSessionId?: string;
   onNotify?: (msg: string) => void;
   /** true = split workspace: use the whole pane; false = full-screen session: half of it. */
   fullWidth: boolean;
@@ -141,6 +145,7 @@ export const SftpManager: React.FC<Props> = ({
   onClose,
   connectionId,
   connectionTitle,
+  terminalSessionId,
   onNotify,
   fullWidth,
 }) => {
@@ -234,6 +239,35 @@ export const SftpManager: React.FC<Props> = ({
   );
 
   const load = (side: Side, path: string) => (side === 'local' ? loadLocal(path) : loadRemote(path));
+
+  // Server pane -> directory of the shell in the SSH terminal this window was opened from
+  const goToTerminalDir = async () => {
+    if (!terminalSessionId) return;
+    let path: string | null = null;
+    let note = '';
+    try {
+      const res = await api.terminalCwd(terminalSessionId);
+      path = res.path;
+      if (res.otherUserShell) {
+        note = t(' (powłoka innego użytkownika, np. po sudo/su, jest niedostępna – użyto katalogu Twojej powłoki)');
+      }
+    } catch (err: any) {
+      const msg = String(err?.message || err);
+      path = getOscCwd(terminalSessionId);
+      if (!path) {
+        showStatus(
+          msg === 'NO_PROC'
+            ? t('Nie można odczytać katalogu terminala: serwer nie udostępnia /proc (obsługiwane są serwery Linux).')
+            : msg,
+          'error'
+        );
+        return;
+      }
+    }
+    if (path && (await loadRemote(path))) {
+      showStatus(t('Katalog z terminala: {path}', { path }) + note);
+    }
+  };
 
   // Start folders saved for this connection; nothing saved = home folders (local user / server user)
   const [savedDirs, setSavedDirs] = useState<{ local: string; remote: string }>({ local: '', remote: '' });
@@ -647,6 +681,7 @@ export const SftpManager: React.FC<Props> = ({
           onOpen={(p) => loadRemote(p)}
           onRefresh={() => loadRemote(remote.path)}
           onHome={() => loadRemote('')}
+          onTerminalDir={terminalSessionId ? goToTerminalDir : undefined}
           onMkdir={(n) => mkdir('remote', n)}
           onSearch={(q) => search('remote', q)}
           onTransfer={(paths) => transfer('remote', paths)}
@@ -742,6 +777,8 @@ interface PaneProps {
   onOpen: (path: string) => void;
   onRefresh: () => void;
   onHome: () => void;
+  /** Server pane: go to the directory of the shell in the SSH terminal */
+  onTerminalDir?: () => void;
   onMkdir: (name: string) => void;
   onSearch: (query: string) => void;
   onTransfer: (paths: string[]) => void;
@@ -770,6 +807,7 @@ const FilePane: React.FC<PaneProps> = ({
   onOpen,
   onRefresh,
   onHome,
+  onTerminalDir,
   onMkdir,
   onSearch,
   onTransfer,
@@ -937,6 +975,16 @@ const FilePane: React.FC<PaneProps> = ({
         >
           <Home className="h-3 w-3" />
         </button>
+        {onTerminalDir && (
+          <button
+            onClick={onTerminalDir}
+            disabled={pane.loading}
+            title={t('Przejdź do katalogu, w którym jesteś w terminalu SSH')}
+            className="flex h-6 w-6 items-center justify-center rounded border border-slate-700 bg-slate-800 text-emerald-300 hover:bg-slate-700 disabled:opacity-40"
+          >
+            <SquareTerminal className="h-3 w-3" />
+          </button>
+        )}
         <button
           onClick={onRefresh}
           title={t('Odśwież')}

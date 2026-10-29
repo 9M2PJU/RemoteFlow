@@ -38,6 +38,7 @@ Aplikacja wykorzystuje **Tauri 2 i Rust** jako natywny backend, **React 19 i Typ
 - Filtrowanie i wyszukiwanie w podkatalogach po obu stronach, tworzenie katalogów po obu stronach, usuwanie na serwerze.
 - Postęp transferów, pytanie o nadpisanie i menu kontekstowe. Usuwanie z serwera pokazuje aktualną ścieżkę i licznik zaznaczonych pozycji, a następnie wynik lub błąd; katalogi są usuwane wraz z zawartością.
 - Katalogi startowe zapamiętywane osobno dla każdego połączenia (lokalny i na serwerze); domyślnie otwierane są katalogi domowe.
+- Przycisk „katalog z terminala”: panel serwera przechodzi do katalogu, w którym jesteś w terminalu SSH (także w zagnieżdżonej powłoce i gdy działa w niej program; nic nie jest wpisywane do terminala). Serwery Linux (`/proc`); na innych systemach używany jest katalog zgłaszany przez powłokę (OSC 7), jeśli jest dostępny.
 
 ### RDP
 - Wbudowany klient RDP (IronRDP skompilowany do WebAssembly) działający przez lokalne proxy – rozdzielczość automatycznie dopasowuje się do okna.

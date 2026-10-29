@@ -92,6 +92,7 @@ pub fn run() {
             session_resize,
             session_close,
             session_launch_external_rdp,
+            session::ssh_terminal_cwd,
             session::rdp_certificate_preview,
             session::rdp_certificate_trust,
             session::rdp_embed::rdp_embed_start,

@@ -823,5 +823,9 @@
   "Wybierz co najmniej jedną grupę lub połączenia bez grupy": "Select at least one group or ungrouped connections",
   "Wyeksportuj konfiguracje połączeń z wybranego zakresu, tunele SSH i poświadczenia do pliku.": "Export connection settings in the selected scope, SSH tunnels and credentials to a file.",
   "Agent SSH": "SSH agent",
-  "Klucze z agenta SSH (ssh-agent, Pageant, agent KeePassXC/1Password). Hasło i klucze zapisane w połączeniu nie są wtedy używane.": "Keys from the SSH agent (ssh-agent, Pageant, KeePassXC/1Password agent). A password or keys stored in the connection are not used then."
+  "Klucze z agenta SSH (ssh-agent, Pageant, agent KeePassXC/1Password). Hasło i klucze zapisane w połączeniu nie są wtedy używane.": "Keys from the SSH agent (ssh-agent, Pageant, KeePassXC/1Password agent). A password or keys stored in the connection are not used then.",
+  " (powłoka innego użytkownika, np. po sudo/su, jest niedostępna – użyto katalogu Twojej powłoki)": " (the shell of another user, e.g. after sudo/su, is not accessible – your shell's directory was used)",
+  "Nie można odczytać katalogu terminala: serwer nie udostępnia /proc (obsługiwane są serwery Linux).": "Cannot read the terminal directory: the server has no /proc (Linux servers are supported).",
+  "Katalog z terminala: {path}": "Directory from the terminal: {path}",
+  "Przejdź do katalogu, w którym jesteś w terminalu SSH": "Go to the directory you are in in the SSH terminal"
 }

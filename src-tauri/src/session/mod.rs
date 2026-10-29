@@ -2,6 +2,7 @@ pub mod rdp;
 pub mod rdp_embed;
 pub mod rdp_proxy;
 pub mod sftp;
+pub mod terminal_cwd;
 pub mod ssh;
 pub mod transfer;
 pub mod tunnels;
@@ -500,6 +501,29 @@ pub fn session_resize(
         let _ = tx.send(SshWorkerCommand::Resize(cols, rows));
     }
     Ok(())
+}
+
+/// Current directory of the shell in an SSH terminal tab (SFTP "directory from the terminal").
+#[tauri::command]
+pub async fn ssh_terminal_cwd(
+    session_id: String,
+    state: tauri::State<'_, SessionState>,
+) -> Result<terminal_cwd::TerminalCwd, String> {
+    let (tx, rx) = std::sync::mpsc::channel();
+    {
+        let mgr = state.lock().map_err(|e| e.to_string())?;
+        let sender = mgr
+            .senders
+            .get(&session_id)
+            .ok_or_else(|| tr!("Sesja terminala nie jest aktywna.", "The terminal session is not active.").to_string())?;
+        sender
+            .send(SshWorkerCommand::Cwd(tx))
+            .map_err(|_| tr!("Sesja terminala została zakończona.", "The terminal session has ended.").to_string())?;
+    }
+    tauri::async_runtime::spawn_blocking(move || rx.recv_timeout(std::time::Duration::from_secs(15)))
+        .await
+        .map_err(|e| e.to_string())?
+        .map_err(|_| tr!("Serwer nie odpowiedział na czas.", "The server did not respond in time.").to_string())?
 }
 
 #[tauri::command]

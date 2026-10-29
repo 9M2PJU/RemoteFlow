@@ -14,6 +14,7 @@ import {
 } from 'lucide-react';
 import { api, isTauri } from '../../services/api';
 import { SessionInfo } from '../../types';
+import { rememberOscCwd } from '../../utils/terminalCwd';
 import { SftpManager } from './SftpManager';
 import { useT } from '../../i18n';
 import { useLightTerminal } from '../../theme';
@@ -241,6 +242,12 @@ export const SshTerminal: React.FC<Props> = ({ session, isActive, splitLayout = 
       // e.g. sky-blue as "blue"), while the bright variants fell back to xterm.js defaults – full-
       // screen apps such as Midnight Commander (blue panels, bright text) looked garish.
       theme: lightTerminalRef.current ? TERMINAL_LIGHT : TERMINAL_DARK,
+    });
+
+    // OSC 7: the shell reports its directory (used by SFTP "directory from the terminal")
+    term.parser.registerOscHandler(7, (data) => {
+      rememberOscCwd(session.sessionId, data);
+      return true;
     });
 
     const fitAddon = new FitAddon();
@@ -714,6 +721,7 @@ export const SshTerminal: React.FC<Props> = ({ session, isActive, splitLayout = 
         }}
         connectionId={session.connectionId}
         connectionTitle={session.title}
+        terminalSessionId={session.sessionId}
         onNotify={showNotification}
         fullWidth={splitLayout}
       />

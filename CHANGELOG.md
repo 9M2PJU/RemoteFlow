@@ -4,6 +4,12 @@ Numer wersji: `MAJOR.MINOR.PATCH`. Każda zmiana podnosi co najmniej numer PATCH
 Wersja jest zapisana w trzech plikach, które muszą być zgodne (pilnuje tego test `version_tests` w `src-tauri/src/lib.rs`):
 `package.json` (wyświetlana w aplikacji), `src-tauri/tauri.conf.json` (instalator) i `src-tauri/Cargo.toml`.
 
+## 1.7.0 – SFTP: katalog z terminala
+- **Nowy przycisk w panelu serwera okna SFTP** (ikona terminala obok „Katalog domowy”): przechodzi do katalogu, w którym jesteś w terminalu SSH tej karty. Zapisane katalogi startowe się nie zmieniają – żeby otwierać ten katalog domyślnie, użyj „Zapamiętaj katalogi”.
+- Jak to działa: połączenie terminala otwiera krótki dodatkowy kanał i uruchamia skrypt `sh`, który wśród procesów tego samego połączenia SSH (dzieci procesu `sshd`/`sshd-session`/`dropbear`) znajduje najgłębszą powłokę i odczytuje `/proc/PID/cwd`. Nic nie jest wpisywane do terminala, działa też w zagnieżdżonej powłoce i gdy w terminalu działa program (np. `mc`, `less`). Inne sesje tego samego użytkownika nie są brane pod uwagę. Czas: ok. 0,1 s.
+- Po `sudo -i`/`su` (powłoka innego użytkownika) używany jest katalog Twojej powłoki z informacją w pasku stanu. Serwery bez `/proc` (np. BSD): używany jest katalog zgłaszany przez powłokę sekwencją OSC 7, jeśli powłoka ją wysyła.
+- Testy: parser wyniku, skrypt uruchamiany lokalnie oraz test e2e z serwerem SSH (zmiana katalogu, zagnieżdżona powłoka z działającym programem, dwa równoległe połączenia, brak wpisów w terminalu).
+
 ## 1.6.18 – FreeRDP w oknie: bez prześwitywania poprzedniej karty
 - **Przyczyna (odtworzona w teście z przechwytywaniem klatek co ~130 ms):** natywne okno FreeRDP pojawiało się, zanim widok aplikacji zdążył narysować nową kartę RDP – przez ułamek sekundy nad wciąż widoczną kartą SSH (pasek kart i terminal) leżał pusty prostokąt, a w środowiskach z kompozytorem także jego niewyczyszczona zawartość. Poprawka 1.6.16 tylko ustawiała tło kontenera (a czyszczenie przed jego pokazaniem nie działało), nie zmieniała kolejności.
 - Kontener jest teraz pokazywany dopiero gdy: (1) widok narysował kartę RDP (dwie klatki animacji + 50 ms po pokazaniu karty – także przy przełączaniu z innej karty) i (2) w kontenerze istnieje już okno FreeRDP tej sesji (rozpoznawane po `_NET_WM_PID`, bo po ponownym połączeniu X11 potrafi nadać nowemu oknu ten sam identyfikator co poprzedniemu). Do tego czasu widać planszę „Uruchamianie FreeRDP…”; gdy połączenie się nie uda, kontener w ogóle się nie pojawia.

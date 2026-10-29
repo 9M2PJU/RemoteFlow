@@ -38,6 +38,7 @@ The application uses **Tauri 2 and Rust** for the native backend, **React 19 and
 - Filtering and recursive search on both sides, creating folders on both sides, deleting on the server.
 - Transfer progress, overwrite confirmation and right-click context menus. Server deletion shows the current path and selected-item counter, followed by a result or error; folders are deleted recursively.
 - Start folders saved per connection (local and server); by default the home folders are opened.
+- "Directory from the terminal" button: the server pane jumps to the directory you are in in the SSH terminal (also in a nested shell or while a program runs; nothing is typed into the terminal). Linux servers (`/proc`); other systems use the directory reported by the shell (OSC 7), if any.
 
 ### RDP
 - Embedded RDP client (IronRDP compiled to WebAssembly) through a local proxy – the resolution automatically follows the window size.

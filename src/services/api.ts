@@ -3,6 +3,7 @@ import { ConnectionPasswordStatus, PasswordPromptCancelled, requestConnectionPas
 import { getLang } from '../i18n';
 import { selectExportData } from '../utils/exportScope';
 import { effectiveSshAuthType } from '../utils/sshAuth';
+import { forgetOscCwd } from '../utils/terminalCwd';
 
 // An explicit decision to use an empty password lasts for this session only.
 const emptyPasswordSessions = new Set<string>();
@@ -462,10 +463,19 @@ export const api = {
 
   async closeSession(sessionId: string): Promise<void> {
     emptyPasswordSessions.delete(sessionId);
+    forgetOscCwd(sessionId);
     if (isTauri()) {
       return await invoke<void>('session_close', { sessionId });
     }
     mockSessions = mockSessions.filter(s => s.sessionId !== sessionId);
+  },
+
+  /** Current directory of the shell in an SSH terminal tab (error "NO_PROC": server without /proc). */
+  async terminalCwd(sessionId: string): Promise<{ path: string; otherUserShell: boolean }> {
+    if (isTauri()) {
+      return await invoke('ssh_terminal_cwd', { sessionId });
+    }
+    return { path: '/var/www/html', otherUserShell: false };
   },
 
   async launchExternalRdp(session: SessionInfo): Promise<void> {

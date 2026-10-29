@@ -33,6 +33,8 @@ pub struct SshConnectionConfig {
 pub enum SshWorkerCommand {
     Input(Vec<u8>),
     Resize(u32, u32),
+    /// Current directory of the terminal's shell (SFTP "directory from the terminal")
+    Cwd(std::sync::mpsc::Sender<Result<crate::session::terminal_cwd::TerminalCwd, String>>),
     Close,
 }
 
@@ -420,7 +422,7 @@ fn run_ssh_worker(
         };
 
         // Returns false when the session must end (Close / UI gone).
-        let handle_cmd = |cmd: SshWorkerCommand, outgoing: &mut std::collections::VecDeque<u8>, channel: &mut ssh2::Channel| -> bool {
+        let handle_cmd = |cmd: SshWorkerCommand, outgoing: &mut std::collections::VecDeque<u8>, channel: &mut ssh2::Channel, sess: &ssh2::Session| -> bool {
             match cmd {
                 SshWorkerCommand::Input(data) => {
                     if outgoing.len() + data.len() <= MAX_OUTGOING {
@@ -435,6 +437,15 @@ fn run_ssh_worker(
                 }
                 SshWorkerCommand::Resize(cols, rows) => {
                     let _ = channel.request_pty_size(cols, rows, None, None);
+                    true
+                }
+                SshWorkerCommand::Cwd(reply) => {
+                    // A short extra channel on this connection; the terminal pauses for its
+                    // duration (usually well under a second). Longer timeout than the 30 ms reads.
+                    sess.set_timeout(8000);
+                    let result = crate::session::terminal_cwd::query(sess);
+                    sess.set_timeout(30);
+                    let _ = reply.send(result);
                     true
                 }
                 SshWorkerCommand::Close => {
@@ -456,7 +467,7 @@ fn run_ssh_worker(
             loop {
                 match cmd_rx.try_recv() {
                     Ok(cmd) => {
-                        if !handle_cmd(cmd, &mut outgoing, &mut channel) {
+                        if !handle_cmd(cmd, &mut outgoing, &mut channel, &sess) {
                             return;
                         }
                     }
@@ -510,7 +521,7 @@ fn run_ssh_worker(
                     if outgoing.is_empty() {
                         match cmd_rx.recv_timeout(std::time::Duration::from_millis(15)) {
                             Ok(cmd) => {
-                                if !handle_cmd(cmd, &mut outgoing, &mut channel) {
+                                if !handle_cmd(cmd, &mut outgoing, &mut channel, &sess) {
                                     return;
                                 }
                             }
@@ -676,6 +687,41 @@ mod worker_e2e {
         tx.send(SshWorkerCommand::Close).unwrap();
         let _ = std::fs::remove_file(target);
         assert_eq!(statuses.lock().unwrap().first().map(String::as_str), Some("connected"));
+    }
+
+    /// "Directory from the terminal": the deepest shell of THIS connection is found, also in a
+    /// nested shell and while a program runs in the foreground; nothing is typed into the terminal.
+    #[test]
+    #[ignore]
+    fn terminal_cwd_follows_cd_and_nested_shells() {
+        let (tx, out, statuses) = start("Test-Pass-123");
+        assert!(wait_for(|| statuses.lock().unwrap().contains(&"connected".to_string()), 15));
+        let cwd = |tx: &std::sync::mpsc::Sender<SshWorkerCommand>| {
+            let (rtx, rrx) = std::sync::mpsc::channel();
+            tx.send(SshWorkerCommand::Cwd(rtx)).unwrap();
+            rrx.recv_timeout(std::time::Duration::from_secs(15)).unwrap()
+        };
+        tx.send(SshWorkerCommand::Input(b"cd /usr/share; echo STEP-$((1+1))\n".to_vec())).unwrap();
+        assert!(wait_for(|| out.lock().unwrap().contains("STEP-2"), 10));
+        let before = out.lock().unwrap().len();
+        assert_eq!(cwd(&tx).unwrap().path, "/usr/share");
+        std::thread::sleep(std::time::Duration::from_millis(300));
+        assert_eq!(out.lock().unwrap().len(), before, "nothing appears in the terminal");
+        // nested shell with its own directory, and a foreground program in it
+        tx.send(SshWorkerCommand::Input(b"bash --norc\n".to_vec())).unwrap();
+        std::thread::sleep(std::time::Duration::from_millis(500));
+        tx.send(SshWorkerCommand::Input(b"cd /etc; echo STEP-$((2+1)); sleep 30\n".to_vec())).unwrap();
+        assert!(wait_for(|| out.lock().unwrap().contains("STEP-3"), 10));
+        assert_eq!(cwd(&tx).unwrap().path, "/etc");
+        // a second connection in another directory does not mix in
+        let (tx2, out2, st2) = start("Test-Pass-123");
+        assert!(wait_for(|| st2.lock().unwrap().contains(&"connected".to_string()), 15));
+        tx2.send(SshWorkerCommand::Input(b"cd /var; echo STEP-$((3+1))\n".to_vec())).unwrap();
+        assert!(wait_for(|| out2.lock().unwrap().contains("STEP-4"), 10));
+        assert_eq!(cwd(&tx2).unwrap().path, "/var");
+        assert_eq!(cwd(&tx).unwrap().path, "/etc");
+        tx.send(SshWorkerCommand::Close).unwrap();
+        tx2.send(SshWorkerCommand::Close).unwrap();
     }
 
     #[test]
