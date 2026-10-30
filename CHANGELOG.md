@@ -4,6 +4,10 @@ Numer wersji: `MAJOR.MINOR.PATCH`. Każda zmiana podnosi co najmniej numer PATCH
 Wersja jest zapisana w trzech plikach, które muszą być zgodne (pilnuje tego test `version_tests` w `src-tauri/src/lib.rs`):
 `package.json` (wyświetlana w aplikacji), `src-tauri/tauri.conf.json` (instalator) i `src-tauri/Cargo.toml`.
 
+## 1.7.2 – potwierdzenie zamknięcia nad ekranem blokady
+- **Pytanie „Zamknąć RemoteFlow?” przy zablokowanej aplikacji** (PIN lub Master Password) z aktywnymi połączeniami otwierało się pod ekranem blokady (warstwa z-70 pod warstwą blokady z-200) – nie było go widać ani nie dało się go kliknąć. Teraz jest wyświetlane nad ekranem blokady (`aboveLockScreen`); po „Anuluj” fokus wraca do pola PIN / hasła. Sprawdzone w aplikacji dla blokady PIN i Master Password.
+- Podpowiedź pola PIN na ekranie blokady jest tłumaczona („Enter PIN…”).
+
 ## 1.7.1 – SFTP: Ctrl+R odświeża listę
 - **Ctrl+R w oknie SFTP** odświeża listę plików i katalogów w panelu, w którym pracujesz (lokalny lub serwer); gdy fokus jest poza panelami (np. w nagłówku okna) – oba panele. Działa także w polu ścieżki i filtra.
 - W oknie SFTP skrót nie wykonuje już globalnego Ctrl+R (ponowne połączenie sesji) – zdarzenie jest zatrzymywane w oknie SFTP. Poza SFTP Ctrl+R/F5 działa jak dotąd.

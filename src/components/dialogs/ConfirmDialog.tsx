@@ -12,6 +12,11 @@ interface Props {
   onCancel: () => void;
   /** Render inside the nearest positioned parent (e.g. the SFTP window) instead of over the whole app. */
   contained?: boolean;
+  /**
+   * Above the lock screens (PIN / Master Password, z-[200]) – e.g. the exit confirmation, which
+   * can appear while the application is locked. Focus returns to the lock screen afterwards.
+   */
+  aboveLockScreen?: boolean;
   /** 'info' = neutral message with a single OK button. */
   variant?: 'danger' | 'info';
   hideCancel?: boolean;
@@ -54,6 +59,7 @@ export const ConfirmDialog: React.FC<Props> = ({
   onConfirm,
   onCancel,
   contained = false,
+  aboveLockScreen = false,
   variant = 'danger',
   hideCancel = false,
   anchor = null,
@@ -100,6 +106,15 @@ export const ConfirmDialog: React.FC<Props> = ({
     return () => window.removeEventListener('resize', place);
   }, [isOpen, anchor]);
 
+  // Above a lock screen: give the focus back (PIN / password field) when the dialog closes
+  useEffect(() => {
+    if (!isOpen || !aboveLockScreen) return;
+    const previous = document.activeElement as HTMLElement | null;
+    return () => {
+      if (previous && previous.isConnected) setTimeout(() => previous.focus(), 0);
+    };
+  }, [isOpen, aboveLockScreen]);
+
   useEffect(() => {
     if (!isOpen) return;
     // Focus the confirm button so Enter works immediately and keystrokes do not reach the terminal
@@ -124,8 +139,8 @@ export const ConfirmDialog: React.FC<Props> = ({
     <div
       className={
         anchor
-          ? `fixed inset-0 z-[70] ${dimBackdrop ? 'bg-slate-950/40' : ''}`
-          : `${contained ? 'absolute z-[60]' : 'fixed z-[70]'} inset-0 flex items-center justify-center bg-slate-950/80 backdrop-blur-sm p-4`
+          ? `fixed inset-0 ${aboveLockScreen ? 'z-[250]' : 'z-[70]'} ${dimBackdrop ? 'bg-slate-950/40' : ''}`
+          : `${contained ? 'absolute z-[60]' : aboveLockScreen ? 'fixed z-[250]' : 'fixed z-[70]'} inset-0 flex items-center justify-center bg-slate-950/80 backdrop-blur-sm p-4`
       }
       onMouseDown={(e) => {
         if (e.target === e.currentTarget) onCancel();

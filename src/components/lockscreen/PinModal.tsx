@@ -89,7 +89,7 @@ export const PinModal: React.FC<Props> = ({ onUnlocked, onUseMasterPassword }) =
             value={pin}
             onChange={(e) => setPin(e.target.value.replace(/\D/g, ''))}
             autoFocus
-            placeholder="Wpisz PIN..."
+            placeholder={t('Wpisz PIN...')}
             className="w-full text-center tracking-widest text-lg font-mono rounded-xl border border-slate-700 bg-slate-800/80 py-2.5 text-white placeholder-slate-600 focus:border-cyan-500 focus:outline-none"
           />
         </form>

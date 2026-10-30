@@ -1052,9 +1052,11 @@ const t = useT();
       setConnections((prev) => prev.map((conn) => conn.id === saved.id ? saved : conn));
     }} />
 
-    {/* Confirmation before exiting the application (rendered above the lock screen) */}
+    {/* Confirmation before exiting the application – above the PIN / Master Password lock screens
+        (z-[200]); previously it opened underneath them and could not be clicked */}
     <ConfirmDialog
       isOpen={exitPrompt}
+      aboveLockScreen
       title={t('Zamknąć RemoteFlow?')}
       message={
         sessions.length > 0
