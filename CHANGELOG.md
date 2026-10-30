@@ -4,6 +4,11 @@ Numer wersji: `MAJOR.MINOR.PATCH`. Każda zmiana podnosi co najmniej numer PATCH
 Wersja jest zapisana w trzech plikach, które muszą być zgodne (pilnuje tego test `version_tests` w `src-tauri/src/lib.rs`):
 `package.json` (wyświetlana w aplikacji), `src-tauri/tauri.conf.json` (instalator) i `src-tauri/Cargo.toml`.
 
+## 1.7.1 – SFTP: Ctrl+R odświeża listę
+- **Ctrl+R w oknie SFTP** odświeża listę plików i katalogów w panelu, w którym pracujesz (lokalny lub serwer); gdy fokus jest poza panelami (np. w nagłówku okna) – oba panele. Działa także w polu ścieżki i filtra.
+- W oknie SFTP skrót nie wykonuje już globalnego Ctrl+R (ponowne połączenie sesji) – zdarzenie jest zatrzymywane w oknie SFTP. Poza SFTP Ctrl+R/F5 działa jak dotąd.
+- Podpowiedź przycisku „Odśwież” pokazuje skrót.
+
 ## 1.7.0 – SFTP: katalog z terminala
 - **Nowy przycisk w panelu serwera okna SFTP** (ikona terminala obok „Katalog domowy”): przechodzi do katalogu, w którym jesteś w terminalu SSH tej karty. Zapisane katalogi startowe się nie zmieniają – żeby otwierać ten katalog domyślnie, użyj „Zapamiętaj katalogi”.
 - Jak to działa: połączenie terminala otwiera krótki dodatkowy kanał i uruchamia skrypt `sh`, który wśród procesów tego samego połączenia SSH (dzieci procesu `sshd`/`sshd-session`/`dropbear`) znajduje najgłębszą powłokę i odczytuje `/proc/PID/cwd`. Nic nie jest wpisywane do terminala, działa też w zagnieżdżonej powłoce i gdy w terminalu działa program (np. `mc`, `less`). Inne sesje tego samego użytkownika nie są brane pod uwagę. Czas: ok. 0,1 s.

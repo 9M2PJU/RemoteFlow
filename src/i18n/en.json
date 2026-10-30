@@ -827,5 +827,6 @@
   " (powłoka innego użytkownika, np. po sudo/su, jest niedostępna – użyto katalogu Twojej powłoki)": " (the shell of another user, e.g. after sudo/su, is not accessible – your shell's directory was used)",
   "Nie można odczytać katalogu terminala: serwer nie udostępnia /proc (obsługiwane są serwery Linux).": "Cannot read the terminal directory: the server has no /proc (Linux servers are supported).",
   "Katalog z terminala: {path}": "Directory from the terminal: {path}",
-  "Przejdź do katalogu, w którym jesteś w terminalu SSH": "Go to the directory you are in in the SSH terminal"
+  "Przejdź do katalogu, w którym jesteś w terminalu SSH": "Go to the directory you are in in the SSH terminal",
+  "Odśwież (Ctrl+R)": "Refresh (Ctrl+R)"
 }

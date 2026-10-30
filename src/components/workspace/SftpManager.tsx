@@ -180,6 +180,7 @@ export const SftpManager: React.FC<Props> = ({
   const [osDropOver, setOsDropOver] = useState(false);
   const transferIdRef = useRef<string>('');
   const remotePaneRef = useRef<HTMLDivElement>(null);
+  const localPaneRef = useRef<HTMLDivElement>(null);
   const initializedRef = useRef(false);
 
   const panes = { local, remote };
@@ -595,6 +596,16 @@ export const SftpManager: React.FC<Props> = ({
         if (e.key === 'Escape' && !drag) {
           e.stopPropagation();
           onClose();
+        } else if ((e.ctrlKey || e.metaKey) && !e.altKey && e.key.toLowerCase() === 'r') {
+          // Ctrl+R: refresh the pane in use (both when the focus is outside the panes). Stops here,
+          // so the global Ctrl+R (reconnect the session) does not run while working in SFTP.
+          e.preventDefault();
+          e.stopPropagation();
+          const target = e.target as Node;
+          const inLocal = localPaneRef.current?.contains(target);
+          const inRemote = remotePaneRef.current?.contains(target);
+          if (inLocal || !inRemote) loadLocal(local.path);
+          if (inRemote || !inLocal) loadRemote(remote.path);
         }
       }}
     >
@@ -654,6 +665,7 @@ export const SftpManager: React.FC<Props> = ({
           busy={!!busy}
           drag={drag}
           suppressClickRef={suppressClickRef}
+          paneRef={localPaneRef}
           onPointerStart={(path, x, y) => (pendingDragRef.current = { from: 'local', path, x, y })}
           onOpen={(p) => loadLocal(p)}
           onRefresh={() => loadLocal(local.path)}
@@ -987,7 +999,7 @@ const FilePane: React.FC<PaneProps> = ({
         )}
         <button
           onClick={onRefresh}
-          title={t('Odśwież')}
+          title={t('Odśwież (Ctrl+R)')}
           className="flex h-6 w-6 items-center justify-center rounded border border-slate-700 bg-slate-800 text-slate-300 hover:bg-slate-700"
         >
           <RefreshCw className={`h-3 w-3 ${pane.loading ? 'animate-spin' : ''}`} />

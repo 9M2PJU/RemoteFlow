@@ -34,6 +34,7 @@ The application uses **Tauri 2 and Rust** for the native backend, **React 19 and
 ### SFTP – two-pane file manager
 - Local files on the left, server files on the right (WinSCP / FileZilla style); takes half of the pane, or the whole pane in split layouts.
 - Multi-selection (click, Ctrl, Shift, Ctrl+A) and one-click upload / download of files and whole folders.
+- Keyboard: Ctrl+R refreshes the pane in use (both panes when the focus is elsewhere in the window), Backspace goes up, Enter opens a folder, Delete removes on the server, Esc closes the window.
 - Drag & drop between the panes, onto folders and from the system file manager.
 - Filtering and recursive search on both sides, creating folders on both sides, deleting on the server.
 - Transfer progress, overwrite confirmation and right-click context menus. Server deletion shows the current path and selected-item counter, followed by a result or error; folders are deleted recursively.

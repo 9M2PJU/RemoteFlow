@@ -34,6 +34,7 @@ Aplikacja wykorzystuje **Tauri 2 i Rust** jako natywny backend, **React 19 i Typ
 ### SFTP – dwupanelowy menedżer plików
 - Pliki lokalne po lewej, pliki serwera po prawej (jak w WinSCP / FileZilla); okno zajmuje połowę panelu, a przy podzielonym ekranie cały panel.
 - Zaznaczanie wielu elementów (klik, Ctrl, Shift, Ctrl+A) i wysyłanie / pobieranie plików oraz całych katalogów jednym kliknięciem.
+- Klawiatura: Ctrl+R odświeża używany panel (oba, gdy fokus jest w innym miejscu okna), Backspace – katalog nadrzędny, Enter – otwarcie katalogu, Delete – usunięcie na serwerze, Esc – zamknięcie okna.
 - Przeciąganie między panelami, na katalogi oraz z systemowego menedżera plików.
 - Filtrowanie i wyszukiwanie w podkatalogach po obu stronach, tworzenie katalogów po obu stronach, usuwanie na serwerze.
 - Postęp transferów, pytanie o nadpisanie i menu kontekstowe. Usuwanie z serwera pokazuje aktualną ścieżkę i licznik zaznaczonych pozycji, a następnie wynik lub błąd; katalogi są usuwane wraz z zawartością.
