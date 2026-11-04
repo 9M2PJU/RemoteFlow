@@ -292,6 +292,24 @@ export const SftpManager: React.FC<Props> = ({
     })();
   }, [isOpen, connectionId, loadLocal, loadRemote]);
 
+  // Reopened window: the panes keep their last folders, but their contents are read again –
+  // files may have changed meanwhile (e.g. in the terminal). Previously the list from the first
+  // opening was shown until a manual refresh.
+  const pathsRef = useRef({ local: '', remote: '' });
+  pathsRef.current = { local: local.path, remote: remote.path };
+  const wasOpenRef = useRef(isOpen);
+  useEffect(() => {
+    const reopened = isOpen && !wasOpenRef.current && initializedRef.current;
+    wasOpenRef.current = isOpen;
+    if (!reopened) return;
+    const { local: localPath, remote: remotePath } = pathsRef.current;
+    (async () => {
+      // A folder that no longer exists falls back to the home folder
+      if (!(await loadLocal(localPath)) && localPath) loadLocal('');
+      if (!(await loadRemote(remotePath)) && remotePath) loadRemote('');
+    })();
+  }, [isOpen, loadLocal, loadRemote]);
+
   // Release the cached SFTP session when the window is closed / the tab goes away
   useEffect(() => {
     if (isOpen) return;

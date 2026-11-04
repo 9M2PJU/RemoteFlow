@@ -4,6 +4,10 @@ Numer wersji: `MAJOR.MINOR.PATCH`. Każda zmiana podnosi co najmniej numer PATCH
 Wersja jest zapisana w trzech plikach, które muszą być zgodne (pilnuje tego test `version_tests` w `src-tauri/src/lib.rs`):
 `package.json` (wyświetlana w aplikacji), `src-tauri/tauri.conf.json` (instalator) i `src-tauri/Cargo.toml`.
 
+## 1.7.3 – SFTP: aktualna lista po ponownym otwarciu
+- **Ponowne otwarcie okna SFTP odczytuje listy plików od nowa.** Okno zachowywało zawartość z pierwszego otwarcia – zmiany wprowadzone w międzyczasie (np. w terminalu) były widoczne dopiero po ręcznym odświeżeniu. Teraz oba panele pozostają w ostatnio otwartych katalogach, a ich zawartość jest wczytywana przy każdym otwarciu okna; jeśli katalog w międzyczasie usunięto, otwierany jest katalog domowy.
+- Sprawdzone w aplikacji: SFTP → zamknięcie → `touch` w terminalu → ponowne otwarcie pokazuje nowy plik.
+
 ## 1.7.2 – potwierdzenie zamknięcia nad ekranem blokady
 - **Pytanie „Zamknąć RemoteFlow?” przy zablokowanej aplikacji** (PIN lub Master Password) z aktywnymi połączeniami otwierało się pod ekranem blokady (warstwa z-70 pod warstwą blokady z-200) – nie było go widać ani nie dało się go kliknąć. Teraz jest wyświetlane nad ekranem blokady (`aboveLockScreen`); po „Anuluj” fokus wraca do pola PIN / hasła. Sprawdzone w aplikacji dla blokady PIN i Master Password.
 - Podpowiedź pola PIN na ekranie blokady jest tłumaczona („Enter PIN…”).
