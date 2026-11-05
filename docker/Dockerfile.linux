@@ -27,6 +27,21 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
       | sh -s -- -y --profile minimal --default-toolchain stable
 
+# AppImage tools that `tauri build` would otherwise download from GitHub on every build (a GitHub
+# error such as "http status: 504" then failed the whole build). Downloaded once with retries into
+# the cache directory where the Tauri CLI looks for them (~/.cache/tauri), kept in this layer.
+# The file names/URLs match the bundler of @tauri-apps/cli 2.x (linuxdeploy commit 07333c6); if a
+# newer CLI expects other versions, it downloads them itself as before.
+ARG LINUXDEPLOY_COMMIT=07333c6
+RUN set -eux; \
+    dir=/root/.cache/tauri; mkdir -p "$dir"; \
+    get() { curl -fsSL --retry 10 --retry-all-errors --retry-delay 5 --connect-timeout 30 -o "$2.part" "$1" && mv "$2.part" "$2" && chmod +x "$2"; }; \
+    get https://github.com/tauri-apps/binary-releases/releases/download/apprun-old/AppRun-x86_64 "$dir/AppRun-x86_64"; \
+    get https://github.com/tauri-apps/binary-releases/releases/download/linuxdeploy-${LINUXDEPLOY_COMMIT}/linuxdeploy-x86_64.AppImage "$dir/linuxdeploy-${LINUXDEPLOY_COMMIT}-x86_64.AppImage"; \
+    get https://github.com/linuxdeploy/linuxdeploy-plugin-appimage/releases/download/continuous/linuxdeploy-plugin-appimage-x86_64.AppImage "$dir/linuxdeploy-plugin-appimage.AppImage" \
+      || echo "linuxdeploy-plugin-appimage not downloaded - linuxdeploy uses its built-in version"; \
+    ls -la "$dir"
+
 WORKDIR /app
 
 # Dependencies first (better layer caching). node_modules from the host is NOT used

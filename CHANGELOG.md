@@ -4,6 +4,9 @@ Numer wersji: `MAJOR.MINOR.PATCH`. Każda zmiana podnosi co najmniej numer PATCH
 Wersja jest zapisana w trzech plikach, które muszą być zgodne (pilnuje tego test `version_tests` w `src-tauri/src/lib.rs`):
 `package.json` (wyświetlana w aplikacji), `src-tauri/tauri.conf.json` (instalator) i `src-tauri/Cargo.toml`.
 
+## 1.8.1 – budowanie wersji Linux w Dockerze: narzędzia AppImage
+- `docker/Dockerfile.linux` pobiera narzędzia AppImage (AppRun, linuxdeploy, wtyczka appimage) raz, z ponawianiem prób, do katalogu podręcznego Tauri (`~/.cache/tauri`) w osobnej warstwie obrazu. Wcześniej `tauri build` pobierał je z GitHuba przy każdym budowaniu i chwilowy błąd GitHuba (`http status: 504`) przerywał całe budowanie po skompilowaniu aplikacji.
+
 ## 1.8.0 – zakładki: zmiana kolejności bez przerywania połączeń
 - **Przenoszenie zakładek połączeń.** Zakładkę można przeciągnąć w inne miejsce paska (przy krawędzi pasek sam się przewija, Esc anuluje) albo użyć menu zakładki (prawy przycisk): „Przenieś na początek”, „Przenieś w lewo”, „Przenieś w prawo”, „Przenieś na koniec”. Np. 10. zakładkę z 10 otwartych przenosi się na pozycję 1 jednym kliknięciem.
 - **Połączenia nie są przerywane.** Zmienia się tylko kolejność zakładek; okna sesji (terminal, RDP, FreeRDP w oknie) pozostają zamontowane w kolejności otwarcia, więc ich elementy strony nie są przenoszone ani tworzone od nowa. Sprawdzone w aplikacji (Linux): po przeniesieniu sesji SSH zachowują zawartość terminala, sesja RDP (wbudowana i FreeRDP w oknie) – to samo połączenie TCP i ten sam proces.
