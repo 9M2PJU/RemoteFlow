@@ -18,7 +18,7 @@ Aplikacja wykorzystuje **Tauri 2 i Rust** jako natywny backend, **React 19 i Typ
 - Drzewo połączeń z zagnieżdżonymi grupami, kolorami, wyszukiwaniem (nazwa, host, IP, tagi) i przeciąganiem. Stan rozwinięcia grup i sortowanie A–Z w wybranych grupach są zapamiętywane po restarcie.
 - Menu kontekstowe grup: połączenie z hostami w grupie, dodawanie hostów i podgrup, sortowanie, edycja, usuwanie oraz rozwijanie i zwijanie wszystkich grup.
 - Klonowanie zapisanej konfiguracji połączenia lub otwieranie kolejnej sesji tego samego połączenia.
-- Zakładki i podział ekranu: pojedynczy, poziomy, pionowy, 3 kolumny i siatka 2×2. Przeciąganie zakładek między panelami i wybór sesji dla każdego panelu.
+- Zakładki i podział ekranu: pojedynczy, poziomy, pionowy, 3 kolumny i siatka 2×2. Zmiana kolejności zakładek przeciąganiem lub z menu zakładki (na początek/koniec, w lewo/w prawo) bez przerywania połączenia; przeciąganie zakładek między panelami i wybór sesji dla każdego panelu.
 - Przyciski przewijania zakładek i przeszukiwalna lista otwartych sesji ze ścieżką grupy, danymi hosta i stanem połączenia. Długie etykiety przewijają się, odsłaniając zawartość.
 - Wspólne profile poświadczeń używane przez wiele połączeń.
 - Przy logowaniu hasłem, jeśli hasło jest puste, wybór między próbą połączenia bez hasła a wprowadzeniem i zapisaniem hasła dla danego połączenia.
@@ -86,6 +86,7 @@ Linux: jeśli okno miga, jest puste albo w konsoli pojawia się `DRM_IOCTL_MODE_
   ```bash
   sudo apt install build-essential pkg-config file patchelf libssl-dev libwebkit2gtk-4.1-dev libgtk-3-dev libsoup-3.0-dev libjavascriptcoregtk-4.1-dev librsvg2-dev libayatana-appindicator3-dev libxdo-dev
   ```
+- Linux – zalecane w czasie działania: `wl-clipboard` (Wayland) lub `xclip` (X11) – niezawodne kopiowanie do schowka systemowego (np. haseł).
 
 ### Polecenia
 ```bash

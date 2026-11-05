@@ -1,4 +1,4 @@
-import React, { useState, useEffect, Suspense, lazy } from 'react';
+import React, { useState, useEffect, useMemo, useRef, Suspense, lazy } from 'react';
 import {
   Terminal,
   Monitor,
@@ -18,6 +18,7 @@ import {
 } from 'lucide-react';
 import { Connection, Group, SessionInfo, WorkspaceLayout } from '../../types';
 import { SessionSwitcher } from './SessionSwitcher';
+import { TAB_DRAG_EVENT, TabDragDetail } from '../../utils/tabDrag';
 import { useT } from '../../i18n';
 import { useEmbeddedFreeRdp } from '../../utils/rdpClientMode';
 import { anchorFromElement, DialogAnchor } from '../dialogs/ConfirmDialog';
@@ -175,7 +176,10 @@ export const Workspace: React.FC<Props> = ({
     setSplitHoverZone(null);
     const draggedSessionId = e.dataTransfer.getData('text/remoteflow-session-id');
     if (!draggedSessionId) return;
+    dropSessionOnPane(draggedSessionId, targetPaneIndex);
+  };
 
+  const dropSessionOnPane = (draggedSessionId: string, targetPaneIndex: number) => {
     const sourcePaneIndex = paneSlots.slice(0, slotCount).indexOf(draggedSessionId);
     if (sourcePaneIndex !== -1 && sourcePaneIndex !== targetPaneIndex) {
       onSwapPaneSlots(sourcePaneIndex, targetPaneIndex);
@@ -217,18 +221,69 @@ export const Workspace: React.FC<Props> = ({
       setSplitHoverZone(null);
       const draggedSessionId = e.dataTransfer.getData('text/remoteflow-session-id');
       if (!draggedSessionId) return;
-
-      if (zone === 'right') {
-        onChangeLayout('split-horizontal');
-        onUpdatePaneSlot(1, draggedSessionId);
-        onSelectSession(draggedSessionId);
-      } else if (zone === 'bottom') {
-        onChangeLayout('split-vertical');
-        onUpdatePaneSlot(1, draggedSessionId);
-        onSelectSession(draggedSessionId);
-      }
+      splitWithSession(draggedSessionId, zone);
     }
   };
+
+  const splitWithSession = (draggedSessionId: string, zone: 'right' | 'bottom') => {
+    onChangeLayout(zone === 'right' ? 'split-horizontal' : 'split-vertical');
+    onUpdatePaneSlot(1, draggedSessionId);
+    onSelectSession(draggedSessionId);
+  };
+
+  // Tab dragged with the pointer from the tab bar (TabBar.tsx, utils/tabDrag.ts): the same
+  // targets as HTML drag & drop – a pane in split layouts, the right/bottom edge in single layout.
+  const rootRef = useRef<HTMLDivElement>(null);
+  const tabDropRef = useRef<{ pane: number | null; zone: 'right' | 'bottom' | null }>({ pane: null, zone: null });
+  const tabDragHandlers = useRef({ dropSessionOnPane, splitWithSession, layout });
+  tabDragHandlers.current = { dropSessionOnPane, splitWithSession, layout };
+  useEffect(() => {
+    const onTabDrag = (ev: Event) => {
+      const d = (ev as CustomEvent<TabDragDetail>).detail;
+      const root = rootRef.current;
+      const h = tabDragHandlers.current;
+      let pane: number | null = null;
+      let zone: 'right' | 'bottom' | null = null;
+      if (root && d.phase !== 'cancel') {
+        const r = root.getBoundingClientRect();
+        const inside = d.x >= r.left && d.x <= r.right && d.y >= r.top && d.y <= r.bottom;
+        if (inside && h.layout === 'single') {
+          const relX = (d.x - r.left) / r.width;
+          const relY = (d.y - r.top) / r.height;
+          zone = relX > 0.65 ? 'right' : relY > 0.65 ? 'bottom' : null;
+        } else if (inside) {
+          const el = document.elementFromPoint(d.x, d.y)?.closest('[data-pane-index]');
+          const idx = el ? Number(el.getAttribute('data-pane-index')) : NaN;
+          pane = Number.isFinite(idx) && idx >= 0 ? idx : null;
+        }
+      }
+      if (d.phase === 'drop') {
+        if (zone) h.splitWithSession(d.sessionId, zone);
+        else if (pane !== null) h.dropSessionOnPane(d.sessionId, pane);
+        pane = null;
+        zone = null;
+      }
+      if (tabDropRef.current.pane !== pane || tabDropRef.current.zone !== zone) {
+        tabDropRef.current = { pane, zone };
+        setDragOverPaneIndex(pane);
+        setSplitHoverZone(zone);
+      }
+    };
+    window.addEventListener(TAB_DRAG_EVENT, onTabDrag);
+    return () => window.removeEventListener(TAB_DRAG_EVENT, onTabDrag);
+  }, []);
+
+  // Session windows are rendered in the order they were opened, not in tab order: reordering
+  // tabs must not move their DOM nodes (a moved node is detached and re-attached, which can
+  // restart a terminal renderer or the RDP web component). Panes are placed by grid style.
+  const stableOrderRef = useRef<string[]>([]);
+  const stableSessions = useMemo(() => {
+    const byId = new Map(sessions.map((s) => [s.sessionId, s]));
+    const order = stableOrderRef.current.filter((id) => byId.has(id));
+    for (const s of sessions) if (!order.includes(s.sessionId)) order.push(s.sessionId);
+    stableOrderRef.current = order;
+    return order.map((id) => byId.get(id)!);
+  }, [sessions]);
 
   // Welcome Screen when no sessions are open
   if (sessions.length === 0) {
@@ -348,6 +403,7 @@ export const Workspace: React.FC<Props> = ({
 
   return (
     <div
+      ref={rootRef}
       onDragOver={handleWorkspaceDragOver}
       onDragLeave={handleWorkspaceDragLeave}
       onDrop={handleWorkspaceDrop}
@@ -385,6 +441,7 @@ export const Workspace: React.FC<Props> = ({
         return (
           <div
             key={`empty-slot-${paneIndex}`}
+            data-pane-index={paneIndex}
             style={getPaneGridStyle(layout, paneIndex)}
             onDragOver={(e) => handleDragOver(e, paneIndex)}
             onDragLeave={(e) => handleDragLeave(e, paneIndex)}
@@ -452,7 +509,7 @@ export const Workspace: React.FC<Props> = ({
       })}
 
       {/* 2. Persistent Session Windows (Mapped once to preserve DOM & avoid unmounting) */}
-      {sessions.map((session) => {
+      {stableSessions.map((session) => {
         const paneIndex = visiblePaneSessionIds.indexOf(session.sessionId);
         const isVisible = paneIndex !== -1;
         const isPaneActive = session.sessionId === activeSessionId;
@@ -472,6 +529,7 @@ export const Workspace: React.FC<Props> = ({
         return (
           <div
             key={session.sessionId}
+            data-pane-index={isVisible ? paneIndex : undefined}
             aria-hidden={!isVisible}
             style={paneStyle}
             onClick={() => onSelectSession(session.sessionId)}

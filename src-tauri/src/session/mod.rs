@@ -7,6 +7,8 @@ pub mod ssh;
 pub mod transfer;
 pub mod tunnels;
 
+#[cfg(target_os = "linux")]
+pub mod linux_clipboard;
 pub mod clipstage;
 pub mod winproc;
 
@@ -977,28 +979,9 @@ pub async fn clipboard_read_text(app: tauri::AppHandle) -> Result<String, String
             .unwrap_or_default();
 
         if text.is_empty() {
-            text = tokio::task::spawn_blocking(|| {
-                if let Ok(out) = std::process::Command::new("qdbus6")
-                    .args([
-                        "org.kde.klipper",
-                        "/klipper",
-                        "org.kde.klipper.klipper.getClipboardContents",
-                    ])
-                    .output()
-                {
-                    if out.status.success() {
-                        let s = String::from_utf8_lossy(&out.stdout)
-                            .trim_end_matches('\n')
-                            .to_string();
-                        if !s.is_empty() {
-                            return s;
-                        }
-                    }
-                }
-                String::new()
-            })
-            .await
-            .unwrap_or_default();
+            text = tokio::task::spawn_blocking(linux_clipboard::read_text)
+                .await
+                .unwrap_or_default();
         }
 
         Ok(text)
@@ -1022,23 +1005,19 @@ pub async fn clipboard_read_text(app: tauri::AppHandle) -> Result<String, String
 pub async fn clipboard_write_text(text: String, app: tauri::AppHandle) -> Result<(), String> {
     #[cfg(target_os = "linux")]
     {
+        // GTK clipboard of the window first, then a system helper (Wayland/X11) – see
+        // linux_clipboard.rs. The helper runs after GTK so both hold the same text.
         let text_for_gtk = text.clone();
+        let (tx, rx) = tokio::sync::oneshot::channel::<()>();
         let _ = app.run_on_main_thread(move || {
             let clip = gtk::Clipboard::get(&gdk::SELECTION_CLIPBOARD);
             clip.set_text(&text_for_gtk);
+            clip.store();
+            let _ = tx.send(());
         });
+        let _ = tokio::time::timeout(std::time::Duration::from_millis(500), rx).await;
 
-        let _ = tokio::task::spawn_blocking(move || {
-            let _ = std::process::Command::new("qdbus6")
-                .args([
-                    "org.kde.klipper",
-                    "/klipper",
-                    "org.kde.klipper.klipper.setClipboardContents",
-                    &text,
-                ])
-                .output();
-        })
-        .await;
+        let _ = tokio::task::spawn_blocking(move || linux_clipboard::write_text(&text)).await;
 
         Ok(())
     }

@@ -18,7 +18,7 @@ The application uses **Tauri 2 and Rust** for the native backend, **React 19 and
 - Connection tree with nested groups, colours, search (name, host, IP, tags) and drag & drop. Group expansion and per-group A–Z sorting are remembered between launches.
 - Group context menus: connect to a group, add hosts or subgroups, sort, edit, delete, and expand or collapse all groups.
 - Clone a saved connection configuration or open another session using the same connection.
-- Tabs and split-screen layouts: single, horizontal, vertical, 3 columns and 2×2 grid. Drag tabs between panes and choose a session for each pane.
+- Tabs and split-screen layouts: single, horizontal, vertical, 3 columns and 2×2 grid. Reorder tabs by dragging or from the tab menu (move to the beginning/end, left/right) without interrupting the connection; drag tabs between panes and choose a session for each pane.
 - Tab scroll buttons and a searchable list of open sessions with group paths, host details and connection status. Long labels scroll to reveal their contents.
 - Reusable credential profiles shared by many connections.
 - Before password-based login with an empty password, choose to continue without one or enter and save a password for that connection.
@@ -86,6 +86,7 @@ Linux: if the window flickers, stays blank or the console shows `DRM_IOCTL_MODE_
   ```bash
   sudo apt install build-essential pkg-config file patchelf libssl-dev libwebkit2gtk-4.1-dev libgtk-3-dev libsoup-3.0-dev libjavascriptcoregtk-4.1-dev librsvg2-dev libayatana-appindicator3-dev libxdo-dev
   ```
+- Linux runtime (recommended): `wl-clipboard` (Wayland) or `xclip` (X11) – used for reliable copying to the system clipboard (e.g. passwords).
 
 ### Commands
 ```bash

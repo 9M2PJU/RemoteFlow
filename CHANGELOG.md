@@ -4,6 +4,21 @@ Numer wersji: `MAJOR.MINOR.PATCH`. Każda zmiana podnosi co najmniej numer PATCH
 Wersja jest zapisana w trzech plikach, które muszą być zgodne (pilnuje tego test `version_tests` w `src-tauri/src/lib.rs`):
 `package.json` (wyświetlana w aplikacji), `src-tauri/tauri.conf.json` (instalator) i `src-tauri/Cargo.toml`.
 
+## 1.8.0 – zakładki: zmiana kolejności bez przerywania połączeń
+- **Przenoszenie zakładek połączeń.** Zakładkę można przeciągnąć w inne miejsce paska (przy krawędzi pasek sam się przewija, Esc anuluje) albo użyć menu zakładki (prawy przycisk): „Przenieś na początek”, „Przenieś w lewo”, „Przenieś w prawo”, „Przenieś na koniec”. Np. 10. zakładkę z 10 otwartych przenosi się na pozycję 1 jednym kliknięciem.
+- **Połączenia nie są przerywane.** Zmienia się tylko kolejność zakładek; okna sesji (terminal, RDP, FreeRDP w oknie) pozostają zamontowane w kolejności otwarcia, więc ich elementy strony nie są przenoszone ani tworzone od nowa. Sprawdzone w aplikacji (Linux): po przeniesieniu sesji SSH zachowują zawartość terminala, sesja RDP (wbudowana i FreeRDP w oknie) – to samo połączenie TCP i ten sam proces.
+- Przeciąganie zakładek działa na zdarzeniach wskaźnika zamiast HTML drag & drop – w oknie Windows (WebView2) przeciąganie między elementami strony nie działało, bo okno obsługuje upuszczanie plików z systemu (SFTP). Upuszczenie zakładki na obszar roboczy działa jak dotąd: na panel w widoku podzielonym (zamiana/przeniesienie) lub na prawą/dolną krawędź w widoku pojedynczym (podział ekranu).
+- Usunięto przycisk „Podziel ekran obok siebie” z zakładek. Podział ekranu jest dostępny w menu zakładki i przyciskami układu po prawej stronie paska.
+
+## 1.7.5 – Linux: kopiowanie do schowka
+- **Kopiowanie hasła (i innych tekstów) do schowka na Linuksie** korzystało tylko ze schowka GTK okna aplikacji. W części środowisk to nie wystarcza: w sesji Wayland kompozytor może odrzucić ustawienie schowka, okno działające przez XWayland (`GDK_BACKEND=x11`, np. przy FreeRDP w oknie) zależy od synchronizacji schowka X11 przez kompozytor, a menedżer schowka może podmienić zawartość. Teraz po ustawieniu schowka GTK tekst jest dodatkowo przekazywany do systemowego narzędzia: `wl-copy` w sesji Wayland, `xclip` lub `xsel` w X11 (jeśli są zainstalowane). Odczyt schowka korzysta w razie potrzeby z `wl-paste`/`xclip`/`xsel`.
+- **Bezpieczeństwo:** usunięto wywołanie `qdbus6 … klipper setClipboardContents <tekst>` – hasło trafiało do argumentów procesu i było widoczne dla innych procesów (`ps`, `/proc/PID/cmdline`). Narzędzia otrzymują tekst wyłącznie przez standardowe wejście.
+- Zalecane pakiety: `wl-clipboard` (Wayland) lub `xclip` (X11). Test: zapis i odczyt przez `xclip` (X11) oraz `wl-copy`/`wl-paste` (Wayland, sway).
+
+## 1.7.4 – RDP (wbudowany klient, Linux): klawiatura numeryczna
+- **Przyczyna:** IronRDP przekazuje serwerowi stan NumLock/CapsLock/ScrollLock z `KeyboardEvent.getModifierState()` przy każdym naciśnięciu klawisza blokady. WebKitGTK (Linux) nie obsługuje modyfikatora „NumLock” i zawsze zwraca `false` (sprawdzone w WebKitGTK 2.52) – każde naciśnięcie NumLock lub CapsLock wyłączało NumLock na serwerze, a klawiatura numeryczna wysyłała Home/End/strzałki zamiast cyfr.
+- **Poprawka:** stan NumLock jest odczytywany z samych zdarzeń klawiatury numerycznej (`Numpad1` → „1” = włączony, „End” = wyłączony; z Shift pomijane), przełączany klawiszem NumLock i zwracany przez `getModifierState('NumLock')` w WebKit. Przed wysłaniem klawisza numerycznego serwer jest synchronizowany, jeśli jego stan się różni (pierwszy klawisz po połączeniu zawsze synchronizuje). Na Windows (WebView2) działa tak samo, wcześniejsze zachowanie nie jest zmieniane.
+
 ## 1.7.3 – SFTP: aktualna lista po ponownym otwarciu
 - **Ponowne otwarcie okna SFTP odczytuje listy plików od nowa.** Okno zachowywało zawartość z pierwszego otwarcia – zmiany wprowadzone w międzyczasie (np. w terminalu) były widoczne dopiero po ręcznym odświeżeniu. Teraz oba panele pozostają w ostatnio otwartych katalogach, a ich zawartość jest wczytywana przy każdym otwarciu okna; jeśli katalog w międzyczasie usunięto, otwierany jest katalog domowy.
 - Sprawdzone w aplikacji: SFTP → zamknięcie → `touch` w terminalu → ponowne otwarcie pokazuje nowy plik.

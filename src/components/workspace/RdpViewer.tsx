@@ -49,6 +49,7 @@ import { explainRdpError } from '../../utils/rdpErrors';
 import { listen } from '@tauri-apps/api/event';
 import { useT } from '../../i18n';
 import { installRdpCanvasBatching } from '../../utils/rdpCanvasBatching';
+import { installNumLockModifierFix, numLockFromEvent, trackNumLock } from '../../utils/rdpLockKeys';
 import { installRdpStats } from '../../utils/rdpStats';
 import { RdpStatsPanel } from './RdpStatsPanel';
 
@@ -70,6 +71,8 @@ function ensureRdpInitialized(): Promise<void> {
   installRdpStats();
   // WebKit draws each putImageData call slowly – batch the RDP screen updates (see the module)
   if (isWebKitEngine()) installRdpCanvasBatching();
+  // WebKit always reports NumLock as off – IronRDP then switched it off on the server
+  if (isWebKitEngine()) installNumLockModifierFix();
   if (!rdpWasmInitPromise) {
     rdpWasmInitPromise = initRdpWasm('info').catch((err) => {
       rdpWasmInitPromise = null;
@@ -1473,6 +1476,42 @@ export const RdpViewer: React.FC<Props> = ({ session, isActive }) => {
     }
     return false;
   }, [showToast]);
+
+  // NumLock: before a keypad key reaches the server, bring the server's NumLock to the state the
+  // key event shows (see utils/rdpLockKeys). The server's state is unknown after connecting, so
+  // the first keypad key always synchronises.
+  const serverNumLockRef = useRef<boolean | null>(null);
+  useEffect(() => {
+    serverNumLockRef.current = null;
+  }, [status]);
+  useEffect(() => {
+    if (!isActive) return;
+    const onKey = (e: KeyboardEvent) => {
+      trackNumLock(e);
+      if (e.type !== 'keydown' || status !== 'connected') return;
+      if (e.code === 'NumLock' || e.code === 'CapsLock' || e.code === 'ScrollLock') {
+        // IronRDP synchronises all lock keys on these – with the (fixed) NumLock state
+        serverNumLockRef.current = null;
+        return;
+      }
+      const wanted = numLockFromEvent(e);
+      if (wanted === null || wanted === serverNumLockRef.current) return;
+      const session = rdpWasmSessionRef.current as any;
+      if (!session?.synchronizeLockKeys) return;
+      try {
+        session.synchronizeLockKeys(false, wanted, e.getModifierState('CapsLock'), false);
+        serverNumLockRef.current = wanted;
+      } catch (err) {
+        console.warn('[RemoteFlow RDP] Synchronizacja NumLock nie powiodła się:', err);
+      }
+    };
+    window.addEventListener('keydown', onKey, { capture: true });
+    window.addEventListener('keyup', onKey, { capture: true });
+    return () => {
+      window.removeEventListener('keydown', onKey, { capture: true });
+      window.removeEventListener('keyup', onKey, { capture: true });
+    };
+  }, [isActive, status]);
 
   // Intercept F5 and Ctrl+R to prevent app reload, and send F5 to remote desktop if active
   useEffect(() => {

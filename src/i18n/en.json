@@ -334,7 +334,6 @@
   "Podział Okien": "Split windows",
   "Podział pionowy (2 okna obok siebie)": "Vertical split (2 windows side by side)",
   "Podział poziomy (2 okna jedno pod drugim)": "Horizontal split (2 windows one above the other)",
-  "Podziel ekran obok siebie (Split Screen)": "Split the screen side by side",
   "Podziel w dół (2 okna pod spodem)": "Split down (2 windows one below the other)",
   "Podziel w prawo (2 okna obok siebie)": "Split right (2 windows side by side)",
   "Pojedyncza karta (1 pełne okno)": "Single tab (one full window)",
@@ -384,7 +383,7 @@
   "Przeciągnij ten pasek na inne okno, aby zamienić miejscami lub przenieść sesję": "Drag this bar onto another window to swap or move the session",
   "Przeciągnij tutaj kartę sesji lub wybierz z dostępnych połączeń poniżej": "Drag a session tab here or choose one of the connections below",
   "Przeciągnij tutaj, aby przenieść do poziomu głównego": "Drag here to move to the top level",
-  "Przeciągnij zakładkę w inne miejsce, lub na pulpit roboczy aby podzielić ekran": "Drag the tab elsewhere, or onto the workspace to split the screen",
+  "Przeciągnij zakładkę, aby zmienić jej pozycję (połączenie pozostaje aktywne), lub na obszar roboczy, aby podzielić ekran": "Drag the tab to change its position (the connection stays active), or onto the workspace to split the screen",
   "Przeciągnij, aby zmienić szerokość paska połączeń": "Drag to resize the connections panel",
   "Przeglądaj...": "Browse...",
   "Przekierowania Portów (Port Forwarding)": "Port forwarding",
@@ -828,5 +827,9 @@
   "Nie można odczytać katalogu terminala: serwer nie udostępnia /proc (obsługiwane są serwery Linux).": "Cannot read the terminal directory: the server has no /proc (Linux servers are supported).",
   "Katalog z terminala: {path}": "Directory from the terminal: {path}",
   "Przejdź do katalogu, w którym jesteś w terminalu SSH": "Go to the directory you are in in the SSH terminal",
-  "Odśwież (Ctrl+R)": "Refresh (Ctrl+R)"
+  "Odśwież (Ctrl+R)": "Refresh (Ctrl+R)",
+  "Przenieś na początek": "Move to the beginning",
+  "Przenieś w lewo": "Move left",
+  "Przenieś w prawo": "Move right",
+  "Przenieś na koniec": "Move to the end"
 }

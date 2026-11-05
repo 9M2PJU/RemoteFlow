@@ -20,6 +20,10 @@ import {
   AlertCircle,
   ChevronLeft,
   ChevronRight,
+  ChevronsLeft,
+  ChevronsRight,
+  ArrowLeft,
+  ArrowRight,
 } from 'lucide-react';
 import { api } from '../../services/api';
 import { Connection, Group, SessionInfo, WorkspaceLayout } from '../../types';
@@ -27,6 +31,7 @@ import { useT } from '../../i18n';
 import { useMenuPosition } from '../../utils/useMenuPosition';
 import { SessionSwitcher } from './SessionSwitcher';
 import { anchorFromElement, DialogAnchor } from '../dialogs/ConfirmDialog';
+import { emitTabDrag, tabInsertIndex } from '../../utils/tabDrag';
 
 interface Props {
   sessions: SessionInfo[];
@@ -138,6 +143,136 @@ export const TabBar: React.FC<Props> = ({
     const strip = tabsRef.current;
     if (strip) strip.scrollBy({ left: direction * Math.max(160, strip.clientWidth * 0.75), behavior: 'smooth' });
   };
+
+  /** Moves a tab to insertion index 0..n (before the tab at that index; n = at the end). */
+  const moveTab = (sessionId: string, insertIndex: number) => {
+    if (!onReorderSessions || sessions.length < 2) return;
+    const last = sessions[sessions.length - 1];
+    if (insertIndex >= sessions.length) {
+      if (last.sessionId !== sessionId) onReorderSessions(sessionId, last.sessionId, 'right');
+      return;
+    }
+    const target = sessions[Math.max(0, insertIndex)];
+    if (target.sessionId !== sessionId) onReorderSessions(sessionId, target.sessionId, 'left');
+  };
+
+  // Moving tabs with the pointer (see utils/tabDrag.ts – HTML drag & drop does not work between
+  // page elements in the Windows WebView). Only the order of `sessions` changes; the session
+  // windows stay mounted (Workspace renders them in a stable order), so connections continue.
+  const sessionsRef = useRef(sessions);
+  sessionsRef.current = sessions;
+  const moveTabRef = useRef(moveTab);
+  moveTabRef.current = moveTab;
+  const dragRef = useRef<{ id: string; pointerId: number; startX: number; startY: number; active: boolean; x: number; y: number } | null>(null);
+  const dropIndexRef = useRef<number | null>(null);
+
+  const updateDropTarget = () => {
+    const d = dragRef.current;
+    const strip = tabsRef.current;
+    if (!d || !strip) return;
+    const sr = strip.getBoundingClientRect();
+    const overStrip = d.y >= sr.top - 24 && d.y <= sr.bottom + 24;
+    const list = sessionsRef.current;
+    const sourceIndex = list.findIndex((s) => s.sessionId === d.id);
+    let index: number | null = null;
+    if (overStrip && sourceIndex !== -1) {
+      const rects = list.map((s) => tabRefs.current.get(s.sessionId)?.getBoundingClientRect() ?? { left: 0, width: 0 });
+      index = tabInsertIndex(rects, sourceIndex, d.x);
+    }
+    dropIndexRef.current = index;
+    if (index === null) {
+      setDragOverSessionId(null);
+      setDropPosition(null);
+    } else if (index < list.length) {
+      setDragOverSessionId(list[index].sessionId);
+      setDropPosition('left');
+    } else {
+      setDragOverSessionId(list[list.length - 1].sessionId);
+      setDropPosition('right');
+    }
+    emitTabDrag({ sessionId: d.id, x: d.x, y: d.y, phase: overStrip ? 'cancel' : 'move' });
+  };
+
+  useEffect(() => {
+    let scrollTimer: ReturnType<typeof setInterval> | null = null;
+    const finish = (drop: boolean) => {
+      const d = dragRef.current;
+      dragRef.current = null;
+      if (scrollTimer) clearInterval(scrollTimer);
+      scrollTimer = null;
+      document.body.style.removeProperty('cursor');
+      if (!d) return;
+      if (d.active) {
+        const strip = tabsRef.current?.getBoundingClientRect();
+        const overStrip = !!strip && d.y >= strip.top - 24 && d.y <= strip.bottom + 24;
+        if (drop && overStrip && dropIndexRef.current !== null) moveTabRef.current(d.id, dropIndexRef.current);
+        emitTabDrag({ sessionId: d.id, x: d.x, y: d.y, phase: drop && !overStrip ? 'drop' : 'cancel' });
+        // The click that ends a drag must not select the tab
+        isDraggingRef.current = true;
+        setTimeout(() => {
+          isDraggingRef.current = false;
+        }, 0);
+      }
+      dropIndexRef.current = null;
+      setDraggedSessionId(null);
+      setDragOverSessionId(null);
+      setDropPosition(null);
+    };
+    const onMove = (e: PointerEvent) => {
+      const d = dragRef.current;
+      if (!d || e.pointerId !== d.pointerId) return;
+      d.x = e.clientX;
+      d.y = e.clientY;
+      if (!d.active) {
+        if (Math.hypot(e.clientX - d.startX, e.clientY - d.startY) < 6) return;
+        d.active = true;
+        setDraggedSessionId(d.id);
+        document.body.style.cursor = 'grabbing';
+        // Scroll the strip while the pointer is held near its edges
+        scrollTimer = setInterval(() => {
+          const cur = dragRef.current;
+          const strip = tabsRef.current;
+          if (!cur || !strip) return;
+          const r = strip.getBoundingClientRect();
+          if (cur.y < r.top - 24 || cur.y > r.bottom + 24) return;
+          const step = cur.x < r.left + 40 ? -14 : cur.x > r.right - 40 ? 14 : 0;
+          if (step) {
+            strip.scrollLeft += step;
+            updateDropTarget();
+          }
+        }, 30);
+      }
+      e.preventDefault();
+      updateDropTarget();
+    };
+    const onUp = (e: PointerEvent) => {
+      if (dragRef.current && e.pointerId === dragRef.current.pointerId) finish(true);
+    };
+    const onCancel = (e: PointerEvent) => {
+      if (dragRef.current && e.pointerId === dragRef.current.pointerId) finish(false);
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && dragRef.current?.active) {
+        e.preventDefault();
+        e.stopPropagation();
+        finish(false);
+      }
+    };
+    const onBlur = () => finish(false);
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', onUp);
+    window.addEventListener('pointercancel', onCancel);
+    window.addEventListener('keydown', onKey, true);
+    window.addEventListener('blur', onBlur);
+    return () => {
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', onUp);
+      window.removeEventListener('pointercancel', onCancel);
+      window.removeEventListener('keydown', onKey, true);
+      window.removeEventListener('blur', onBlur);
+      finish(false);
+    };
+  }, []);
 
   const handleCopyPassword = async (session: SessionInfo) => {
     try {
@@ -251,24 +386,6 @@ export const TabBar: React.FC<Props> = ({
       <div
         ref={tabsRef} aria-label={t('Zakładki połączeń')}
         className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto no-scrollbar py-1"
-        onDragOver={(e) => {
-          if (draggedSessionId) {
-            e.preventDefault();
-            e.dataTransfer.dropEffect = 'move';
-          }
-        }}
-        onDrop={(e) => {
-          const sourceId = e.dataTransfer.getData('text/remoteflow-tab-reorder') || draggedSessionId;
-          if (sourceId && sessions.length > 0 && onReorderSessions) {
-            const lastSession = sessions[sessions.length - 1];
-            if (lastSession.sessionId !== sourceId) {
-              onReorderSessions(sourceId, lastSession.sessionId, 'right');
-            }
-          }
-          setDraggedSessionId(null);
-          setDragOverSessionId(null);
-          setDropPosition(null);
-        }}
       >
         {sessions.map((session) => {
           const isActive = session.sessionId === activeSessionId;
@@ -288,64 +405,17 @@ export const TabBar: React.FC<Props> = ({
               }}
               data-session-id={session.sessionId}
               aria-current={isActive ? 'true' : undefined}
-              draggable={true}
-              onDragStart={(e) => {
-                isDraggingRef.current = true;
-                setDraggedSessionId(session.sessionId);
-                e.dataTransfer.setData('text/remoteflow-session-id', session.sessionId);
-                e.dataTransfer.setData('text/remoteflow-tab-reorder', session.sessionId);
-                e.dataTransfer.effectAllowed = 'move';
-              }}
-              onDragEnd={() => {
-                setDraggedSessionId(null);
-                setDragOverSessionId(null);
-                setDropPosition(null);
-                setTimeout(() => {
-                  isDraggingRef.current = false;
-                }, 100);
-              }}
-              onDragOver={(e) => {
-                e.preventDefault();
-                e.dataTransfer.dropEffect = 'move';
-                if (!draggedSessionId || draggedSessionId === session.sessionId) {
-                  if (dragOverSessionId) {
-                    setDragOverSessionId(null);
-                    setDropPosition(null);
-                  }
-                  return;
-                }
-                const rect = e.currentTarget.getBoundingClientRect();
-                const midpoint = rect.left + rect.width / 2;
-                const pos = e.clientX < midpoint ? 'left' : 'right';
-                if (dragOverSessionId !== session.sessionId || dropPosition !== pos) {
-                  setDragOverSessionId(session.sessionId);
-                  setDropPosition(pos);
-                }
-              }}
-              onDragLeave={(e) => {
-                if (!e.currentTarget.contains(e.relatedTarget as Node)) {
-                  if (dragOverSessionId === session.sessionId) {
-                    setDragOverSessionId(null);
-                    setDropPosition(null);
-                  }
-                }
-              }}
-              onDrop={(e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                const sourceId = e.dataTransfer.getData('text/remoteflow-tab-reorder') || draggedSessionId;
-                const targetId = session.sessionId;
-
-                if (sourceId && targetId && sourceId !== targetId && onReorderSessions) {
-                  const rect = e.currentTarget.getBoundingClientRect();
-                  const midpoint = rect.left + rect.width / 2;
-                  const pos = e.clientX < midpoint ? 'left' : 'right';
-                  onReorderSessions(sourceId, targetId, pos);
-                }
-
-                setDraggedSessionId(null);
-                setDragOverSessionId(null);
-                setDropPosition(null);
+              onPointerDown={(e) => {
+                if (e.button !== 0 || !e.isPrimary || (e.target as HTMLElement).closest('button')) return;
+                dragRef.current = {
+                  id: session.sessionId,
+                  pointerId: e.pointerId,
+                  startX: e.clientX,
+                  startY: e.clientY,
+                  x: e.clientX,
+                  y: e.clientY,
+                  active: false,
+                };
               }}
               onClick={() => {
                 if (isDraggingRef.current) return;
@@ -356,7 +426,7 @@ export const TabBar: React.FC<Props> = ({
                 e.stopPropagation();
                 setContextMenu({ x: e.clientX, y: e.clientY + 2, session });
               }}
-              title={t('Przeciągnij zakładkę w inne miejsce, lub na pulpit roboczy aby podzielić ekran')}
+              title={t('Przeciągnij zakładkę, aby zmienić jej pozycję (połączenie pozostaje aktywne), lub na obszar roboczy, aby podzielić ekran')}
               className={`group relative flex h-8 items-center gap-2 rounded-t-md border-t-2 px-3 text-xs font-medium transition-all cursor-grab active:cursor-grabbing max-w-[240px] shrink-0 select-none ${
                 isBeingDragged
                   ? 'opacity-35 scale-[0.98] border-cyan-500/40 bg-slate-900/60 ring-1 ring-cyan-500/30'
@@ -423,22 +493,8 @@ export const TabBar: React.FC<Props> = ({
                 </span>
               )}
 
-              {/* Action Buttons: Split, Reload, Duplicate & Close */}
+              {/* Action Buttons: Reload, Duplicate & Close */}
               <div className="ml-auto flex items-center gap-0.5 shrink-0">
-                {/* Quick Split / Divide window button */}
-                <button
-                  type="button"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onSelectSession(session.sessionId);
-                    onChangeLayout(layout === 'single' ? 'split-horizontal' : layout);
-                  }}
-                  title={t('Podziel ekran obok siebie (Split Screen)')}
-                  className="flex h-4.5 w-4.5 items-center justify-center rounded text-slate-400 opacity-0 group-hover:opacity-100 hover:bg-slate-800 hover:text-cyan-400 transition-all"
-                >
-                  <Columns2 className="h-2.5 w-2.5" />
-                </button>
-
                 {/* Reload / Reconnect button (Nawiąż połączenie ponownie) */}
                 <button
                   type="button"
@@ -651,6 +707,37 @@ export const TabBar: React.FC<Props> = ({
               <Copy className="h-3.5 w-3.5 text-slate-400" />
               <span>{t('Otwórz w nowej karcie')}</span>
             </button>
+
+            {sessions.length > 1 && onReorderSessions && (() => {
+              const id = contextMenu.session.sessionId;
+              const index = sessions.findIndex((s) => s.sessionId === id);
+              const items: { label: string; icon: React.ReactNode; to: number; disabled: boolean }[] = [
+                { label: t('Przenieś na początek'), icon: <ChevronsLeft className="h-3.5 w-3.5" />, to: 0, disabled: index <= 0 },
+                { label: t('Przenieś w lewo'), icon: <ArrowLeft className="h-3.5 w-3.5" />, to: index - 1, disabled: index <= 0 },
+                { label: t('Przenieś w prawo'), icon: <ArrowRight className="h-3.5 w-3.5" />, to: index + 2, disabled: index >= sessions.length - 1 },
+                { label: t('Przenieś na koniec'), icon: <ChevronsRight className="h-3.5 w-3.5" />, to: sessions.length, disabled: index >= sessions.length - 1 },
+              ];
+              return (
+                <>
+                  <div className="my-1 border-t border-slate-800" />
+                  {items.map((item) => (
+                    <button
+                      key={item.label}
+                      type="button"
+                      disabled={item.disabled}
+                      onClick={() => {
+                        moveTab(id, item.to);
+                        setContextMenu(null);
+                      }}
+                      className="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-slate-200 transition-colors hover:bg-slate-800 hover:text-cyan-400 disabled:cursor-default disabled:opacity-35 disabled:hover:bg-transparent disabled:hover:text-slate-200"
+                    >
+                      <span className="text-slate-400">{item.icon}</span>
+                      <span>{item.label}</span>
+                    </button>
+                  ))}
+                </>
+              );
+            })()}
 
             <div className="my-1 border-t border-slate-800" />
 
