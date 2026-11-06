@@ -66,6 +66,10 @@ pub struct Credential {
     pub certificate_content: Option<String>,
     #[serde(rename = "keyFilePath", default, skip_serializing_if = "Option::is_none")]
     pub key_file_path: Option<String>,
+    /// SSH certificate file (…-cert.pub), read at every connection; takes precedence over
+    /// `certificate_content`, which keeps the content loaded when the file was chosen.
+    #[serde(rename = "certificateFilePath", default, skip_serializing_if = "Option::is_none")]
+    pub certificate_file_path: Option<String>,
     #[serde(rename = "promptKeyPassphrase", default, skip_serializing_if = "Option::is_none")]
     pub prompt_key_passphrase: Option<bool>,
     #[serde(rename = "createdAt")]
@@ -98,6 +102,10 @@ pub struct Connection {
     pub certificate_content: Option<String>,
     #[serde(rename = "keyFilePath", default, skip_serializing_if = "Option::is_none")]
     pub key_file_path: Option<String>,
+    /// SSH certificate file (…-cert.pub), read at every connection; takes precedence over
+    /// `certificate_content`, which keeps the content loaded when the file was chosen.
+    #[serde(rename = "certificateFilePath", default, skip_serializing_if = "Option::is_none")]
+    pub certificate_file_path: Option<String>,
     #[serde(rename = "promptKeyPassphrase", default, skip_serializing_if = "Option::is_none")]
     pub prompt_key_passphrase: Option<bool>,
     #[serde(rename = "portForwarding")]

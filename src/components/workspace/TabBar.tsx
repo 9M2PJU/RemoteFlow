@@ -24,6 +24,7 @@ import {
   ChevronsRight,
   ArrowLeft,
   ArrowRight,
+  ArrowRightToLine,
 } from 'lucide-react';
 import { api } from '../../services/api';
 import { Connection, Group, SessionInfo, WorkspaceLayout } from '../../types';
@@ -48,6 +49,7 @@ interface Props {
   onReconnectSession: (sessionId: string) => void;
   onDuplicateSession: (sessionId: string) => void;
   onCloseOtherSessions: (sessionId: string, anchor?: DialogAnchor | null) => void;
+  onCloseSessionsToRight?: (sessionId: string, anchor?: DialogAnchor | null) => void;
   onCloseAll: (anchor?: DialogAnchor | null) => void;
   onReorderSessions?: (sourceSessionId: string, targetSessionId: string, position: 'left' | 'right') => void;
 }
@@ -81,6 +83,7 @@ export const TabBar: React.FC<Props> = ({
   onReconnectSession,
   onDuplicateSession,
   onCloseOtherSessions,
+  onCloseSessionsToRight,
   onCloseAll,
   onReorderSessions,
 }) => {
@@ -807,6 +810,27 @@ export const TabBar: React.FC<Props> = ({
               <XCircle className="h-3.5 w-3.5 text-slate-400" />
               <span>{t('Zamknij pozostałe karty')}</span>
             </button>
+
+            {/* Close tabs to the right */}
+            {onCloseSessionsToRight && (() => {
+              const id = contextMenu.session.sessionId;
+              const index = sessions.findIndex((s) => s.sessionId === id);
+              const count = index === -1 ? 0 : sessions.length - index - 1;
+              return (
+                <button
+                  type="button"
+                  disabled={count === 0}
+                  onClick={() => {
+                    onCloseSessionsToRight(id, anchorFromElement(tabRefs.current.get(id), 'below'));
+                    setContextMenu(null);
+                  }}
+                  className="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 hover:bg-slate-800 hover:text-white transition-colors disabled:cursor-default disabled:opacity-35 disabled:hover:bg-transparent disabled:hover:text-slate-200"
+                >
+                  <ArrowRightToLine className="h-3.5 w-3.5 text-slate-400" />
+                  <span>{count > 0 ? t('Zamknij karty po prawej ({count})', { count }) : t('Zamknij karty po prawej')}</span>
+                </button>
+              );
+            })()}
           </div>
         </div>
       )}

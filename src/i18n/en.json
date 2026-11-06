@@ -831,5 +831,17 @@
   "Przenieś na początek": "Move to the beginning",
   "Przenieś w lewo": "Move left",
   "Przenieś w prawo": "Move right",
-  "Przenieś na koniec": "Move to the end"
+  "Przenieś na koniec": "Move to the end",
+  "Wczytano certyfikat ({length} bajtów) z pliku: {fileName}": "Certificate loaded ({length} bytes) from file: {fileName}",
+  "Wybierz plik certyfikatu SSH": "Choose the SSH certificate file",
+  "Błąd wyboru pliku certyfikatu: {p0}": "Error choosing the certificate file: {p0}",
+  "Wklej treść certyfikatu": "Paste the certificate",
+  "np. ~/.ssh/id_ed25519-cert.pub lub C:\\Users\\user\\.ssh\\id_ed25519-cert.pub": "e.g. ~/.ssh/id_ed25519-cert.pub or C:\\Users\\user\\.ssh\\id_ed25519-cert.pub",
+  "Zapisana treść certyfikatu: {n} bajtów": "Stored certificate content: {n} bytes",
+  "Plik jest odczytywany przy każdym połączeniu – odnowiony certyfikat zostanie użyty bez edycji połączenia. Jeśli pliku zabraknie, używana jest treść zapisana przy jego wyborze.": "The file is read at every connection – a renewed certificate is used without editing the connection. If the file is missing, the content saved when it was chosen is used.",
+  "Wklej treść certyfikatu (…-cert.pub)": "Paste the certificate content (…-cert.pub)",
+  "Zamknąć karty po prawej?": "Close the tabs to the right?",
+  "Zostanie rozłączonych {count} sesji z kart po prawej stronie wskazanej karty.": "{count} sessions in the tabs to the right of this tab will be disconnected.",
+  "Zamknij karty po prawej ({count})": "Close tabs to the right ({count})",
+  "Zamknij karty po prawej": "Close tabs to the right"
 }

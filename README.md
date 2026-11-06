@@ -26,7 +26,7 @@ The application uses **Tauri 2 and Rust** for the native backend, **React 19 and
 
 ### SSH
 - Built-in terminal (xterm.js) with a full 16-colour palette – `mc`, `htop` and similar tools render correctly.
-- Authentication with password, private key (with optional passphrase prompt), OpenSSH certificate or SSH agent. The method chosen in the connection is used without falling back to others; a connection without its own secret follows the method of its credential profile.
+- Authentication with password, private key (with optional passphrase prompt), OpenSSH certificate or SSH agent. The key and the certificate can be chosen as a file (read at every connection, so a renewed short-lived certificate is used automatically) or pasted. The method chosen in the connection is used without falling back to others; a connection without its own secret follows the method of its credential profile.
 - Port forwarding: local, remote and dynamic (SOCKS5).
 - Copy/paste from the context menu and keyboard, middle-click paste of the terminal selection.
 - Server host keys verified on first use (TOFU) – the password is sent only to a trusted server.

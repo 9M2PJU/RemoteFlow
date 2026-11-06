@@ -312,6 +312,7 @@ const t = useT();
   const [pendingClose, setPendingClose] = useState<
     | { kind: 'one'; sessionId: string; anchor: DialogAnchor }
     | { kind: 'others'; sessionId: string; anchor: DialogAnchor }
+    | { kind: 'right'; sessionId: string; anchor: DialogAnchor }
     | { kind: 'all'; anchor: DialogAnchor }
     | null
   >(null);
@@ -376,6 +377,18 @@ const t = useT();
     setPendingClose({ kind: 'others', sessionId: keepSessionId, anchor: closePromptAnchor(anchor) });
   };
 
+  /** Tabs to the right of the given one (in tab order). */
+  const sessionsRightOf = (sessionId: string) => {
+    const index = sessions.findIndex((s) => s.sessionId === sessionId);
+    return index === -1 ? [] : sessions.slice(index + 1);
+  };
+
+  const handleCloseSessionsToRight = (sessionId: string, anchor?: DialogAnchor | null) => {
+    if (sessionsRightOf(sessionId).length === 0) return;
+    if (!uiSettings.confirmCloseSessions) return closeSessionsToRightNow(sessionId);
+    setPendingClose({ kind: 'right', sessionId, anchor: closePromptAnchor(anchor) });
+  };
+
   const handleCloseAllSessions = (anchor?: DialogAnchor | null) => {
     if (sessions.length === 0) return;
     if (!uiSettings.confirmCloseSessions) return closeAllSessionsNow();
@@ -418,6 +431,7 @@ const t = useT();
     if (!req) return;
     if (req.kind === 'one') closeSessionNow(req.sessionId);
     else if (req.kind === 'others') closeOtherSessionsNow(req.sessionId);
+    else if (req.kind === 'right') closeSessionsToRightNow(req.sessionId);
     else closeAllSessionsNow();
   };
 
@@ -436,6 +450,13 @@ const t = useT();
       return {
         title: t('Zamknąć pozostałe połączenia?'),
         message: t('Zostanie rozłączonych {count} pozostałych sesji (bieżąca pozostanie otwarta).', { count }),
+      };
+    }
+    if (pendingClose.kind === 'right') {
+      const count = sessionsRightOf(pendingClose.sessionId).length;
+      return {
+        title: t('Zamknąć karty po prawej?'),
+        message: t('Zostanie rozłączonych {count} sesji z kart po prawej stronie wskazanej karty.', { count }),
       };
     }
     return {
@@ -474,6 +495,23 @@ const t = useT();
         await api.closeSession(s.sessionId);
       } catch (err) {
         console.warn('Close other session error:', err);
+      }
+    }
+  };
+
+  const closeSessionsToRightNow = async (sessionId: string) => {
+    const toClose = sessionsRightOf(sessionId);
+    if (toClose.length === 0) return;
+    const closing = new Set(toClose.map((s) => s.sessionId));
+    setSessions((prev) => prev.filter((s) => !closing.has(s.sessionId)));
+    if (activeSessionId && closing.has(activeSessionId)) setActiveSessionId(sessionId);
+    setPaneSlots((prev) => prev.filter((id) => !closing.has(id)));
+
+    for (const s of toClose) {
+      try {
+        await api.closeSession(s.sessionId);
+      } catch (err) {
+        console.warn('Close session to the right error:', err);
       }
     }
   };
@@ -910,6 +948,7 @@ const t = useT();
             onReconnectSession={handleReconnectSession}
             onDuplicateSession={handleDuplicateSession}
             onCloseOtherSessions={handleCloseOtherSessions}
+            onCloseSessionsToRight={handleCloseSessionsToRight}
             onCloseAll={handleCloseAllSessions}
             onReorderSessions={handleReorderSessions}
           />

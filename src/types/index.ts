@@ -30,6 +30,8 @@ export interface Credential {
   privateKeyPassphraseEncrypted?: string;
   certificateContent?: string;
   keyFilePath?: string | null;
+  /** SSH certificate file, read at every connection (takes precedence over certificateContent). */
+  certificateFilePath?: string | null;
   promptKeyPassphrase?: boolean;
   createdAt: string;
   updatedAt: string;
@@ -50,6 +52,8 @@ export interface Connection {
   privateKeyPassphraseEncrypted?: string;
   certificateContent?: string;
   keyFilePath?: string | null;
+  /** SSH certificate file, read at every connection (takes precedence over certificateContent). */
+  certificateFilePath?: string | null;
   promptKeyPassphrase?: boolean;
   portForwarding: PortForwardRule[];
   rdpSettings?: RdpSettings;

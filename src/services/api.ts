@@ -901,6 +901,14 @@ export const api = {
     return null;
   },
 
+  /** Native file dialog for an SSH certificate (…-cert.pub); the backend checks the file. */
+  async pickSshCertificateFile(title?: string): Promise<{ path: string; content: string } | null> {
+    if (isTauri()) {
+      return await invoke<{ path: string; content: string } | null>('pick_ssh_certificate_file', { title: title || null });
+    }
+    return null;
+  },
+
   async readLocalPathsForRdpClipboard(localPaths: string[]): Promise<import('../types').RdpClipboardFileEntry[]> {
     if (isTauri()) {
       return await invoke<import('../types').RdpClipboardFileEntry[]>('read_local_paths_for_rdp_clipboard', { localPaths });

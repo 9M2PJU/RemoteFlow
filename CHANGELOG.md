@@ -4,6 +4,17 @@ Numer wersji: `MAJOR.MINOR.PATCH`. Każda zmiana podnosi co najmniej numer PATCH
 Wersja jest zapisana w trzech plikach, które muszą być zgodne (pilnuje tego test `version_tests` w `src-tauri/src/lib.rs`):
 `package.json` (wyświetlana w aplikacji), `src-tauri/tauri.conf.json` (instalator) i `src-tauri/Cargo.toml`.
 
+## 1.10.0 – zakładki: „Zamknij karty po prawej”
+- **Nowa pozycja w menu zakładki (prawy przycisk): „Zamknij karty po prawej (N)”** – rozłącza i zamyka wszystkie zakładki na prawo od wskazanej (w bieżącej kolejności zakładek). Przy włączonym potwierdzaniu zamykania sesji pyta o zgodę z liczbą sesji; dla ostatniej zakładki pozycja jest nieaktywna. Jeśli aktywna zakładka zostaje zamknięta, aktywna staje się wskazana zakładka.
+- Sprawdzone w aplikacji: 5 sesji SSH, „Zamknij karty po prawej” na drugiej → pozostają 2 sesje (2 połączenia TCP), pozostałe zakładki działają.
+
+## 1.9.0 – certyfikat SSH CA: plik lub wklejona treść
+- **Certyfikat SSH w definicji połączenia** można teraz, tak jak klucz prywatny, wskazać jako plik z dysku („Przeglądaj…” lub wpisana ścieżka, np. `~/.ssh/id_ed25519-cert.pub`) albo wkleić jego treść („Załaduj z pliku…” wypełnia pole treścią pliku).
+- Plik certyfikatu jest odczytywany przy każdym połączeniu – certyfikat odnowiony przez CA (np. ważny kilka godzin) jest używany bez edycji połączenia. Jeśli pliku zabraknie, używana jest treść zapisana przy jego wyborze; gdy nie ma żadnej, połączenie kończy się komunikatem ze ścieżką pliku. Kolejność: plik połączenia → treść w połączeniu → plik profilu poświadczeń → treść w profilu.
+- Okno wyboru przyjmuje tylko certyfikaty OpenSSH (`…-cert-v01@openssh.com AAAA…`, do 64 KB).
+- **Poprawka (klucz prywatny i certyfikat):** ścieżka pliku jest zapisywana tylko przy wybranej opcji „Wskaż plik z dysku”. Wcześniej po przełączeniu na „Wklej treść klucza” pozostawała stara ścieżka i przy łączeniu nadal używany był plik zamiast wklejonego klucza.
+- Testy: odczyt pliku przy łączeniu, odnowiony certyfikat w tym samym pliku, brak pliku / plik niebędący certyfikatem; w aplikacji: logowanie certyfikatem z pliku do serwera z `TrustedUserCAKeys`, ponowne połączenie po odnowieniu certyfikatu (nowy numer seryjny) i komunikat przy braku pliku.
+
 ## 1.8.1 – budowanie wersji Linux w Dockerze: narzędzia AppImage
 - `docker/Dockerfile.linux` pobiera narzędzia AppImage (AppRun, linuxdeploy, wtyczka appimage) raz, z ponawianiem prób, do katalogu podręcznego Tauri (`~/.cache/tauri`) w osobnej warstwie obrazu. Wcześniej `tauri build` pobierał je z GitHuba przy każdym budowaniu i chwilowy błąd GitHuba (`http status: 504`) przerywał całe budowanie po skompilowaniu aplikacji.
 

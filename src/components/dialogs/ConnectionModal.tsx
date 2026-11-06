@@ -85,6 +85,11 @@ export const ConnectionModal: React.FC<Props> = ({
   const [keyFileLoading, setKeyFileLoading] = useState(false);
   const [keyFileSuccess, setKeyFileSuccess] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [certInputMode, setCertInputMode] = useState<'file' | 'text'>('file');
+  const [certFilePath, setCertFilePath] = useState('');
+  const [certFileLoading, setCertFileLoading] = useState(false);
+  const [certFileSuccess, setCertFileSuccess] = useState<string | null>(null);
+  const certFileInputRef = useRef<HTMLInputElement>(null);
 
   // Port forwarding
   const [portForwarding, setPortForwarding] = useState<PortForwardRule[]>([]);
@@ -125,6 +130,9 @@ export const ConnectionModal: React.FC<Props> = ({
       setKeyInputMode(editingConnection.keyFilePath ? 'file' : 'text');
       setKeyFileSuccess(null);
       setCertificateContent(editingConnection.certificateContent || '');
+      setCertFilePath(editingConnection.certificateFilePath || '');
+      setCertInputMode(editingConnection.certificateFilePath || !editingConnection.certificateContent ? 'file' : 'text');
+      setCertFileSuccess(null);
       setPortForwarding(editingConnection.portForwarding || []);
       if (editingConnection.rdpSettings) {
         setRdpWidth(editingConnection.rdpSettings.width);
@@ -159,6 +167,9 @@ export const ConnectionModal: React.FC<Props> = ({
       setKeyInputMode('file');
       setKeyFileSuccess(null);
       setCertificateContent('');
+      setCertFilePath('');
+      setCertInputMode('file');
+      setCertFileSuccess(null);
       setPortForwarding([]);
       setRdpWidth(1920);
       setRdpHeight(1080);
@@ -251,6 +262,47 @@ export const ConnectionModal: React.FC<Props> = ({
     reader.readAsText(file);
   };
 
+  const certLoadedMessage = (length: number, filePath: string) => {
+    const fileName = filePath.split('/').pop()?.split('\\').pop() || filePath;
+    return t('Wczytano certyfikat ({length} bajtów) z pliku: {fileName}', { length, fileName });
+  };
+
+  const handlePickCertFile = async () => {
+    if (!isTauri()) {
+      certFileInputRef.current?.click();
+      return;
+    }
+    try {
+      setCertFileLoading(true);
+      setError(null);
+      const picked = await api.pickSshCertificateFile(t('Wybierz plik certyfikatu SSH'));
+      if (picked) {
+        setCertFilePath(picked.path);
+        setCertificateContent(picked.content);
+        setCertFileSuccess(certLoadedMessage(picked.content.length, picked.path));
+      }
+    } catch (err: unknown) {
+      setError(t('Błąd wyboru pliku certyfikatu: {p0}', { p0: err instanceof Error ? err.message : String(err) }));
+    } finally {
+      setCertFileLoading(false);
+    }
+  };
+
+  const handleCertFileInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setCertFilePath(file.name);
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const text = String(event.target?.result || '').trim();
+      if (text) {
+        setCertificateContent(text);
+        setCertFileSuccess(certLoadedMessage(text.length, file.name));
+      }
+    };
+    reader.readAsText(file);
+  };
+
   // Update default port when changing protocol
   const handleProtocolChange = (p: ProtocolType) => {
     setProtocol(p);
@@ -334,7 +386,10 @@ export const ConnectionModal: React.FC<Props> = ({
         privateKeyEncrypted: editingConnection ? editingConnection.privateKeyEncrypted : undefined,
         privateKeyPassphraseEncrypted: promptKeyPassphrase ? undefined : (editingConnection ? editingConnection.privateKeyPassphraseEncrypted : undefined),
         certificateContent: certificateContent.trim() || undefined,
-        keyFilePath: keyFilePath.trim() || undefined,
+        // The file (read at every connection) applies only when "file" is selected – otherwise a
+        // pasted key/certificate would be silently replaced by an old file.
+        certificateFilePath: (certInputMode === 'file' && certFilePath.trim()) || undefined,
+        keyFilePath: (keyInputMode === 'file' && keyFilePath.trim()) || undefined,
         promptKeyPassphrase: Boolean(promptKeyPassphrase),
         portForwarding,
         rdpSettings: protocol === 'rdp' ? {
@@ -1157,17 +1212,107 @@ export const ConnectionModal: React.FC<Props> = ({
                         </div>
 
                         {sshAuthType === 'certificate' && (
-                          <div className="pt-3 border-t border-slate-800/60">
-                            <label className="block text-xs font-semibold text-slate-300 mb-1">
-                              {t('Certyfikat SSH (id_ed25519-cert.pub)')}
-                            </label>
-                            <textarea
-                              rows={2}
-                              value={certificateContent}
-                              onChange={(e) => setCertificateContent(e.target.value)}
-                              placeholder="ssh-ed25519-cert-v01@openssh.com AAAA..."
-                              className="w-full rounded-lg border border-slate-700 bg-slate-800/80 px-3 py-2 font-mono text-[11px] text-white placeholder-slate-600 focus:border-cyan-500 focus:outline-hidden"
+                          <div className="pt-3 border-t border-slate-800/60 space-y-2">
+                            <input
+                              ref={certFileInputRef}
+                              type="file"
+                              accept=".pub,text/plain"
+                              onChange={handleCertFileInputChange}
+                              className="hidden"
                             />
+                            <div className="flex items-center justify-between gap-2">
+                              <label className="text-xs font-semibold text-slate-300 flex items-center gap-1.5">
+                                <Shield className="h-3.5 w-3.5 text-cyan-400" />
+                                <span>{t('Certyfikat SSH (id_ed25519-cert.pub)')}</span>
+                              </label>
+                              <div className="flex items-center rounded-lg bg-slate-900 border border-slate-800 p-0.5">
+                                <button
+                                  type="button"
+                                  onClick={() => setCertInputMode('file')}
+                                  className={`flex items-center gap-1.5 px-2.5 py-1 text-[11px] font-medium rounded-md transition-all ${
+                                    certInputMode === 'file' ? 'bg-cyan-600 text-white shadow-xs' : 'text-slate-400 hover:text-slate-200'
+                                  }`}
+                                >
+                                  <FolderDown className="h-3 w-3" />
+                                  <span>{t('Wskaż plik z dysku')}</span>
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => setCertInputMode('text')}
+                                  className={`flex items-center gap-1.5 px-2.5 py-1 text-[11px] font-medium rounded-md transition-all ${
+                                    certInputMode === 'text' ? 'bg-cyan-600 text-white shadow-xs' : 'text-slate-400 hover:text-slate-200'
+                                  }`}
+                                >
+                                  <KeyRound className="h-3 w-3" />
+                                  <span>{t('Wklej treść certyfikatu')}</span>
+                                </button>
+                              </div>
+                            </div>
+
+                            {certInputMode === 'file' ? (
+                              <div className="space-y-2">
+                                <div className="flex gap-2">
+                                  <input
+                                    type="text"
+                                    value={certFilePath}
+                                    onChange={(e) => {
+                                      setCertFilePath(e.target.value);
+                                      setCertFileSuccess(null);
+                                    }}
+                                    placeholder={t('np. ~/.ssh/id_ed25519-cert.pub lub C:\\Users\\user\\.ssh\\id_ed25519-cert.pub')}
+                                    className="flex-1 rounded-lg border border-slate-700 bg-slate-800/80 px-3 py-2 font-mono text-xs text-white placeholder-slate-500 focus:border-cyan-500 focus:outline-hidden"
+                                  />
+                                  <button
+                                    type="button"
+                                    onClick={handlePickCertFile}
+                                    disabled={certFileLoading}
+                                    className="inline-flex items-center gap-1.5 rounded-lg border border-cyan-500/50 bg-cyan-600/20 px-3.5 py-2 text-xs font-semibold text-cyan-300 hover:bg-cyan-600/30 hover:border-cyan-400 transition-all shrink-0 cursor-pointer"
+                                  >
+                                    {certFileLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <FolderOpen className="h-3.5 w-3.5" />}
+                                    <span>{t('Przeglądaj...')}</span>
+                                  </button>
+                                </div>
+                                {certFileSuccess && (
+                                  <div className="flex items-center gap-2 rounded-lg bg-emerald-500/10 border border-emerald-500/20 px-2.5 py-1.5 text-[11px] text-emerald-400">
+                                    <Check className="h-3.5 w-3.5 shrink-0" />
+                                    <span className="truncate">{certFileSuccess}</span>
+                                  </div>
+                                )}
+                                {certificateContent && !certFileSuccess && (
+                                  <div className="flex items-center gap-2 rounded-lg bg-slate-800/60 border border-slate-700/60 px-2.5 py-1 text-[11px] text-slate-400">
+                                    <span>{t('Zapisana treść certyfikatu: {n} bajtów', { n: certificateContent.trim().length })}</span>
+                                  </div>
+                                )}
+                                <p className="text-[10px] text-slate-500">
+                                  {t('Plik jest odczytywany przy każdym połączeniu – odnowiony certyfikat zostanie użyty bez edycji połączenia. Jeśli pliku zabraknie, używana jest treść zapisana przy jego wyborze.')}
+                                </p>
+                              </div>
+                            ) : (
+                              <div className="space-y-1.5">
+                                <div className="flex items-center justify-between">
+                                  <span className="text-[11px] text-slate-400">{t('Wklej treść certyfikatu (…-cert.pub)')}</span>
+                                  <button
+                                    type="button"
+                                    onClick={handlePickCertFile}
+                                    disabled={certFileLoading}
+                                    className="inline-flex items-center gap-1 text-[11px] text-cyan-400 hover:text-cyan-300 cursor-pointer"
+                                  >
+                                    <FolderDown className="h-3 w-3" />
+                                    <span>{t('Załaduj z pliku...')}</span>
+                                  </button>
+                                </div>
+                                <textarea
+                                  rows={3}
+                                  value={certificateContent}
+                                  onChange={(e) => {
+                                    setCertificateContent(e.target.value);
+                                    setCertFileSuccess(null);
+                                  }}
+                                  placeholder="ssh-ed25519-cert-v01@openssh.com AAAA..."
+                                  className="w-full rounded-lg border border-slate-700 bg-slate-800/80 px-3 py-2 font-mono text-[11px] text-white placeholder-slate-600 focus:border-cyan-500 focus:outline-hidden"
+                                />
+                              </div>
+                            )}
                           </div>
                         )}
                       </div>

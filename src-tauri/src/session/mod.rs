@@ -211,6 +211,15 @@ pub fn connection_password_status(connection_id: String, auth_state: tauri::Stat
     Ok(password_status(resolve_connection(&auth_state, &connection_id)?))
 }
 
+/// Reads an SSH certificate file chosen in the connection (None when missing or not a certificate).
+fn read_certificate_file(path: &Option<String>) -> Option<String> {
+    let path = path.as_deref()?.trim();
+    if path.is_empty() {
+        return None;
+    }
+    read_certificate(std::path::Path::new(path)).ok()
+}
+
 fn read_key_file(path: &Option<String>) -> Option<String> {
     let path = path.as_deref()?.trim();
     if path.is_empty() || !std::path::Path::new(path).is_file() {
@@ -259,9 +268,6 @@ fn resolve_connection_data(vault: &crate::vault::models::VaultData, key: &[u8; 3
                 private_key = decrypt_opt(key, &cred.private_key_encrypted)?;
             }
             passphrase = decrypt_opt(key, &cred.private_key_passphrase_encrypted)?;
-            if conn.certificate_content.as_deref().is_none_or(|c| c.trim().is_empty()) {
-                conn.certificate_content = cred.certificate_content.clone();
-            }
         }
     }
 
@@ -277,6 +283,29 @@ fn resolve_connection_data(vault: &crate::vault::models::VaultData, key: &[u8; 3
     if let Some(p) = decrypt_opt(key, &conn.private_key_passphrase_encrypted)? {
         passphrase = Some(p);
     }
+
+    // SSH certificate: connection file > connection content > profile file > profile content.
+    // The file is read at every connection, so a renewed (short-lived) certificate is picked up.
+    let non_empty = |c: &Option<String>| c.clone().filter(|c| !c.trim().is_empty());
+    let profile = linked;
+    let certificate = read_certificate_file(&conn.certificate_file_path)
+        .or_else(|| non_empty(&conn.certificate_content))
+        .or_else(|| profile.and_then(|c| read_certificate_file(&c.certificate_file_path)))
+        .or_else(|| profile.and_then(|c| non_empty(&c.certificate_content)));
+    if certificate.is_none() && conn.protocol == "ssh" && conn.ssh_auth_type == "certificate" {
+        let path = [conn.certificate_file_path.as_deref(), profile.and_then(|c| c.certificate_file_path.as_deref())]
+            .into_iter()
+            .flatten()
+            .find(|p| !p.trim().is_empty());
+        if let Some(path) = path {
+            return Err(tr!(
+                "Nie można odczytać certyfikatu SSH z pliku '{}' – sprawdź, czy plik istnieje i jest certyfikatem OpenSSH (…-cert.pub).",
+                "Cannot read the SSH certificate from '{}' – check that the file exists and is an OpenSSH certificate (…-cert.pub).",
+                path
+            ));
+        }
+    }
+    conn.certificate_content = certificate;
 
     Ok(ResolvedConnection {
         rdp_fingerprint: vault.metadata.known_hosts.get(&known_hosts::host_id("rdp", &conn.host, conn.port)).cloned(),
@@ -1343,6 +1372,48 @@ pub async fn pick_private_key_file(title: Option<String>) -> Result<Option<Picke
     .map_err(|e| e.to_string())?
 }
 
+/// Checks that a file chosen as an SSH certificate really is an OpenSSH certificate
+/// (`ssh-ed25519-cert-v01@openssh.com AAAA… comment`).
+fn read_certificate(path: &std::path::Path) -> Result<String, String> {
+    let not_cert = || {
+        tr!(
+            "Wybrany plik nie jest certyfikatem SSH (oczekiwano pliku …-cert.pub)",
+            "The selected file is not an SSH certificate (expected a …-cert.pub file)"
+        )
+        .to_string()
+    };
+    let meta = std::fs::metadata(path).map_err(|e| tr!("Błąd odczytu pliku '{}': {}", "Error reading file '{}': {}", path.display(), e))?;
+    if !meta.is_file() || meta.len() > MAX_KEY_FILE_BYTES {
+        return Err(not_cert());
+    }
+    let content = std::fs::read_to_string(path).map_err(|e| tr!("Błąd odczytu pliku '{}': {}", "Error reading file '{}': {}", path.display(), e))?;
+    if !looks_like_ssh_certificate(&content) {
+        return Err(not_cert());
+    }
+    Ok(content.trim().to_string())
+}
+
+fn looks_like_ssh_certificate(content: &str) -> bool {
+    let mut parts = content.split_whitespace();
+    let kind = parts.next().unwrap_or("");
+    kind.ends_with("-cert-v01@openssh.com") && parts.next().is_some_and(|b| b.starts_with("AAAA"))
+}
+
+/// Opens the native file dialog and returns the chosen SSH certificate (…-cert.pub).
+#[tauri::command]
+pub async fn pick_ssh_certificate_file(title: Option<String>) -> Result<Option<PickedKeyFile>, String> {
+    tokio::task::spawn_blocking(move || {
+        let title = title.unwrap_or_else(|| tr!("Wybierz plik certyfikatu SSH", "Choose the SSH certificate file").to_string());
+        let Some(path) = pick_file_dialog(Some(title))? else {
+            return Ok(None);
+        };
+        let content = read_certificate(std::path::Path::new(&path))?;
+        Ok(Some(PickedKeyFile { path, content }))
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
 #[derive(Serialize)]
 pub struct RdpClipboardFileEntry {
     pub name: String,
@@ -1592,6 +1663,42 @@ mod key_file_pick_tests {
         let resolved = super::resolve_connection_data(&vault, &key, "c").unwrap();
         assert_eq!(resolved.private_key.as_deref(), Some("profile key"));
         assert_eq!(resolved.conn.certificate_content.as_deref(), Some("connection certificate"));
+    }
+
+    #[test]
+    fn certificate_file_is_read_at_connect_time_and_takes_precedence() {
+        let key = [42u8; 32];
+        let dir = std::env::temp_dir().join(format!("rf-cert-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let file = dir.join("id_ed25519-cert.pub");
+        std::fs::write(&file, "ssh-ed25519-cert-v01@openssh.com AAAAfile1 user@host\n").unwrap();
+        let mut vault: crate::vault::models::VaultData = serde_json::from_value(serde_json::json!({
+            "metadata": { "version": 2, "salt_base64": "", "canary_nonce_base64": "", "canary_ciphertext_base64": "",
+                "pin_enabled": false, "auto_lock_screen": true, "auto_lock_timeout_mins": 15, "max_pin_attempts": 3 },
+            "groups": [],
+            "connections": [{ "id": "c", "name": "server", "protocol": "ssh", "host": "server", "port": 22,
+                "username": "root", "sshAuthType": "certificate", "certificateContent": "stored certificate",
+                "certificateFilePath": file.to_string_lossy(), "portForwarding": [], "tags": [], "createdAt": "", "updatedAt": "" }],
+            "credentials": []
+        })).unwrap();
+        let cert = |v: &crate::vault::models::VaultData| super::resolve_connection_data(v, &key, "c").map(|r| r.conn.certificate_content);
+        assert_eq!(cert(&vault).unwrap().as_deref(), Some("ssh-ed25519-cert-v01@openssh.com AAAAfile1 user@host"));
+        // A renewed certificate in the same file is used without editing the connection
+        std::fs::write(&file, "ssh-ed25519-cert-v01@openssh.com AAAAfile2 user@host").unwrap();
+        assert_eq!(cert(&vault).unwrap().as_deref(), Some("ssh-ed25519-cert-v01@openssh.com AAAAfile2 user@host"));
+        // Not a certificate / missing file: the content stored when the file was chosen
+        std::fs::write(&file, "-----BEGIN OPENSSH PRIVATE KEY-----").unwrap();
+        assert_eq!(cert(&vault).unwrap().as_deref(), Some("stored certificate"));
+        std::fs::remove_file(&file).unwrap();
+        assert_eq!(cert(&vault).unwrap().as_deref(), Some("stored certificate"));
+        // Nothing usable: a clear error naming the file
+        vault.connections[0].certificate_content = None;
+        assert!(cert(&vault).unwrap_err().contains("id_ed25519-cert.pub"));
+        // Saved without the new field (older vault) – unchanged serialization
+        vault.connections[0].certificate_file_path = None;
+        let json = serde_json::to_string(&vault.connections[0]).unwrap();
+        assert!(!json.contains("certificateFilePath"));
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]
