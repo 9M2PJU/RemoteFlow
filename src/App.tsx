@@ -3,6 +3,7 @@ import { api, isTauri } from './services/api';
 import { listen } from '@tauri-apps/api/event';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { Connection, Credential, Group, SessionInfo, UiSettings, VaultStatus, WorkspaceLayout } from './types';
+import { setTerminalScrollback } from './utils/terminalSettings';
 import { Header } from './components/layout/Header';
 import { Sidebar } from './components/sidebar/Sidebar';
 import { TabBar } from './components/workspace/TabBar';
@@ -324,13 +325,22 @@ const t = useT();
 
   useEffect(() => {
     if (!vaultStatus?.isUnlocked) return;
-    api.getUiSettings().then(setUiSettings).catch(() => {});
+    api
+      .getUiSettings()
+      .then((s) => {
+        setUiSettings(s);
+        setTerminalScrollback(s.terminalScrollback);
+      })
+      .catch(() => {});
   }, [vaultStatus?.isUnlocked]);
 
   useEffect(() => {
     const onChanged = (e: Event) => {
       const detail = (e as CustomEvent<UiSettings>).detail;
-      if (detail) setUiSettings(detail);
+      if (detail) {
+        setUiSettings(detail);
+        setTerminalScrollback(detail.terminalScrollback);
+      }
     };
     window.addEventListener('remoteflow-ui-settings', onChanged);
     return () => window.removeEventListener('remoteflow-ui-settings', onChanged);

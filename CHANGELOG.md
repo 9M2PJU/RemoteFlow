@@ -4,6 +4,11 @@ Numer wersji: `MAJOR.MINOR.PATCH`. Każda zmiana podnosi co najmniej numer PATCH
 Wersja jest zapisana w trzech plikach, które muszą być zgodne (pilnuje tego test `version_tests` w `src-tauri/src/lib.rs`):
 `package.json` (wyświetlana w aplikacji), `src-tauri/tauri.conf.json` (instalator) i `src-tauri/Cargo.toml`.
 
+## 1.11.0 – terminal SSH: historia po rozłączeniu, regulowany bufor
+- **Przewijanie historii po rozłączeniu.** Gdy połączenie kończyło się (zerwanie, zamknięcie przez serwer) w trakcie działania programu pełnoekranowego (`mc`, `vim`, `less`, `htop`, `tmux`…), terminal zostawał na ekranie alternatywnym, który nie ma historii, często z włączonym raportowaniem myszy – kółko myszy było wysyłane do zakończonej sesji zamiast przewijać. Teraz po rozłączeniu terminal wraca do zwykłego ekranu z wcześniejszą historią, raportowanie myszy i tryby programu są wyłączane, a w terminalu pojawia się informacja o zakończeniu połączenia.
+- **Rozmiar bufora historii do ustawienia:** Ustawienia → Terminal SSH → „Bufor historii (liczba linii)”, od 100 do 200 000, domyślnie **10 000** (wcześniej stałe 1000 – domyślna wartość xterm.js). Zmiana działa od razu także w otwartych terminalach (zmniejszenie usuwa najstarsze linie). Ustawienie jest zapisywane w sejfie; sejfy zapisane wcześniej nie zmieniają postaci, dopóki wartość jest domyślna.
+- Sprawdzone w aplikacji: `seq 1 300`, program na ekranie alternatywnym z raportowaniem myszy, zerwanie połączenia po stronie serwera → kółkiem myszy widać linie 1–300 i komunikat o zakończeniu; zmiana bufora na 100 linii od razu skraca historię otwartego terminala.
+
 ## 1.10.0 – zakładki: „Zamknij karty po prawej”
 - **Nowa pozycja w menu zakładki (prawy przycisk): „Zamknij karty po prawej (N)”** – rozłącza i zamyka wszystkie zakładki na prawo od wskazanej (w bieżącej kolejności zakładek). Przy włączonym potwierdzaniu zamykania sesji pyta o zgodę z liczbą sesji; dla ostatniej zakładki pozycja jest nieaktywna. Jeśli aktywna zakładka zostaje zamknięta, aktywna staje się wskazana zakładka.
 - Sprawdzone w aplikacji: 5 sesji SSH, „Zamknij karty po prawej” na drugiej → pozostają 2 sesje (2 połączenia TCP), pozostałe zakładki działają.

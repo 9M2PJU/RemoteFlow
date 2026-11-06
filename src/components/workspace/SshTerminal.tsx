@@ -15,6 +15,12 @@ import {
 import { api, isTauri } from '../../services/api';
 import { SessionInfo } from '../../types';
 import { rememberOscCwd } from '../../utils/terminalCwd';
+import {
+  onTerminalScrollbackChange,
+  TERMINAL_LEAVE_ALTERNATE_SCREEN,
+  TERMINAL_RESTORE_AFTER_DISCONNECT,
+  terminalScrollback,
+} from '../../utils/terminalSettings';
 import { SftpManager } from './SftpManager';
 import { useT } from '../../i18n';
 import { useLightTerminal } from '../../theme';
@@ -234,6 +240,8 @@ export const SshTerminal: React.FC<Props> = ({ session, isActive, splitLayout = 
 
     const term = new Terminal({
       cursorBlink: true,
+      // History available with the mouse wheel / scroll bar (Settings → SSH terminal)
+      scrollback: terminalScrollback(),
       fontFamily:
         'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace',
       fontSize: 13,
@@ -411,6 +419,37 @@ export const SshTerminal: React.FC<Props> = ({ session, isActive, splitLayout = 
       };
     }
   }, [session.sessionId, triggerFitAndResize]);
+
+  // Scrollback size changed in the settings – applied to the open terminal
+  useEffect(() => {
+    return onTerminalScrollbackChange((lines) => {
+      const term = termRef.current;
+      if (term) term.options.scrollback = lines;
+    });
+  }, []);
+
+  // After the connection ends the history must stay scrollable. A full-screen program that was
+  // running (mc, vim, less, htop, tmux…) leaves the terminal in the alternate screen, which has no
+  // history, and often with mouse reporting on – the wheel then went to the dead session instead
+  // of scrolling. Return the terminal to the normal screen with the earlier output.
+  const prevStatusRef = useRef(session.status);
+  useEffect(() => {
+    const prev = prevStatusRef.current;
+    prevStatusRef.current = session.status;
+    const ended = session.status === 'disconnected' || session.status === 'error';
+    const wasEnded = prev === 'disconnected' || prev === 'error';
+    const term = termRef.current;
+    if (!term || !ended || wasEnded) return;
+    const inAlternate = term.buffer.active.type === 'alternate';
+    term.write((inAlternate ? TERMINAL_LEAVE_ALTERNATE_SCREEN : '') + TERMINAL_RESTORE_AFTER_DISCONNECT);
+    if (inAlternate) {
+      const reason = session.statusMessage ? ` ${session.statusMessage}` : '';
+      term.write(
+        `\r\n\x1b[33m[${t('Połączenie zakończone – zamknięto ekran programu pełnoekranowego, wcześniejszą historię można przewijać.')}${reason}]\x1b[0m\r\n`
+      );
+    }
+    term.scrollToBottom();
+  }, [session.status, session.statusMessage, t]);
 
   // Middle mouse button: paste the text selected in this terminal (X11 "primary selection" style).
   // The selection does not need to be copied first; the last selection is remembered even after

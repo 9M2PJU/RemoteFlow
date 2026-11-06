@@ -25,7 +25,7 @@ Aplikacja wykorzystuje **Tauri 2 i Rust** jako natywny backend, **React 19 i Typ
 - Małe okna potwierdzenia przy wskazanym połączeniu lub zakładce; pytania o zamknięcie sesji i programu można wyłączyć w Ustawieniach.
 
 ### SSH
-- Wbudowany terminal (xterm.js) z pełną paletą 16 kolorów – `mc`, `htop` i podobne narzędzia wyświetlają się poprawnie.
+- Wbudowany terminal (xterm.js) z pełną paletą 16 kolorów – `mc`, `htop` i podobne narzędzia wyświetlają się poprawnie. Regulowany bufor historii (Ustawienia → Terminal SSH, domyślnie 10 000 linii), przewijany także po zakończeniu połączenia.
 - Uwierzytelnianie hasłem, kluczem prywatnym (z opcjonalnym pytaniem o hasło klucza), certyfikatem OpenSSH lub agentem SSH. Klucz i certyfikat można wskazać jako plik (odczytywany przy każdym połączeniu – odnowiony, krótkoterminowy certyfikat jest używany automatycznie) lub wkleić. Używana jest metoda wybrana w połączeniu, bez przechodzenia do innych; połączenie bez własnego hasła/klucza korzysta z metody swojego profilu poświadczeń.
 - Przekierowanie portów: lokalne, zdalne i dynamiczne (SOCKS5).
 - Kopiowanie i wklejanie z menu kontekstowego i klawiatury, wklejanie zaznaczenia środkowym przyciskiem myszy.

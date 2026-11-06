@@ -17,7 +17,14 @@ import {
   MessageSquareWarning,
   Languages,
   Palette,
+  SquareTerminal,
 } from 'lucide-react';
+import {
+  clampScrollback,
+  DEFAULT_TERMINAL_SCROLLBACK,
+  MAX_TERMINAL_SCROLLBACK,
+  MIN_TERMINAL_SCROLLBACK,
+} from '../../utils/terminalSettings';
 import { api } from '../../services/api';
 import { BackupEntry, BackupSettings, KnownHostEntry, UiSettings, VaultStatus } from '../../types';
 import { ConfirmDialog } from './ConfirmDialog';
@@ -172,8 +179,13 @@ export const SettingsModal: React.FC<Props> = ({
       await api.setBackupSettings(backupSettings);
 
       // 4. Confirmations (closing connections / exiting the application)
-      await api.setUiSettings(uiSettings);
-      window.dispatchEvent(new CustomEvent<UiSettings>('remoteflow-ui-settings', { detail: uiSettings }));
+      const savedUi: UiSettings = {
+        ...uiSettings,
+        terminalScrollback: clampScrollback(uiSettings.terminalScrollback ?? DEFAULT_TERMINAL_SCROLLBACK),
+      };
+      await api.setUiSettings(savedUi);
+      setUiSettings(savedUi);
+      window.dispatchEvent(new CustomEvent<UiSettings>('remoteflow-ui-settings', { detail: savedUi }));
 
       setSuccessMsg(t('Ustawienia zostały zapisane.'));
       setPinCode('');
@@ -534,6 +546,41 @@ export const SettingsModal: React.FC<Props> = ({
               <TerminalDarkToggle />
               <LinuxRenderingSetting />
               <LinuxRdpClientSetting />
+            </div>
+
+            {/* SSH terminal */}
+            <div className="rounded-xl border border-slate-800 bg-slate-950/40 p-4 space-y-3">
+              <div className="text-xs font-bold text-white uppercase tracking-wider flex items-center gap-1.5">
+                <SquareTerminal className="h-3.5 w-3.5 text-emerald-400" />
+                {t('Terminal SSH')}
+              </div>
+              <label className="flex items-center justify-between gap-3">
+                <div className="text-xs text-slate-300">
+                  {t('Bufor historii (liczba linii)')}
+                  <div className="text-[10px] text-slate-500">
+                    {t('Ile wcześniejszych linii można przewinąć myszą – także po rozłączeniu. Od {min} do {max}, domyślnie {def}. Większy bufor zużywa więcej pamięci.', {
+                      min: MIN_TERMINAL_SCROLLBACK,
+                      max: MAX_TERMINAL_SCROLLBACK,
+                      def: DEFAULT_TERMINAL_SCROLLBACK,
+                    })}
+                  </div>
+                </div>
+                <input
+                  type="number"
+                  min={MIN_TERMINAL_SCROLLBACK}
+                  max={MAX_TERMINAL_SCROLLBACK}
+                  step={1000}
+                  value={uiSettings.terminalScrollback ?? DEFAULT_TERMINAL_SCROLLBACK}
+                  onChange={(e) => {
+                    const value = e.target.value === '' ? MIN_TERMINAL_SCROLLBACK : Number(e.target.value);
+                    setUiSettings((u) => ({ ...u, terminalScrollback: value }));
+                  }}
+                  onBlur={() =>
+                    setUiSettings((u) => ({ ...u, terminalScrollback: clampScrollback(u.terminalScrollback ?? DEFAULT_TERMINAL_SCROLLBACK) }))
+                  }
+                  className="w-28 shrink-0 rounded-lg border border-slate-700 bg-slate-800/80 px-2.5 py-1.5 text-right font-mono text-xs text-white focus:border-cyan-500 focus:outline-hidden"
+                />
+              </label>
             </div>
 
             {/* Confirmations */}

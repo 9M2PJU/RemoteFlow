@@ -149,6 +149,8 @@ export interface BackupSettings {
 export interface UiSettings {
   confirmCloseSessions: boolean;
   confirmAppExit: boolean;
+  /** Lines of SSH terminal history (scrollback); default 10 000. */
+  terminalScrollback?: number;
 }
 
 export interface BackupEntry {

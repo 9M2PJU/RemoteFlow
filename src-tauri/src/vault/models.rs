@@ -182,6 +182,22 @@ pub struct UiSettings {
     /// Ask before exiting the application.
     #[serde(rename = "confirmAppExit", default = "default_true")]
     pub confirm_app_exit: bool,
+    /// Lines kept in the SSH terminal history (scrollback). Not serialized when default, so
+    /// existing vaults keep the same serialized form.
+    #[serde(rename = "terminalScrollback", default = "default_scrollback", skip_serializing_if = "is_default_scrollback")]
+    pub terminal_scrollback: u32,
+}
+
+pub const DEFAULT_TERMINAL_SCROLLBACK: u32 = 10_000;
+pub const MIN_TERMINAL_SCROLLBACK: u32 = 100;
+pub const MAX_TERMINAL_SCROLLBACK: u32 = 200_000;
+
+fn default_scrollback() -> u32 {
+    DEFAULT_TERMINAL_SCROLLBACK
+}
+
+fn is_default_scrollback(v: &u32) -> bool {
+    *v == DEFAULT_TERMINAL_SCROLLBACK
 }
 
 impl Default for UiSettings {
@@ -189,6 +205,7 @@ impl Default for UiSettings {
         Self {
             confirm_close_sessions: true,
             confirm_app_exit: true,
+            terminal_scrollback: DEFAULT_TERMINAL_SCROLLBACK,
         }
     }
 }
@@ -343,5 +360,12 @@ mod tests {
         let partial: UiSettings = serde_json::from_str(r#"{"confirmAppExit":false}"#).unwrap();
         assert!(partial.confirm_close_sessions && !partial.confirm_app_exit);
         assert!(!partial.is_default());
+        // The default scrollback is not written – a non-default "ui" saved by an older version
+        // serializes exactly as before
+        assert_eq!(serde_json::to_string(&partial).unwrap(), r#"{"confirmCloseSessions":true,"confirmAppExit":false}"#);
+        assert_eq!(partial.terminal_scrollback, DEFAULT_TERMINAL_SCROLLBACK);
+        let custom: UiSettings = serde_json::from_str(r#"{"terminalScrollback":50000}"#).unwrap();
+        assert_eq!(custom.terminal_scrollback, 50_000);
+        assert!(serde_json::to_string(&custom).unwrap().contains("\"terminalScrollback\":50000"));
     }
 }

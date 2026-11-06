@@ -843,5 +843,9 @@
   "Zamknąć karty po prawej?": "Close the tabs to the right?",
   "Zostanie rozłączonych {count} sesji z kart po prawej stronie wskazanej karty.": "{count} sessions in the tabs to the right of this tab will be disconnected.",
   "Zamknij karty po prawej ({count})": "Close tabs to the right ({count})",
-  "Zamknij karty po prawej": "Close tabs to the right"
+  "Zamknij karty po prawej": "Close tabs to the right",
+  "Terminal SSH": "SSH terminal",
+  "Bufor historii (liczba linii)": "History buffer (lines)",
+  "Ile wcześniejszych linii można przewinąć myszą – także po rozłączeniu. Od {min} do {max}, domyślnie {def}. Większy bufor zużywa więcej pamięci.": "How many earlier lines can be scrolled back with the mouse – also after disconnecting. From {min} to {max}, default {def}. A larger buffer uses more memory.",
+  "Połączenie zakończone – zamknięto ekran programu pełnoekranowego, wcześniejszą historię można przewijać.": "Connection ended – the full-screen program view was closed, the earlier history can be scrolled."
 }

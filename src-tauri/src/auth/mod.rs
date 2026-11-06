@@ -1838,6 +1838,11 @@ pub fn vault_set_ui_settings(settings: UiSettings, state: tauri::State<'_, AuthS
     let mgr = lock_auth(&state)?;
     let key = mgr.unlocked_key()?.clone();
     drop(mgr);
+    let mut settings = settings;
+    settings.terminal_scrollback = settings.terminal_scrollback.clamp(
+        crate::vault::models::MIN_TERMINAL_SCROLLBACK,
+        crate::vault::models::MAX_TERMINAL_SCROLLBACK,
+    );
     update_vault(&key, |v| {
         v.metadata.ui = settings;
         Ok(())
