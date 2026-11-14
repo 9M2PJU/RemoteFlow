@@ -4,6 +4,11 @@ Numer wersji: `MAJOR.MINOR.PATCH`. Każda zmiana podnosi co najmniej numer PATCH
 Wersja jest zapisana w trzech plikach, które muszą być zgodne (pilnuje tego test `version_tests` w `src-tauri/src/lib.rs`):
 `package.json` (wyświetlana w aplikacji), `src-tauri/tauri.conf.json` (instalator) i `src-tauri/Cargo.toml`.
 
+## 1.11.1 – SSH: diagnoza błędu „Unable to exchange encryption keys”
+- Gdy negocjacja SSH kończy się błędem `[Session(-5)] Unable to exchange encryption keys` (serwer i RemoteFlow nie mają wspólnego algorytmu), RemoteFlow odczytuje listy algorytmów oferowanych przez serwer (osobne krótkie połączenie, tylko jawny pakiet KEXINIT przed szyfrowaniem) i dopisuje do komunikatu, w której kategorii brakuje wspólnego algorytmu – wymiana kluczy, klucz hosta, szyfr lub MAC – z listą algorytmów serwera i obsługiwanych przez RemoteFlow. Wcześniej komunikat nie mówił, czego brakuje.
+- Wielowierszowe komunikaty błędów SSH wyświetlają się w terminalu poprawnie (CR+LF).
+- Testy: parser KEXINIT, odczyt z serwera testowego (z liniami tekstu przed banerem) oraz test z OpenSSH ograniczonym do `KexAlgorithms sntrup761x25519-sha512@openssh.com`.
+
 ## 1.11.0 – terminal SSH: historia po rozłączeniu, regulowany bufor
 - **Przewijanie historii po rozłączeniu.** Gdy połączenie kończyło się (zerwanie, zamknięcie przez serwer) w trakcie działania programu pełnoekranowego (`mc`, `vim`, `less`, `htop`, `tmux`…), terminal zostawał na ekranie alternatywnym, który nie ma historii, często z włączonym raportowaniem myszy – kółko myszy było wysyłane do zakończonej sesji zamiast przewijać. Teraz po rozłączeniu terminal wraca do zwykłego ekranu z wcześniejszą historią, raportowanie myszy i tryby programu są wyłączane, a w terminalu pojawia się informacja o zakończeniu połączenia.
 - **Rozmiar bufora historii do ustawienia:** Ustawienia → Terminal SSH → „Bufor historii (liczba linii)”, od 100 do 200 000, domyślnie **10 000** (wcześniej stałe 1000 – domyślna wartość xterm.js). Zmiana działa od razu także w otwartych terminalach (zmniejszenie usuwa najstarsze linie). Ustawienie jest zapisywane w sejfie; sejfy zapisane wcześniej nie zmieniają postaci, dopóki wartość jest domyślna.

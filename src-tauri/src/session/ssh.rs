@@ -173,6 +173,7 @@ pub fn ssh_connect_raw(config: &SshConnectionConfig) -> Result<ssh2::Session, St
     let host = crate::session::bare_host(&config.host);
     let addr_str = crate::session::host_port(&config.host, config.port);
     let mut tcp_stream = None;
+    let mut connected_addr = None;
 
     if let Ok(addrs) = (host, config.port).to_socket_addrs() {
         for addr in addrs {
@@ -188,6 +189,7 @@ pub fn ssh_connect_raw(config: &SshConnectionConfig) -> Result<ssh2::Session, St
                 let stream: std::net::TcpStream = socket.into();
 
                 tcp_stream = Some(stream);
+                connected_addr = Some(addr);
                 break;
             }
         }
@@ -202,7 +204,20 @@ pub fn ssh_connect_raw(config: &SshConnectionConfig) -> Result<ssh2::Session, St
     // Covers the handshake, the host key check and authentication; callers set their own
     // timeout (or non-blocking mode) for the rest of the session.
     sess.set_timeout(HANDSHAKE_TIMEOUT_MS);
-    sess.handshake().map_err(|e| tr!("Błąd negocjacji SSH (Handshake): {}", "SSH handshake error: {}", e))?;
+    if let Err(e) = sess.handshake() {
+        let mut msg = tr!("Błąd negocjacji SSH (Handshake): {}", "SSH handshake error: {}", e);
+        // KEX failure: no common algorithm – say which ones the server offers (see ssh_algos.rs)
+        if e.code() == ssh2::ErrorCode::Session(-5) {
+            if let Some(addr) = connected_addr {
+                if let Ok(server) = crate::session::ssh_algos::probe(addr, std::time::Duration::from_secs(5)) {
+                    if let Some(why) = crate::session::ssh_algos::explain(&server, &crate::session::ssh_algos::supported(&sess)) {
+                        msg = format!("{msg}\n{why}");
+                    }
+                }
+            }
+        }
+        return Err(msg);
+    }
 
     // Host key verification (TOFU) – must happen before any authentication attempt,
     // otherwise a man-in-the-middle would receive the password.
@@ -356,6 +371,8 @@ fn run_ssh_worker(
 ) {
     {
         let emit_error = |msg: String| {
+            // Multi-line messages (e.g. the algorithm diagnosis) need CR+LF in the terminal
+            let msg = msg.replace("\r\n", "\n").replace('\n', "\r\n");
             let formatted = tr!("\r\n\x1b[1;31m[RemoteFlow Błąd SSH]\x1b[0m {}\r\n", "\r\n\x1b[1;31m[RemoteFlow SSH error]\x1b[0m {}\r\n", msg);
             emit(formatted);
         };

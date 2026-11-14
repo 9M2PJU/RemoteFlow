@@ -4,6 +4,7 @@ pub mod rdp_proxy;
 pub mod sftp;
 pub mod terminal_cwd;
 pub mod ssh;
+pub mod ssh_algos;
 pub mod transfer;
 pub mod tunnels;
 
