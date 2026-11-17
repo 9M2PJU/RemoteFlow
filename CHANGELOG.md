@@ -4,6 +4,14 @@ Numer wersji: `MAJOR.MINOR.PATCH`. Każda zmiana podnosi co najmniej numer PATCH
 Wersja jest zapisana w trzech plikach, które muszą być zgodne (pilnuje tego test `version_tests` w `src-tauri/src/lib.rs`):
 `package.json` (wyświetlana w aplikacji), `src-tauri/tauri.conf.json` (instalator) i `src-tauri/Cargo.toml`.
 
+## 1.11.2 – SSH: klucze w formacie OpenSSH na Windows
+- **Przyczyna:** wersja Windows korzysta z biblioteki libssh2 zbudowanej z kryptografią systemu Windows (WinCNG), która odczytuje tylko klucze RSA w starym formacie PEM (`BEGIN RSA PRIVATE KEY`). Klucze w formacie OpenSSH (`BEGIN OPENSSH PRIVATE KEY` – domyślny format `ssh-keygen` na Windows i Linuksie, dla RSA, Ed25519 i ECDSA) nie działały – połączenie z takim kluczem, zwłaszcza chronionym hasłem, wisiało albo kończyło się niejasnym błędem logowania.
+- **Poprawka:** klucze w formacie OpenSSH są odczytywane i odszyfrowywane w RemoteFlow (bcrypt-pbkdf + AES, w pamięci, nic nie jest zapisywane na dysku). Klucz RSA jest przekazywany do libssh2 w formie, którą obsługuje każda wersja (podpis rsa-sha2-256/512); dla Ed25519 i ECDSA (P-256/384/521) podpis wykonuje RemoteFlow, a libssh2 tylko go przesyła. Działa także logowanie certyfikatem SSH z takim kluczem. Ta sama ścieżka jest używana na Linuksie.
+- **Jasne komunikaty:** „Nieprawidłowe hasło klucza prywatnego (passphrase)”, brak hasła dla zaszyfrowanego klucza, klucz PuTTY `.ppk` (z instrukcją eksportu w PuTTYgen) – zamiast ogólnego „Niepowodzenie logowania”.
+- **Bez zawieszania:** próba połączenia ma łączny limit czasu (50 s); jeśli logowanie nie zakończy się w tym czasie, karta pokazuje błąd zamiast wiecznego „Nawiązywanie połączenia…”.
+- Testy z OpenSSH: Ed25519, RSA (OpenSSH, PEM, PKCS#8), ECDSA P-256 i P-384 chronione hasłem – poprawne i błędne hasło; certyfikat SSH z kluczem Ed25519 chronionym hasłem.
+- Nadal w wersji Windows (kryptografia Windows): po stronie serwera wymagany jest klucz hosta RSA i wymiana kluczy Diffie-Hellman – patrz diagnoza z 1.11.1.
+
 ## 1.11.1 – SSH: diagnoza błędu „Unable to exchange encryption keys”
 - Gdy negocjacja SSH kończy się błędem `[Session(-5)] Unable to exchange encryption keys` (serwer i RemoteFlow nie mają wspólnego algorytmu), RemoteFlow odczytuje listy algorytmów oferowanych przez serwer (osobne krótkie połączenie, tylko jawny pakiet KEXINIT przed szyfrowaniem) i dopisuje do komunikatu, w której kategorii brakuje wspólnego algorytmu – wymiana kluczy, klucz hosta, szyfr lub MAC – z listą algorytmów serwera i obsługiwanych przez RemoteFlow. Wcześniej komunikat nie mówił, czego brakuje.
 - Wielowierszowe komunikaty błędów SSH wyświetlają się w terminalu poprawnie (CR+LF).

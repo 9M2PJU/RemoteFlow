@@ -5,6 +5,7 @@ pub mod sftp;
 pub mod terminal_cwd;
 pub mod ssh;
 pub mod ssh_algos;
+pub mod ssh_keyauth;
 pub mod transfer;
 pub mod tunnels;
 

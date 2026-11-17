@@ -113,7 +113,7 @@ impl Drop for TempKeyFile {
 /// On Unix the `ssh2` crate exposes this (OpenSSL backend). On Windows (WinCNG backend) the
 /// crate hides the method behind its OpenSSL features, although libssh2 itself supports it
 /// (WinCNG + crypt32), so the libssh2 function is called directly.
-fn pubkey_from_memory(sess: &ssh2::Session, username: &str, public_key: Option<&str>, key: &str, passphrase: Option<&str>) -> bool {
+pub(crate) fn pubkey_from_memory(sess: &ssh2::Session, username: &str, public_key: Option<&str>, key: &str, passphrase: Option<&str>) -> bool {
     #[cfg(not(windows))]
     {
         sess.userauth_pubkey_memory(username, public_key, key, passphrase).is_ok()
@@ -237,7 +237,17 @@ pub fn ssh_connect_raw(config: &SshConnectionConfig) -> Result<ssh2::Session, St
             let certificate_file = certificate.map(|c| TempKeyFile::create(c.as_bytes())).transpose()
                 .map_err(|e| tr!("Nie można przygotować certyfikatu SSH: {}", "Cannot prepare the SSH certificate: {}", e))?;
             let key_path = std::path::Path::new(trimmed);
-            if !trimmed.contains('\n') && key_path.is_file() {
+            let is_path = !trimmed.contains('\n') && key_path.is_file();
+            let file_text = if is_path { std::fs::read_to_string(key_path).ok().map(zeroize::Zeroizing::new) } else { None };
+            let key_text: &str = file_text.as_deref().map(String::as_str).unwrap_or(key_content);
+            if let Some(msg) = crate::session::ssh_keyauth::unsupported_format_message(key_text) {
+                return Err(msg);
+            }
+            if crate::session::ssh_keyauth::is_openssh_key(key_text) {
+                // OpenSSH format (default of current ssh-keygen): decoded in Rust – works on
+                // Windows too (WinCNG cannot read it) and reports a wrong passphrase clearly.
+                crate::session::ssh_keyauth::authenticate(&sess, &config.username, key_text, passphrase, certificate)?;
+            } else if is_path {
                 // The user's own key file: libssh2 reads it directly – no copy is ever written.
                 let _ = sess.userauth_pubkey_file(&config.username, certificate_file.as_ref().map(TempKeyFile::path), key_path, passphrase);
             } else {
@@ -360,6 +370,25 @@ pub fn spawn_ssh_session(
     });
 }
 
+/// Connection attempt with an overall time limit. libssh2 timeouts cover waiting for the
+/// network, not every step (e.g. key handling in the crypto backend); if the attempt does not
+/// finish, the tab gets an error instead of staying in "connecting" forever. The abandoned
+/// attempt ends on its own; its result is dropped.
+fn connect_with_deadline(config: SshConnectionConfig) -> Result<ssh2::Session, String> {
+    let (tx, rx) = std::sync::mpsc::channel();
+    std::thread::spawn(move || {
+        let _ = tx.send(ssh_connect_raw(&config));
+    });
+    let limit = std::time::Duration::from_millis(u64::from(HANDSHAKE_TIMEOUT_MS) * 2 + 10_000);
+    rx.recv_timeout(limit).unwrap_or_else(|_| {
+        Err(tr!(
+            "Przekroczono czas logowania ({} s) – serwer lub obsługa klucza nie odpowiada.",
+            "Login timed out ({} s) – the server or key handling does not respond.",
+            limit.as_secs()
+        ))
+    })
+}
+
 /// The terminal session loop: connects, starts the shell and moves data until the session ends.
 /// `emit` sends terminal output to the UI, `set_status` reports connecting/connected/error/
 /// disconnected (separate from Tauri so it can be tested).
@@ -377,7 +406,7 @@ fn run_ssh_worker(
             emit(formatted);
         };
 
-        let sess = match ssh_connect_raw(&config) {
+        let sess = match connect_with_deadline(config) {
             Ok(s) => s,
             Err(e) => {
                 emit_error(e.clone());
@@ -833,5 +862,48 @@ mod key_auth_e2e {
         assert!(ssh_connect_raw(&cfg(ed, Some("kp-123"))).unwrap().authenticated());
         assert!(ssh_connect_raw(&cfg("/tmp/k/id_ed".into(), Some("kp-123"))).unwrap().authenticated());
         assert!(ssh_connect_raw(&cfg("/tmp/k/id_ed".into(), Some("wrong"))).is_err());
+    }
+}
+
+/// Needs a local sshd on 127.0.0.1:2222 with user `rftest` whose authorized_keys contains the
+/// public keys from /tmp/keytest (generated with the passphrase `Klucz-123`).
+#[cfg(test)]
+mod passphrase_key_tests {
+    use super::*;
+    use crate::vault::known_hosts::HostTrust;
+
+    #[test]
+    #[ignore]
+    fn passphrase_protected_keys_from_memory() {
+        for name in ["ed", "rsa_openssh", "rsa_pem", "ecdsa", "ec384", "rsa_pkcs8"] {
+            let key = std::fs::read_to_string(format!("/tmp/keytest/{name}")).unwrap();
+            for (label, pass) in [("good", "Klucz-123"), ("bad", "wrong")] {
+                let cfg = SshConnectionConfig {
+                    auth_type: "key".into(), certificate: None, host: "127.0.0.1".into(), port: 2222,
+                    username: "rftest".into(), password: None, private_key: Some(key.clone()),
+                    passphrase: Some(pass.into()), host_key_verifier: HostKeyVerifier(Arc::new(|_| Ok(HostTrust::Known))),
+                };
+                let t0 = std::time::Instant::now();
+                let r = ssh_connect_raw(&cfg);
+                eprintln!("{name} {label}: {:?} in {:?}", r.as_ref().map(|_| "OK").map_err(|e| e.clone()), t0.elapsed());
+                assert_eq!(r.is_ok(), label == "good", "{name} {label}");
+            }
+        }
+    }
+
+    /// Certificate login with a passphrase-protected OpenSSH-format Ed25519 key (signing callback
+    /// with the certificate blob). Needs sshd on 127.0.0.1:2223 with `TrustedUserCAKeys` and
+    /// /tmp/certtest/user (passphrase `Klucz-123`) + user-cert.pub signed by that CA.
+    #[test]
+    #[ignore]
+    fn certificate_with_passphrase_protected_openssh_key() {
+        let cfg = SshConnectionConfig {
+            auth_type: "certificate".into(),
+            certificate: Some(std::fs::read_to_string("/tmp/certtest/user-cert.pub").unwrap()),
+            host: "127.0.0.1".into(), port: 2223, username: "rftest".into(), password: None,
+            private_key: Some(std::fs::read_to_string("/tmp/certtest/user").unwrap()),
+            passphrase: Some("Klucz-123".into()), host_key_verifier: HostKeyVerifier(Arc::new(|_| Ok(HostTrust::Known))),
+        };
+        assert!(ssh_connect_raw(&cfg).unwrap().authenticated());
     }
 }
