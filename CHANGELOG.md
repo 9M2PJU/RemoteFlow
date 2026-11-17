@@ -4,6 +4,11 @@ Numer wersji: `MAJOR.MINOR.PATCH`. Każda zmiana podnosi co najmniej numer PATCH
 Wersja jest zapisana w trzech plikach, które muszą być zgodne (pilnuje tego test `version_tests` w `src-tauri/src/lib.rs`):
 `package.json` (wyświetlana w aplikacji), `src-tauri/tauri.conf.json` (instalator) i `src-tauri/Cargo.toml`.
 
+## 1.11.3 – tunele SSH: zajęty port lokalny
+- **Ponowne połączenie nie blokuje już własnych portów.** Porty lokalne tuneli (-L, -D) były zwalniane dopiero wtedy, gdy wątek tuneli zauważył zamknięcie sesji – a gdy akurat łączył się z serwerem, mogło to trwać nawet kilkadziesiąt sekund. „Połącz ponownie” (lub zamknięcie i ponowne otwarcie karty) kończyło się wtedy błędem „Tylko jedno użycie każdego adresu gniazda… (os error 10048)”. Teraz zamknięcie sesji od razu zamyka porty lokalne, a zajęty port jest przez chwilę (1,5 s) ponawiany, zanim pojawi się błąd.
+- **Czytelny komunikat zamiast błędu systemu:** jeśli port używa tunel innej otwartej karty – nazwa tej karty; jeśli inny program na komputerze – informacja o tym i polecenie, którym można go znaleźć (`netstat -ano | findstr :PORT` na Windows, `ss -ltnp | grep :PORT` na Linuksie).
+- Testy: zwolnienie portu od razu po zamknięciu sesji (także gdy tunele wciąż łączą się z serwerem), komunikat o porcie zajętym przez inną kartę i przez inny program; test tuneli -L/-D/-R z serwerem OpenSSH.
+
 ## 1.11.2 – SSH: klucze w formacie OpenSSH na Windows
 - **Przyczyna:** wersja Windows korzysta z biblioteki libssh2 zbudowanej z kryptografią systemu Windows (WinCNG), która odczytuje tylko klucze RSA w starym formacie PEM (`BEGIN RSA PRIVATE KEY`). Klucze w formacie OpenSSH (`BEGIN OPENSSH PRIVATE KEY` – domyślny format `ssh-keygen` na Windows i Linuksie, dla RSA, Ed25519 i ECDSA) nie działały – połączenie z takim kluczem, zwłaszcza chronionym hasłem, wisiało albo kończyło się niejasnym błędem logowania.
 - **Poprawka:** klucze w formacie OpenSSH są odczytywane i odszyfrowywane w RemoteFlow (bcrypt-pbkdf + AES, w pamięci, nic nie jest zapisywane na dysku). Klucz RSA jest przekazywany do libssh2 w formie, którą obsługuje każda wersja (podpis rsa-sha2-256/512); dla Ed25519 i ECDSA (P-256/384/521) podpis wykonuje RemoteFlow, a libssh2 tylko go przesyła. Działa także logowanie certyfikatem SSH z takim kluczem. Ta sama ścieżka jest używana na Linuksie.

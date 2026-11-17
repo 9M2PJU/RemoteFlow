@@ -435,12 +435,22 @@ pub fn session_connect(
 
         let tunnel_app = app.clone();
         let tunnel_sid = session_id.clone();
+        // Local ports already used by tunnels of other tabs (clear message instead of the OS error)
+        let owners: HashMap<u16, String> = {
+            let mgr = session_state.lock().map_err(|e| e.to_string())?;
+            mgr.tunnels
+                .values()
+                .flat_map(|t| t.ports.iter().map(move |p| (*p, t.title.clone())))
+                .collect()
+        };
         let tunnel_handle = start_tunnels(
             config,
             conn.port_forwarding.clone(),
             Arc::new(move |msg: String| {
                 let _ = tunnel_app.emit(&format!("ssh-data-{}", tunnel_sid), msg);
             }),
+            session.title.clone(),
+            &owners,
         );
 
         let mut mgr = session_state.lock().map_err(|e| e.to_string())?;

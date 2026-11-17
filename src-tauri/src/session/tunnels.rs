@@ -20,7 +20,7 @@ use std::io::{ErrorKind, Read, Write};
 use std::net::{Shutdown, TcpListener, TcpStream, ToSocketAddrs};
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::mpsc::{self, Receiver, Sender};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 /// Forwarded connections open at the same time (per SSH connection).
@@ -36,18 +36,64 @@ const OPEN_TIMEOUT: Duration = Duration::from_secs(20);
 const CLOSE_TIMEOUT: Duration = Duration::from_secs(10);
 const KEEPALIVE_EVERY: Duration = Duration::from_secs(10);
 const RECONNECT_BACKOFF: Duration = Duration::from_secs(5);
+const BIND_RETRY_FOR: Duration = Duration::from_millis(1500);
 
 /// Message for the terminal of the session (tunnel status / errors).
 pub type Notify = Arc<dyn Fn(String) + Send + Sync>;
 
 pub struct TunnelHandle {
     shutdown_flag: Arc<AtomicBool>,
+    /// Local -L / -D listeners, shared with the worker so that closing the session frees the
+    /// ports at once – even while the worker is busy (e.g. connecting to the server). Before,
+    /// they were released only when the worker noticed the flag, and an immediate reconnect
+    /// failed with "address already in use".
+    listeners: Arc<Mutex<Vec<LocalListener>>>,
+    /// Local ports bound by this session and the tab title (for messages in other tabs).
+    pub ports: Vec<u16>,
+    pub title: String,
 }
 
 impl TunnelHandle {
     pub fn shutdown(&self) {
         self.shutdown_flag.store(true, Ordering::SeqCst);
+        if let Ok(mut l) = self.listeners.lock() {
+            l.clear();
+        }
     }
+}
+
+/// Binds a local port. A port just released by a closing session may need a moment, so a busy
+/// port is retried briefly.
+fn bind_local(port: u16) -> std::io::Result<TcpListener> {
+    let deadline = Instant::now() + BIND_RETRY_FOR;
+    loop {
+        match TcpListener::bind(("127.0.0.1", port)) {
+            Err(e) if e.kind() == std::io::ErrorKind::AddrInUse && Instant::now() < deadline => {
+                std::thread::sleep(Duration::from_millis(100));
+            }
+            other => return other,
+        }
+    }
+}
+
+/// Message for a local port that could not be opened.
+fn bind_error_message(port: u16, err: &std::io::Error, owners: &HashMap<u16, String>) -> String {
+    if err.kind() != std::io::ErrorKind::AddrInUse {
+        return tr!("Nie udało się otworzyć portu lokalnego {}: {}", "Could not open local port {}: {}", port, err);
+    }
+    if let Some(title) = owners.get(&port) {
+        return tr!(
+            "Port lokalny {} jest już używany przez tunel w karcie „{}”. Zamknij tamtą kartę albo zmień port lokalny w ustawieniach tunelu.",
+            "Local port {} is already used by a tunnel in the tab \"{}\". Close that tab or change the local port in the tunnel settings.",
+            port, title
+        );
+    }
+    let hint = if cfg!(windows) { format!("netstat -ano | findstr :{port}") } else { format!("ss -ltnp | grep :{port}") };
+    tr!(
+        "Port lokalny {} jest zajęty przez inny program na tym komputerze. Zmień port lokalny w ustawieniach tunelu albo zamknij program, który go używa (sprawdzisz go poleceniem: {}).",
+        "Local port {} is used by another program on this computer. Change the local port in the tunnel settings or close the program that uses it (find it with: {}).",
+        port, hint
+    )
 }
 
 fn ok_line(text: String) -> String {
@@ -57,7 +103,14 @@ fn err_line(text: String) -> String {
     format!("\r\n\x1b[1;31m[RemoteFlow SSH]\x1b[0m {}\r\n", text)
 }
 
-pub fn start_tunnels(config: SshConnectionConfig, rules: Vec<PortForwardRule>, notify: Notify) -> Option<TunnelHandle> {
+/// `owners`: local ports already used by tunnels of other open tabs (port → tab title).
+pub fn start_tunnels(
+    config: SshConnectionConfig,
+    rules: Vec<PortForwardRule>,
+    notify: Notify,
+    title: String,
+    owners: &HashMap<u16, String>,
+) -> Option<TunnelHandle> {
     let rules: Vec<PortForwardRule> = rules.into_iter().filter(|r| r.enabled).collect();
     if rules.is_empty() {
         return None;
@@ -77,7 +130,7 @@ pub fn start_tunnels(config: SshConnectionConfig, rules: Vec<PortForwardRule>, n
                     let host = rule.remote_host.clone().filter(|h| !h.trim().is_empty()).unwrap_or_else(|| "127.0.0.1".into());
                     Some((host, rule.remote_port.unwrap_or(rule.local_port)))
                 };
-                match TcpListener::bind(("127.0.0.1", rule.local_port)) {
+                match bind_local(rule.local_port) {
                     Ok(l) => {
                         let _ = l.set_nonblocking(true);
                         notify(ok_line(match &target {
@@ -94,11 +147,7 @@ pub fn start_tunnels(config: SshConnectionConfig, rules: Vec<PortForwardRule>, n
                         }));
                         listeners.push(LocalListener { listener: l, target });
                     }
-                    Err(e) => notify(err_line(tr!(
-                        "Nie udało się otworzyć portu lokalnego {}: {}",
-                        "Could not open local port {}: {}",
-                        rule.local_port, e
-                    ))),
+                    Err(e) => notify(err_line(bind_error_message(rule.local_port, &e, owners))),
                 }
             }
             "remote" => remote_rules.push(RemoteRule {
@@ -110,11 +159,14 @@ pub fn start_tunnels(config: SshConnectionConfig, rules: Vec<PortForwardRule>, n
         }
     }
 
+    let ports: Vec<u16> = listeners.iter().filter_map(|l| l.listener.local_addr().ok().map(|a| a.port())).collect();
+    let listeners = Arc::new(Mutex::new(listeners));
     let worker_shutdown = shutdown.clone();
+    let worker_listeners = listeners.clone();
     std::thread::spawn(move || {
-        Worker::new(config, listeners, remote_rules, notify, worker_shutdown).run();
+        Worker::new(config, worker_listeners, remote_rules, notify, worker_shutdown).run();
     });
-    Some(TunnelHandle { shutdown_flag: shutdown })
+    Some(TunnelHandle { shutdown_flag: shutdown, listeners, ports, title })
 }
 
 struct LocalListener {
@@ -407,7 +459,7 @@ struct Ssh {
 
 struct Worker {
     config: SshConnectionConfig,
-    listeners: Vec<LocalListener>,
+    listeners: Arc<Mutex<Vec<LocalListener>>>,
     remote_rules: Vec<RemoteRule>,
     notify: Notify,
     shutdown: Arc<AtomicBool>,
@@ -431,7 +483,7 @@ struct Worker {
 impl Worker {
     fn new(
         config: SshConnectionConfig,
-        listeners: Vec<LocalListener>,
+        listeners: Arc<Mutex<Vec<LocalListener>>>,
         remote_rules: Vec<RemoteRule>,
         notify: Notify,
         shutdown: Arc<AtomicBool>,
@@ -535,7 +587,9 @@ impl Worker {
         }
 
         // Shutdown: stop listening locally and on the server, close everything.
-        self.listeners.clear();
+        if let Ok(mut l) = self.listeners.lock() {
+            l.clear();
+        }
         if let Some(ssh) = self.ssh.take() {
             ssh.sess.set_blocking(true);
             ssh.sess.set_timeout(2000);
@@ -620,18 +674,25 @@ impl Worker {
     /// Accepts new clients on the local -L / -D ports.
     fn accept_local(&mut self) -> bool {
         let mut active = false;
-        for idx in 0..self.listeners.len() {
-            for _ in 0..16 {
-                let (stream, _) = match self.listeners[idx].listener.accept() {
-                    Ok(s) => s,
-                    Err(_) => break, // WouldBlock or a transient error
-                };
+        let mut accepted = Vec::new();
+        if let Ok(listeners) = self.listeners.lock() {
+            for l in listeners.iter() {
+                for _ in 0..16 {
+                    match l.listener.accept() {
+                        Ok((stream, _)) => accepted.push((stream, l.target.clone())),
+                        Err(_) => break, // WouldBlock or a transient error
+                    }
+                }
+            }
+        }
+        for (stream, target) in accepted {
+            {
                 active = true;
                 if self.busy() >= MAX_CONNECTIONS || self.pending.len() >= MAX_PENDING_OPENS {
                     drop(stream); // over the limit – refuse instead of exhausting resources
                     continue;
                 }
-                match self.listeners[idx].target.clone() {
+                match target {
                     Some((host, port)) => {
                         self.pending.push_back(PendingOpen { stream, host, port, socks: false, since: Instant::now() });
                     }
@@ -859,6 +920,64 @@ mod tunnel_e2e {
         s
     }
 
+    /// SSH server that accepts TCP but never answers – the tunnel worker stays busy connecting.
+    fn silent_server() -> u16 {
+        let l = TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = l.local_addr().unwrap().port();
+        std::thread::spawn(move || {
+            let mut keep = Vec::new();
+            for c in l.incoming().flatten() {
+                keep.push(c);
+            }
+        });
+        port
+    }
+
+    fn free_port() -> u16 {
+        TcpListener::bind("127.0.0.1:0").unwrap().local_addr().unwrap().port()
+    }
+
+    /// Closing a session frees its local ports at once, even while the worker is still busy
+    /// connecting (reconnect used to fail with "address already in use"); a busy port gets a
+    /// message naming the tab or the other program.
+    #[test]
+    fn local_ports_are_freed_on_shutdown_and_conflicts_are_explained() {
+        let mut cfg = config();
+        cfg.port = silent_server();
+        let port = free_port();
+        let log: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
+        let log2 = log.clone();
+        let notify: Notify = Arc::new(move |m| log2.lock().unwrap().push(m));
+
+        let first = start_tunnels(cfg.clone(), vec![rule("local", port, None, Some(80))], notify.clone(), "Serwer A".into(), &HashMap::new()).unwrap();
+        assert_eq!(first.ports, vec![port]);
+
+        // A second tab with the same local port: message names the first tab
+        let owners: HashMap<u16, String> = first.ports.iter().map(|p| (*p, first.title.clone())).collect();
+        let second = start_tunnels(cfg.clone(), vec![rule("local", port, None, Some(80))], notify.clone(), "Serwer B".into(), &owners).unwrap();
+        assert!(second.ports.is_empty());
+        assert!(log.lock().unwrap().join("").contains("Serwer A"), "{:?}", log.lock().unwrap());
+        second.shutdown();
+
+        // Reconnect: the port is free right after shutdown although the worker is still connecting
+        let t0 = Instant::now();
+        first.shutdown();
+        let again = start_tunnels(cfg.clone(), vec![rule("local", port, None, Some(80))], notify.clone(), "Serwer A".into(), &HashMap::new()).unwrap();
+        assert_eq!(again.ports, vec![port]);
+        assert!(t0.elapsed() < Duration::from_millis(500), "{:?}", t0.elapsed());
+        again.shutdown();
+
+        // Port held by another program
+        let foreign = TcpListener::bind(("127.0.0.1", 0)).unwrap();
+        let busy = foreign.local_addr().unwrap().port();
+        log.lock().unwrap().clear();
+        let h = start_tunnels(cfg, vec![rule("local", busy, None, Some(80))], notify, "Serwer C".into(), &HashMap::new()).unwrap();
+        assert!(h.ports.is_empty());
+        let text = log.lock().unwrap().join("");
+        assert!(text.contains(&format!(":{busy}")) && !text.contains("os error"), "{text}");
+        h.shutdown();
+    }
+
     #[test]
     #[ignore]
     fn local_dynamic_and_remote_tunnels() {
@@ -874,6 +993,8 @@ mod tunnel_e2e {
                 rule("remote", 41003, Some("127.0.0.1"), Some(target)),
             ],
             notify,
+            "test".into(),
+            &HashMap::new(),
         )
         .unwrap();
         std::thread::sleep(Duration::from_millis(1500));
