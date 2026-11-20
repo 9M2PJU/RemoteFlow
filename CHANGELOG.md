@@ -4,6 +4,13 @@ Numer wersji: `MAJOR.MINOR.PATCH`. Każda zmiana podnosi co najmniej numer PATCH
 Wersja jest zapisana w trzech plikach, które muszą być zgodne (pilnuje tego test `version_tests` w `src-tauri/src/lib.rs`):
 `package.json` (wyświetlana w aplikacji), `src-tauri/tauri.conf.json` (instalator) i `src-tauri/Cargo.toml`.
 
+## 1.12.1 – SFTP: plik zastępowany dopiero po przesłaniu w całości
+- **Wysyłanie na serwer:** plik jest zapisywany do pliku tymczasowego obok docelowego (`.nazwa.rf-part`) i dopiero po przesłaniu w całości zastępuje plik na serwerze. Wcześniej istniejący plik był od razu nadpisywany – przerwanie (przycisk „Przerwij”, zerwane połączenie, błąd) zostawiało plik ucięty albo usunięty. Teraz poprzednia wersja pozostaje nienaruszona do końca przesyłania, a po przerwaniu usuwany jest tylko plik tymczasowy.
+- Zastępowany plik zachowuje swoje uprawnienia (np. wykonywalne skrypty). Serwery SFTP w wersji 3 (OpenSSH) nie pozwalają nadpisać pliku przez zmianę nazwy, więc stary plik jest na chwilę odsuwany (`.nazwa.rf-old`), nowy wstawiany na jego miejsce, a stary usuwany; gdy coś się nie uda, stary plik wraca na miejsce. Dowiązanie symboliczne na serwerze nie jest zamieniane na zwykły plik – aktualizowany jest plik, na który wskazuje.
+- To samo dotyczy przeciągania plików do terminala SSH i wklejania ich ze schowka.
+- **Pobieranie** działało już w ten sposób (plik tymczasowy `.nazwa.rf-part` w katalogu docelowym, podmiana po pobraniu w całości) – bez zmian.
+- Testy z OpenSSH: przerwane wysyłanie nad istniejącym plikiem (stara zawartość bez zmian), pełne wysłanie (zawartość zastąpiona, uprawnienia 750 zachowane), wysłanie pod nazwą dowiązania, brak plików tymczasowych.
+
 ## 1.12.0 – SFTP: przerywanie wysyłania i pobierania
 - **Przycisk „Przerwij”** na pasku stanu okna SFTP podczas wysyłania i pobierania plików i katalogów. Transfer zatrzymuje się po bieżącym bloku danych (128 KB); pliki przesłane wcześniej pozostają, a komunikat podaje, ile plików zdążyło się przesłać.
 - **Bez częściowych plików:** przerwane pobieranie nie zapisuje niedokończonego pliku – plik o tej samej nazwie w katalogu lokalnym pozostaje nienaruszony (pobieranie i tak szło do pliku tymczasowego). Przy wysyłaniu niedokończony plik jest usuwany z serwera. Uwaga: jeśli wysyłany plik zastępował plik na serwerze, poprzednia wersja jest już nadpisana – po przerwaniu na serwerze nie ma tego pliku.

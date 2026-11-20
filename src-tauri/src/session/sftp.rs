@@ -1,7 +1,6 @@
 use crate::session::ssh::SshConnectionConfig;
 use serde::{Deserialize, Serialize};
 use std::fs::File;
-use std::io::Write;
 use std::path::{Path, PathBuf};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -62,16 +61,9 @@ pub fn sftp_upload_base64_file(
     }
 
     let target_file_path = curr_dir.join(rel_parts.last().unwrap());
-    let mut remote_file = sftp
-        .create(&target_file_path)
-        .map_err(|e| tr!("Nie można utworzyć pliku '{}': {}", "Cannot create file '{}': {}", target_file_path.display(), e))?;
-
-    remote_file
-        .write_all(&data)
-        .map_err(|e| tr!("Błąd zapisu pliku: {}", "File write error: {}", e))?;
-    let _ = remote_file.flush();
-
-    Ok(data.len() as u64)
+    // Temporary file + replace when complete (see transfer::write_remote_file)
+    let never = std::sync::atomic::AtomicBool::new(false);
+    crate::session::transfer::write_remote_file(&sftp, &mut data.as_slice(), &target_file_path, &never, &mut |_| {})
 }
 
 pub fn sftp_upload_local_paths(
@@ -152,13 +144,9 @@ fn upload_path_recursive(
     } else if sym_meta.is_file() {
         let mut local_file =
             File::open(local).map_err(|e| tr!("Błąd otwierania '{}': {}", "Error opening '{}': {}", local.display(), e))?;
-        let mut remote_file = sftp
-            .create(&target_remote)
-            .map_err(|e| tr!("Błąd tworzenia pliku zdalnego '{}': {}", "Error creating remote file '{}': {}", target_remote.display(), e))?;
-
-        std::io::copy(&mut local_file, &mut remote_file)
-            .map_err(|e| tr!("Błąd transferu pliku '{}': {}", "Error transferring file '{}': {}", name, e))?;
-        let _ = remote_file.flush();
+        // Temporary file + replace when complete (see transfer::write_remote_file)
+        let never = std::sync::atomic::AtomicBool::new(false);
+        crate::session::transfer::write_remote_file(sftp, &mut local_file, &target_remote, &never, &mut |_| {})?;
         Ok(1)
     } else {
         Ok(0)

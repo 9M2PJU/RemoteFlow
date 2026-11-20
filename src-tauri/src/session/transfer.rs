@@ -544,30 +544,88 @@ fn upload_one(
     } else if meta.is_file() {
         let (files, base) = (sum.files, sum.bytes);
         progress(files, &name, base);
-        let mut created = false;
         let result = File::open(local)
             .map_err(|e| tr!("Błąd otwierania {}: {}", "Error opening {}: {}", display_path(local), e))
-            .and_then(|mut src| {
-                let mut dst = sftp
-                    .create(&target)
-                    .map_err(|e| tr!("Błąd tworzenia pliku zdalnego {}: {}", "Error creating remote file {}: {}", remote_path_string(&target), e))?;
-                created = true;
-                copy_with_progress(&mut src, &mut dst, cancel, &mut |done| progress(files, &name, base + done))
-                    .map_err(|e| tr!("Błąd przesyłania {}: {}", "Error uploading {}: {}", name, e))
-            });
+            .and_then(|mut src| write_remote_file(sftp, &mut src, &target, cancel, &mut |done| progress(files, &name, base + done)));
         match result {
             Ok(n) => {
                 sum.files += 1;
                 sum.bytes += n;
             }
-            Err(_) if cancel.load(Ordering::Relaxed) => {
-                // Do not leave a truncated file on the server
-                if created {
-                    let _ = sftp.unlink(&target);
-                }
-                sum.cancelled = true;
-            }
+            Err(_) if cancel.load(Ordering::Relaxed) => sum.cancelled = true,
             Err(e) => sum.fail(e),
+        }
+    }
+}
+
+/// Uploads into a temporary file next to the target (`.name.rf-part`), which replaces the target
+/// only when complete: an interrupted, cancelled or failed upload never leaves a truncated file,
+/// and an existing file on the server keeps its previous content until then. A link on the
+/// server is not replaced by a regular file – the file it points to is updated.
+pub(crate) fn write_remote_file(
+    sftp: &ssh2::Sftp,
+    src: &mut dyn std::io::Read,
+    target: &Path,
+    cancel: Cancel,
+    on_block: &mut dyn FnMut(u64),
+) -> Result<u64, String> {
+    let target = match sftp.lstat(target) {
+        Ok(st) if is_remote_symlink(&st) => sftp.realpath(target).unwrap_or_else(|_| target.to_path_buf()),
+        _ => target.to_path_buf(),
+    };
+    let name = target.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
+    let tmp = target.with_file_name(format!(".{}.rf-part", name));
+    // Leftover of an interrupted upload (only a regular file is removed)
+    if sftp.lstat(&tmp).map(|st| st.is_file()).unwrap_or(false) {
+        let _ = sftp.unlink(&tmp);
+    }
+    let mut dst = sftp
+        .open_mode(&tmp, ssh2::OpenFlags::WRITE | ssh2::OpenFlags::CREATE | ssh2::OpenFlags::EXCLUSIVE, 0o644, ssh2::OpenType::File)
+        .map_err(|e| tr!("Błąd tworzenia pliku zdalnego {}: {}", "Error creating remote file {}: {}", remote_path_string(&tmp), e))?;
+    let result = copy_with_progress(src, &mut dst, cancel, on_block)
+        .map_err(|e| tr!("Błąd przesyłania {}: {}", "Error uploading {}: {}", name, e))
+        .and_then(|n| {
+            drop(dst);
+            replace_remote(sftp, &tmp, &target).map(|_| n)
+        });
+    if result.is_err() {
+        // The target is untouched; only the temporary file is removed
+        let _ = sftp.unlink(&tmp);
+    }
+    result
+}
+
+/// Puts a completely uploaded temporary file in place of `target`. SFTP (version 3, OpenSSH)
+/// cannot rename over an existing file, so an existing target is first moved aside, the new
+/// file renamed into place and only then the old one deleted; if that fails, the old file is
+/// put back. The permissions of a replaced file are kept (e.g. executable scripts).
+fn replace_remote(sftp: &ssh2::Sftp, tmp: &Path, target: &Path) -> Result<(), String> {
+    let existing = sftp.stat(target).ok().filter(|st| !st.is_dir());
+    if let Some(perm) = existing.as_ref().and_then(|st| st.perm) {
+        let stat = ssh2::FileStat { size: None, uid: None, gid: None, perm: Some(perm & 0o7777), atime: None, mtime: None };
+        let _ = sftp.setstat(tmp, stat);
+    }
+    let flags = Some(ssh2::RenameFlags::OVERWRITE | ssh2::RenameFlags::ATOMIC | ssh2::RenameFlags::NATIVE);
+    let save_err = |e: ssh2::Error| tr!("Błąd zapisu pliku zdalnego {}: {}", "Error saving remote file {}: {}", remote_path_string(target), e);
+    match sftp.rename(tmp, target, flags) {
+        Ok(()) => return Ok(()),
+        Err(e) if existing.is_none() => return Err(save_err(e)),
+        Err(_) => {}
+    }
+    let name = target.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
+    let old = target.with_file_name(format!(".{}.rf-old", name));
+    if sftp.lstat(&old).map(|st| st.is_file()).unwrap_or(false) {
+        let _ = sftp.unlink(&old);
+    }
+    sftp.rename(target, &old, flags).map_err(save_err)?;
+    match sftp.rename(tmp, target, flags) {
+        Ok(()) => {
+            let _ = sftp.unlink(&old);
+            Ok(())
+        }
+        Err(e) => {
+            let _ = sftp.rename(&old, target, flags);
+            Err(save_err(e))
         }
     }
 }
@@ -854,6 +912,76 @@ mod sftp_e2e {
             passphrase: None,
             host_key_verifier: HostKeyVerifier(Arc::new(|_| Ok(HostTrust::Known))),
         }
+    }
+
+    /// Upload over an existing remote file: the old content stays until the new file is complete
+    /// (also when the upload is cancelled), the replaced file keeps its permissions, a link on the
+    /// server keeps pointing at the updated file, and no temporary files are left.
+    #[test]
+    #[ignore]
+    fn upload_replaces_existing_file_only_when_complete() {
+        let cfg = config();
+        let base = std::env::temp_dir().join(format!("rf-replace-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&base);
+        std::fs::create_dir_all(&base).unwrap();
+        let file = base.join("skrypt.sh");
+        std::fs::write(&file, vec![b'n'; 20 * 1024 * 1024]).unwrap();
+        let remote_root = with_pooled_sftp("r", &cfg, |sftp| {
+            let home = sftp.realpath(Path::new(".")).unwrap();
+            let _ = remote_delete(sftp, &home.join("e2e-replace").to_string_lossy());
+            remote_mkdir(sftp, &home.to_string_lossy(), "e2e-replace")
+        })
+        .unwrap();
+        let remote_file = format!("{remote_root}/skrypt.sh");
+        let read_remote = |p: &str| {
+            with_pooled_sftp("r", &cfg, |sftp| {
+                let mut f = sftp.open(Path::new(p)).map_err(|e| e.to_string())?;
+                let mut v = Vec::new();
+                std::io::Read::read_to_end(&mut f, &mut v).map_err(|e| e.to_string())?;
+                Ok(v)
+            })
+            .unwrap()
+        };
+        with_pooled_sftp("r", &cfg, |sftp| {
+            let mut f = sftp.create(Path::new(&remote_file)).map_err(|e| e.to_string())?;
+            std::io::Write::write_all(&mut f, b"stara wersja").map_err(|e| e.to_string())?;
+            drop(f);
+            let st = ssh2::FileStat { size: None, uid: None, gid: None, perm: Some(0o750), atime: None, mtime: None };
+            sftp.setstat(Path::new(&remote_file), st).map_err(|e| e.to_string())?;
+            sftp.symlink(Path::new("skrypt.sh"), Path::new(&format!("{remote_root}/link.sh"))).map_err(|e| e.to_string())
+        })
+        .unwrap();
+
+        // Cancelled in the middle: the old file is intact, no temporary file
+        let cancel = AtomicBool::new(false);
+        let mut progress = |_: u32, _: &str, bytes: u64| {
+            if bytes > 2 * 1024 * 1024 {
+                cancel.store(true, Ordering::SeqCst);
+            }
+        };
+        let up = upload_paths(&cfg, &[file.to_string_lossy().to_string()], &remote_root, &mut progress, &cancel).unwrap();
+        assert!(up.cancelled, "{up:?}");
+        assert_eq!(read_remote(&remote_file), b"stara wersja");
+
+        // Complete: replaced, permissions kept
+        let up = upload_paths(&cfg, &[file.to_string_lossy().to_string()], &remote_root, &mut |_, _, _| {}, &AtomicBool::new(false)).unwrap();
+        assert_eq!((up.files, up.failed), (1, 0), "{up:?}");
+        assert_eq!(read_remote(&remote_file).len(), 20 * 1024 * 1024);
+        let perm = with_pooled_sftp("r", &cfg, |sftp| sftp.stat(Path::new(&remote_file)).map_err(|e| e.to_string())).unwrap().perm.unwrap();
+        assert_eq!(perm & 0o777, 0o750);
+
+        // Upload under the link's name: the link stays, the file it points to is updated
+        std::fs::write(base.join("link.sh"), b"przez link").unwrap();
+        let up = upload_paths(&cfg, &[base.join("link.sh").to_string_lossy().to_string()], &remote_root, &mut |_, _, _| {}, &AtomicBool::new(false)).unwrap();
+        assert_eq!((up.files, up.failed), (1, 0), "{up:?}");
+        assert_eq!(read_remote(&remote_file), b"przez link");
+        let (_, listing) = with_pooled_sftp("r", &cfg, |sftp| remote_list(sftp, &remote_root)).unwrap();
+        let names: Vec<_> = listing.iter().map(|e| e.name.as_str()).collect();
+        assert_eq!(names, vec!["link.sh", "skrypt.sh"], "no temporary files: {names:?}");
+        assert!(listing.iter().any(|e| e.name == "link.sh" && e.is_link), "{listing:?}");
+
+        with_pooled_sftp("r", &cfg, |sftp| remote_delete(sftp, &remote_root)).unwrap();
+        let _ = std::fs::remove_dir_all(&base);
     }
 
     /// "Przerwij": a cancelled upload deletes the unfinished remote file, a cancelled download
