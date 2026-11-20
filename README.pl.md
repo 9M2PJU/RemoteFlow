@@ -37,7 +37,7 @@ Aplikacja wykorzystuje **Tauri 2 i Rust** jako natywny backend, **React 19 i Typ
 - Klawiatura: Ctrl+R odświeża używany panel (oba, gdy fokus jest w innym miejscu okna), Backspace – katalog nadrzędny, Enter – otwarcie katalogu, Delete – usunięcie na serwerze, Esc – zamknięcie okna.
 - Przeciąganie między panelami, na katalogi oraz z systemowego menedżera plików.
 - Filtrowanie i wyszukiwanie w podkatalogach po obu stronach, tworzenie katalogów po obu stronach, usuwanie na serwerze.
-- Postęp transferów, pytanie o nadpisanie i menu kontekstowe. Usuwanie z serwera pokazuje aktualną ścieżkę i licznik zaznaczonych pozycji, a następnie wynik lub błąd; katalogi są usuwane wraz z zawartością.
+- Postęp transferów (pliki i ilość przesłanych danych) z przyciskiem **Przerwij** – przerwane pobieranie nie zostawia częściowego pliku (istniejący plik lokalny pozostaje nienaruszony), niedokończony wysłany plik jest usuwany z serwera. Pytanie o nadpisanie i menu kontekstowe. Usuwanie z serwera pokazuje aktualną ścieżkę i licznik zaznaczonych pozycji, a następnie wynik lub błąd; katalogi są usuwane wraz z zawartością.
 - Katalogi startowe zapamiętywane osobno dla każdego połączenia (lokalny i na serwerze); domyślnie otwierane są katalogi domowe.
 - Przycisk „katalog z terminala”: panel serwera przechodzi do katalogu, w którym jesteś w terminalu SSH (także w zagnieżdżonej powłoce i gdy działa w niej program; nic nie jest wpisywane do terminala). Serwery Linux (`/proc`); na innych systemach używany jest katalog zgłaszany przez powłokę (OSC 7), jeśli jest dostępny.
 

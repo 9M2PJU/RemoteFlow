@@ -729,18 +729,60 @@ struct TransferProgress {
     transfer_id: String,
     files: u32,
     current: String,
+    bytes: u64,
 }
 
-fn progress_emitter(app: tauri::AppHandle, transfer_id: String) -> impl FnMut(u32, &str) {
+fn progress_emitter(app: tauri::AppHandle, transfer_id: String) -> impl FnMut(u32, &str, u64) {
     let mut last = std::time::Instant::now() - std::time::Duration::from_secs(1);
-    move |files: u32, current: &str| {
+    move |files: u32, current: &str, bytes: u64| {
         if last.elapsed() >= std::time::Duration::from_millis(120) {
             last = std::time::Instant::now();
             let _ = app.emit(
                 "sftp-transfer-progress",
-                TransferProgress { transfer_id: transfer_id.clone(), files, current: current.to_string() },
+                TransferProgress { transfer_id: transfer_id.clone(), files, current: current.to_string(), bytes },
             );
         }
+    }
+}
+
+/// Cancel flags of running transfers (transfer id → flag).
+static TRANSFER_CANCEL: std::sync::LazyLock<Mutex<HashMap<String, Arc<std::sync::atomic::AtomicBool>>>> =
+    std::sync::LazyLock::new(|| Mutex::new(HashMap::new()));
+
+/// Registers a running transfer; the flag is removed when the guard is dropped.
+struct CancelGuard {
+    id: String,
+    flag: Arc<std::sync::atomic::AtomicBool>,
+}
+
+impl CancelGuard {
+    fn new(id: &str) -> Self {
+        let flag = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        if let Ok(mut m) = TRANSFER_CANCEL.lock() {
+            m.insert(id.to_string(), flag.clone());
+        }
+        CancelGuard { id: id.to_string(), flag }
+    }
+}
+
+impl Drop for CancelGuard {
+    fn drop(&mut self) {
+        if let Ok(mut m) = TRANSFER_CANCEL.lock() {
+            m.remove(&self.id);
+        }
+    }
+}
+
+/// Stops a running upload/download ("Przerwij" in the SFTP window). Returns false when the
+/// transfer has already finished.
+#[tauri::command]
+pub fn sftp_transfer_cancel(transfer_id: String) -> bool {
+    match TRANSFER_CANCEL.lock().ok().and_then(|m| m.get(&transfer_id).cloned()) {
+        Some(flag) => {
+            flag.store(true, std::sync::atomic::Ordering::SeqCst);
+            true
+        }
+        None => false,
     }
 }
 
@@ -808,8 +850,9 @@ pub async fn sftp_transfer_upload(
     app: tauri::AppHandle,
 ) -> Result<transfer::TransferSummary, String> {
     let config = resolve_connection_ssh_config(&connection_id, &auth_state, &app)?;
+    let guard = CancelGuard::new(&transfer_id);
     let mut progress = progress_emitter(app.clone(), transfer_id);
-    tokio::task::spawn_blocking(move || transfer::upload_paths(&config, &local_paths, &remote_dir, &mut progress))
+    tokio::task::spawn_blocking(move || transfer::upload_paths(&config, &local_paths, &remote_dir, &mut progress, &guard.flag))
         .await
         .map_err(|e| e.to_string())?
 }
@@ -824,8 +867,9 @@ pub async fn sftp_transfer_download(
     app: tauri::AppHandle,
 ) -> Result<transfer::TransferSummary, String> {
     let config = resolve_connection_ssh_config(&connection_id, &auth_state, &app)?;
+    let guard = CancelGuard::new(&transfer_id);
     let mut progress = progress_emitter(app.clone(), transfer_id);
-    tokio::task::spawn_blocking(move || transfer::download_paths(&config, &remote_paths, &local_dir, &mut progress))
+    tokio::task::spawn_blocking(move || transfer::download_paths(&config, &remote_paths, &local_dir, &mut progress, &guard.flag))
         .await
         .map_err(|e| e.to_string())?
 }

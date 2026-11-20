@@ -766,6 +766,12 @@ export const api = {
     return await invoke<TransferSummary>('sftp_transfer_download', { connectionId, remotePaths, localDir, transferId });
   },
 
+  /** Stops a running upload/download; false when it has already finished. */
+  async sftpTransferCancel(transferId: string): Promise<boolean> {
+    if (!isTauri()) return false;
+    return await invoke<boolean>('sftp_transfer_cancel', { transferId });
+  },
+
   async sftpRelease(connectionId: string): Promise<void> {
     if (isTauri()) await invoke<void>('sftp_release', { connectionId });
   },

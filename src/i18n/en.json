@@ -847,5 +847,10 @@
   "Terminal SSH": "SSH terminal",
   "Bufor historii (liczba linii)": "History buffer (lines)",
   "Ile wcześniejszych linii można przewinąć myszą – także po rozłączeniu. Od {min} do {max}, domyślnie {def}. Większy bufor zużywa więcej pamięci.": "How many earlier lines can be scrolled back with the mouse – also after disconnecting. From {min} to {max}, default {def}. A larger buffer uses more memory.",
-  "Połączenie zakończone – zamknięto ekran programu pełnoekranowego, wcześniejszą historię można przewijać.": "Connection ended – the full-screen program view was closed, the earlier history can be scrolled."
+  "Połączenie zakończone – zamknięto ekran programu pełnoekranowego, wcześniejszą historię można przewijać.": "Connection ended – the full-screen program view was closed, the earlier history can be scrolled.",
+  "Przerwano wysyłanie (niedokończony plik na serwerze usunięto). ": "Upload stopped (the unfinished file on the server was deleted). ",
+  "Przerwano pobieranie (niedokończony plik nie został zapisany). ": "Download stopped (the unfinished file was not saved). ",
+  "Przerywanie… ": "Stopping… ",
+  "Przerwij przesyłanie (pliki już przesłane pozostają)": "Stop the transfer (files already transferred are kept)",
+  "Przerwij": "Stop"
 }

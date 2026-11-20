@@ -4,6 +4,12 @@ Numer wersji: `MAJOR.MINOR.PATCH`. Każda zmiana podnosi co najmniej numer PATCH
 Wersja jest zapisana w trzech plikach, które muszą być zgodne (pilnuje tego test `version_tests` w `src-tauri/src/lib.rs`):
 `package.json` (wyświetlana w aplikacji), `src-tauri/tauri.conf.json` (instalator) i `src-tauri/Cargo.toml`.
 
+## 1.12.0 – SFTP: przerywanie wysyłania i pobierania
+- **Przycisk „Przerwij”** na pasku stanu okna SFTP podczas wysyłania i pobierania plików i katalogów. Transfer zatrzymuje się po bieżącym bloku danych (128 KB); pliki przesłane wcześniej pozostają, a komunikat podaje, ile plików zdążyło się przesłać.
+- **Bez częściowych plików:** przerwane pobieranie nie zapisuje niedokończonego pliku – plik o tej samej nazwie w katalogu lokalnym pozostaje nienaruszony (pobieranie i tak szło do pliku tymczasowego). Przy wysyłaniu niedokończony plik jest usuwany z serwera. Uwaga: jeśli wysyłany plik zastępował plik na serwerze, poprzednia wersja jest już nadpisana – po przerwaniu na serwerze nie ma tego pliku.
+- Pasek stanu pokazuje też ilość przesłanych danych (np. „138.9 MB”), nie tylko liczbę plików.
+- Testy: przerwanie wysyłania i pobierania w trakcie dużego pliku (brak pliku na serwerze, stary plik lokalny bez zmian, brak `.rf-part`), przerwanie przed startem; w aplikacji – wysyłanie i pobieranie pliku 3 GB przerwane przyciskiem.
+
 ## 1.11.3 – tunele SSH: zajęty port lokalny
 - **Ponowne połączenie nie blokuje już własnych portów.** Porty lokalne tuneli (-L, -D) były zwalniane dopiero wtedy, gdy wątek tuneli zauważył zamknięcie sesji – a gdy akurat łączył się z serwerem, mogło to trwać nawet kilkadziesiąt sekund. „Połącz ponownie” (lub zamknięcie i ponowne otwarcie karty) kończyło się wtedy błędem „Tylko jedno użycie każdego adresu gniazda… (os error 10048)”. Teraz zamknięcie sesji od razu zamyka porty lokalne, a zajęty port jest przez chwilę (1,5 s) ponawiany, zanim pojawi się błąd.
 - **Czytelny komunikat zamiast błędu systemu:** jeśli port używa tunel innej otwartej karty – nazwa tej karty; jeśli inny program na komputerze – informacja o tym i polecenie, którym można go znaleźć (`netstat -ano | findstr :PORT` na Windows, `ss -ltnp | grep :PORT` na Linuksie).

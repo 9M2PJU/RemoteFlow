@@ -29,6 +29,7 @@ import {
   Square,
   Trash2,
   X,
+  CircleStop,
 } from 'lucide-react';
 import { listen } from '@tauri-apps/api/event';
 import { getCurrentWebview } from '@tauri-apps/api/webview';
@@ -179,6 +180,9 @@ export const SftpManager: React.FC<Props> = ({
   const [drag, setDrag] = useState<DragInfo | null>(null);
   const [osDropOver, setOsDropOver] = useState(false);
   const transferIdRef = useRef<string>('');
+  // Running upload/download that can be stopped, and whether "Przerwij" was clicked
+  const [activeTransfer, setActiveTransfer] = useState<string | null>(null);
+  const [cancelling, setCancelling] = useState(false);
   const remotePaneRef = useRef<HTMLDivElement>(null);
   const localPaneRef = useRef<HTMLDivElement>(null);
   const initializedRef = useRef(false);
@@ -341,6 +345,8 @@ export const SftpManager: React.FC<Props> = ({
       }
       const transferId = Math.random().toString(36).slice(2);
       transferIdRef.current = transferId;
+      setActiveTransfer(transferId);
+      setCancelling(false);
       setProgress(null);
       const what = paths.length === 1 ? baseName(paths[0]) : t('{length} elementów', { length: paths.length });
       const label = from === 'local' ? t('Wysyłanie {what} → {targetDir}', { what, targetDir }) : t('Pobieranie {what} → {targetDir}', { what, targetDir });
@@ -354,13 +360,18 @@ export const SftpManager: React.FC<Props> = ({
             : await api.sftpTransferDownload(connectionId, paths, targetDir, transferId);
         const verb = from === 'local' ? t('Wysłano') : t('Pobrano');
         const text =
+          (sum.cancelled
+            ? (from === 'local'
+                ? t('Przerwano wysyłanie (niedokończony plik na serwerze usunięto). ')
+                : t('Przerwano pobieranie (niedokończony plik nie został zapisany). '))
+            : '') +
           t('{verb} {files} plików ({p2})', { verb, files: sum.files, p2: formatBytes(sum.bytes) }) +
           (sum.folders ? t(', katalogów: {folders}', { folders: sum.folders }) : '') +
           (sum.skippedLinks
             ? t(', pominięto dowiązań do katalogów: {n}', { n: sum.skippedLinks })
             : '') +
           (sum.failed ? t('. Błędy: {failed} – {p1}', { failed: sum.failed, p1: sum.errors.join('; ') }) : '');
-        showStatus(text, sum.failed ? 'error' : 'ok');
+        showStatus(text, sum.failed || sum.cancelled ? 'error' : 'ok');
         onNotify?.(text);
         if (from === 'local') loadRemote(remote.path === targetDir ? targetDir : remote.path);
         else loadLocal(local.path === targetDir ? targetDir : local.path);
@@ -372,6 +383,8 @@ export const SftpManager: React.FC<Props> = ({
         setBusy(null);
         setProgress(null);
         transferIdRef.current = '';
+        setActiveTransfer(null);
+        setCancelling(false);
       }
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -739,10 +752,27 @@ export const SftpManager: React.FC<Props> = ({
         {busy ? (
           <>
             <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin text-cyan-400" />
-            <span className="truncate text-cyan-200" title={busy}>
+            <span className="min-w-0 flex-1 truncate text-cyan-200" title={busy}>
+              {cancelling ? t('Przerywanie… ') : ''}
               {busy}
               {progress ? t(' — {files} gotowych, teraz: {current}', { files: progress.files, current: progress.current }) : ''}
+              {progress?.bytes ? ` (${formatBytes(progress.bytes)})` : ''}
             </span>
+            {activeTransfer && (
+              <button
+                type="button"
+                disabled={cancelling}
+                onClick={() => {
+                  setCancelling(true);
+                  api.sftpTransferCancel(activeTransfer).catch(() => setCancelling(false));
+                }}
+                title={t('Przerwij przesyłanie (pliki już przesłane pozostają)')}
+                className="ml-auto flex shrink-0 items-center gap-1 rounded border border-red-500/50 bg-red-950/40 px-2 py-0.5 text-[11px] font-medium text-red-200 hover:bg-red-900/60 disabled:cursor-default disabled:opacity-50"
+              >
+                <CircleStop className="h-3 w-3" />
+                {t('Przerwij')}
+              </button>
+            )}
           </>
         ) : status ? (
           <span className={`truncate ${status.type === 'error' ? 'text-red-400' : 'text-emerald-300'}`} title={status.text}>

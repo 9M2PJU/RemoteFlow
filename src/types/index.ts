@@ -192,12 +192,16 @@ export interface TransferSummary {
   errors: string[];
   /** Links to folders inside transferred folders that were not followed. */
   skippedLinks?: number;
+  /** Stopped by the user ("Przerwij"); the counters cover what finished before. */
+  cancelled?: boolean;
 }
 
 export interface TransferProgress {
   transferId: string;
   files: number;
   current: string;
+  /** Bytes transferred so far (all files). */
+  bytes?: number;
 }
 
 export interface RdpClipboardFileEntry {

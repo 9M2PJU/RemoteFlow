@@ -5,7 +5,9 @@
 //!   Idle sessions are closed after a few minutes; a dead session is re-established once.
 //! * Transfers (upload / download of many files and folders) use their own SSH connection, so
 //!   browsing stays responsive during a long copy. Progress is reported to the UI with the
-//!   `sftp-transfer-progress` event.
+//!   `sftp-transfer-progress` event. A transfer can be cancelled: the flag is checked between
+//!   files and after every block of data; a partly downloaded file is discarded (the existing
+//!   local file stays untouched), a partly uploaded remote file is deleted.
 
 use crate::session::sftp::SftpFileEntry;
 use crate::session::ssh::SshConnectionConfig;
@@ -13,6 +15,7 @@ use serde::Serialize;
 use std::collections::HashMap;
 use std::fs::File;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, LazyLock, Mutex};
 use std::time::{Duration, Instant};
 
@@ -425,6 +428,8 @@ pub struct TransferSummary {
     /// tree). Links to files, and a link selected directly, are transferred with their content.
     #[serde(rename = "skippedLinks")]
     pub skipped_links: u32,
+    /// The user stopped the transfer; the counters say what was finished before that.
+    pub cancelled: bool,
 }
 
 impl TransferSummary {
@@ -436,22 +441,36 @@ impl TransferSummary {
     }
 }
 
-/// Progress callback: (files done, name of the item being transferred).
-pub type Progress<'a> = &'a mut dyn FnMut(u32, &str);
+/// Progress callback: (files done, name of the item being transferred, bytes transferred so far).
+pub type Progress<'a> = &'a mut dyn FnMut(u32, &str, u64);
 
+/// Set by the user to stop a transfer.
+pub type Cancel<'a> = &'a AtomicBool;
+
+fn cancelled_error() -> std::io::Error {
+    std::io::Error::new(std::io::ErrorKind::Interrupted, "cancelled")
+}
+
+/// Copies in blocks; checks the cancel flag and reports the bytes copied after every block.
 fn copy_with_progress(
     reader: &mut dyn std::io::Read,
     writer: &mut dyn std::io::Write,
+    cancel: Cancel,
+    on_block: &mut dyn FnMut(u64),
 ) -> std::io::Result<u64> {
-    let mut buf = vec![0u8; 256 * 1024];
+    let mut buf = vec![0u8; 128 * 1024];
     let mut total = 0u64;
     loop {
+        if cancel.load(Ordering::Relaxed) {
+            return Err(cancelled_error());
+        }
         let n = reader.read(&mut buf)?;
         if n == 0 {
             break;
         }
         writer.write_all(&buf[..n])?;
         total += n as u64;
+        on_block(total);
     }
     writer.flush()?;
     Ok(total)
@@ -464,7 +483,12 @@ fn upload_one(
     depth: u32,
     sum: &mut TransferSummary,
     progress: Progress,
+    cancel: Cancel,
 ) {
+    if cancel.load(Ordering::Relaxed) {
+        sum.cancelled = true;
+        return;
+    }
     if depth > MAX_DEPTH {
         sum.fail(tr!("Zbyt głębokie zagnieżdżenie: {}", "Nesting too deep: {}", display_path(local)));
         return;
@@ -509,25 +533,39 @@ fn upload_one(
         match std::fs::read_dir(local) {
             Ok(rd) => {
                 for item in rd.flatten() {
-                    upload_one(sftp, &item.path(), &target, depth + 1, sum, progress);
+                    upload_one(sftp, &item.path(), &target, depth + 1, sum, progress, cancel);
+                    if sum.cancelled {
+                        return;
+                    }
                 }
             }
             Err(e) => sum.fail(tr!("Błąd odczytu katalogu {}: {}", "Error reading folder {}: {}", display_path(local), e)),
         }
     } else if meta.is_file() {
-        progress(sum.files, &name);
+        let (files, base) = (sum.files, sum.bytes);
+        progress(files, &name, base);
+        let mut created = false;
         let result = File::open(local)
             .map_err(|e| tr!("Błąd otwierania {}: {}", "Error opening {}: {}", display_path(local), e))
             .and_then(|mut src| {
                 let mut dst = sftp
                     .create(&target)
                     .map_err(|e| tr!("Błąd tworzenia pliku zdalnego {}: {}", "Error creating remote file {}: {}", remote_path_string(&target), e))?;
-                copy_with_progress(&mut src, &mut dst).map_err(|e| tr!("Błąd przesyłania {}: {}", "Error uploading {}: {}", name, e))
+                created = true;
+                copy_with_progress(&mut src, &mut dst, cancel, &mut |done| progress(files, &name, base + done))
+                    .map_err(|e| tr!("Błąd przesyłania {}: {}", "Error uploading {}: {}", name, e))
             });
         match result {
             Ok(n) => {
                 sum.files += 1;
                 sum.bytes += n;
+            }
+            Err(_) if cancel.load(Ordering::Relaxed) => {
+                // Do not leave a truncated file on the server
+                if created {
+                    let _ = sftp.unlink(&target);
+                }
+                sum.cancelled = true;
             }
             Err(e) => sum.fail(e),
         }
@@ -539,6 +577,7 @@ pub fn upload_paths(
     local_paths: &[String],
     remote_dir: &str,
     progress: Progress,
+    cancel: Cancel,
 ) -> Result<TransferSummary, String> {
     let (_sess, sftp) = crate::session::sftp::sftp_connect(config)?;
     let remote_dir = if remote_dir.is_empty() || remote_dir == "~" {
@@ -548,7 +587,10 @@ pub fn upload_paths(
     };
     let mut sum = TransferSummary::default();
     for lp in local_paths {
-        upload_one(&sftp, Path::new(lp), &remote_dir, 0, &mut sum, progress);
+        upload_one(&sftp, Path::new(lp), &remote_dir, 0, &mut sum, progress, cancel);
+        if sum.cancelled {
+            break;
+        }
     }
     Ok(sum)
 }
@@ -561,7 +603,12 @@ fn download_one(
     depth: u32,
     sum: &mut TransferSummary,
     progress: Progress,
+    cancel: Cancel,
 ) {
+    if cancel.load(Ordering::Relaxed) {
+        sum.cancelled = true;
+        return;
+    }
     if depth > MAX_DEPTH {
         sum.fail(tr!("Zbyt głębokie zagnieżdżenie: {}", "Nesting too deep: {}", remote_path_string(remote)));
         return;
@@ -622,22 +669,28 @@ fn download_one(
                     if child_name == "." || child_name == ".." {
                         continue;
                     }
-                    download_one(sftp, &path, &child_stat, &target, depth + 1, sum, progress);
+                    download_one(sftp, &path, &child_stat, &target, depth + 1, sum, progress, cancel);
+                    if sum.cancelled {
+                        return;
+                    }
                 }
             }
             Err(e) => sum.fail(tr!("Błąd odczytu katalogu zdalnego {}: {}", "Error reading remote folder {}: {}", remote_path_string(remote), e)),
         }
     } else {
-        progress(sum.files, &name);
+        let (files, base) = (sum.files, sum.bytes);
+        progress(files, &name, base);
         let result = sftp
             .open(remote)
             .map_err(|e| tr!("Nie można otworzyć {}: {}", "Cannot open {}: {}", remote_path_string(remote), e))
-            .and_then(|mut src| download_to(&mut src, &target, &name));
+            .and_then(|mut src| download_to(&mut src, &target, &name, cancel, &mut |done| progress(files, &name, base + done)));
         match result {
             Ok(n) => {
                 sum.files += 1;
                 sum.bytes += n;
             }
+            // The partial download was discarded by `download_to`; an existing file is untouched
+            Err(_) if cancel.load(Ordering::Relaxed) => sum.cancelled = true,
             Err(e) => sum.fail(e),
         }
     }
@@ -651,7 +704,13 @@ fn is_local_link(path: &Path) -> bool {
 /// `create_new`, which never follows links) that replaces the target only when complete. A
 /// rename replaces a directory entry and never follows a link, so even a link created in the
 /// meantime cannot redirect the data; an interrupted download also leaves the old file intact.
-fn download_to(src: &mut dyn std::io::Read, target: &Path, name: &str) -> Result<u64, String> {
+fn download_to(
+    src: &mut dyn std::io::Read,
+    target: &Path,
+    name: &str,
+    cancel: Cancel,
+    on_block: &mut dyn FnMut(u64),
+) -> Result<u64, String> {
     let tmp = target.with_file_name(format!(".{}.rf-part", name));
     let _ = std::fs::remove_file(&tmp); // leftover of an interrupted download (or a planted link – only the link is removed)
     let result = std::fs::OpenOptions::new()
@@ -659,7 +718,9 @@ fn download_to(src: &mut dyn std::io::Read, target: &Path, name: &str) -> Result
         .create_new(true)
         .open(&tmp)
         .map_err(|e| tr!("Błąd tworzenia pliku {}: {}", "Error creating file {}: {}", display_path(target), e))
-        .and_then(|mut dst| copy_with_progress(src, &mut dst).map_err(|e| tr!("Błąd pobierania {}: {}", "Error downloading {}: {}", name, e)))
+        .and_then(|mut dst| {
+            copy_with_progress(src, &mut dst, cancel, on_block).map_err(|e| tr!("Błąd pobierania {}: {}", "Error downloading {}: {}", name, e))
+        })
         .and_then(|n| {
             if is_local_link(target) {
                 return Err(tr!(
@@ -683,6 +744,7 @@ pub fn download_paths(
     remote_paths: &[String],
     local_dir: &str,
     progress: Progress,
+    cancel: Cancel,
 ) -> Result<TransferSummary, String> {
     let local_dir = if local_dir.trim().is_empty() {
         dirs::download_dir().or_else(dirs::home_dir).ok_or(tr!("Brak katalogu docelowego", "No target folder"))?
@@ -697,8 +759,11 @@ pub fn download_paths(
     for rp in remote_paths {
         let p = Path::new(rp);
         match sftp.lstat(p) {
-            Ok(stat) => download_one(&sftp, p, &stat, &local_dir, 0, &mut sum, progress),
+            Ok(stat) => download_one(&sftp, p, &stat, &local_dir, 0, &mut sum, progress, cancel),
             Err(e) => sum.fail(tr!("Nie można odczytać {}: {}", "Cannot read {}: {}", rp, e)),
+        }
+        if sum.cancelled {
+            break;
         }
     }
     Ok(sum)
@@ -727,14 +792,14 @@ mod tests {
         std::fs::write(base.join("victim.txt"), b"keep").unwrap();
         std::os::unix::fs::symlink(base.join("victim.txt"), base.join("dst").join("raport.txt")).unwrap();
         let mut src: &[u8] = b"downloaded";
-        let err = download_to(&mut src, &base.join("dst").join("raport.txt"), "raport.txt");
+        let err = download_to(&mut src, &base.join("dst").join("raport.txt"), "raport.txt", &AtomicBool::new(false), &mut |_| {});
         assert!(err.is_err());
         assert_eq!(std::fs::read(base.join("victim.txt")).unwrap(), b"keep", "link target untouched");
         assert!(!base.join("dst").join(".raport.txt.rf-part").exists());
         // normal file: written and replaced atomically
         let mut src: &[u8] = b"new";
         std::fs::write(base.join("dst").join("a.txt"), b"old").unwrap();
-        assert_eq!(download_to(&mut src, &base.join("dst").join("a.txt"), "a.txt").unwrap(), 3);
+        assert_eq!(download_to(&mut src, &base.join("dst").join("a.txt"), "a.txt", &AtomicBool::new(false), &mut |_| {}).unwrap(), 3);
         assert_eq!(std::fs::read(base.join("dst").join("a.txt")).unwrap(), b"new");
         let _ = std::fs::remove_dir_all(&base);
     }
@@ -791,6 +856,63 @@ mod sftp_e2e {
         }
     }
 
+    /// "Przerwij": a cancelled upload deletes the unfinished remote file, a cancelled download
+    /// leaves the existing local file untouched and no partial file behind.
+    #[test]
+    #[ignore]
+    fn cancelled_transfers_leave_no_partial_files() {
+        let cfg = config();
+        let base = std::env::temp_dir().join(format!("rf-cancel-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&base);
+        std::fs::create_dir_all(&base).unwrap();
+        let big = base.join("duzy.bin");
+        std::fs::write(&big, vec![5u8; 40 * 1024 * 1024]).unwrap();
+        let remote_root = with_pooled_sftp("c", &cfg, |sftp| {
+            let home = sftp.realpath(Path::new(".")).unwrap();
+            let _ = remote_delete(sftp, &home.join("e2e-cancel").to_string_lossy());
+            remote_mkdir(sftp, &home.to_string_lossy(), "e2e-cancel")
+        })
+        .unwrap();
+
+        // Upload: cancel after ~4 MB
+        let cancel = AtomicBool::new(false);
+        let mut progress = |_: u32, _: &str, bytes: u64| {
+            if bytes > 4 * 1024 * 1024 {
+                cancel.store(true, Ordering::SeqCst);
+            }
+        };
+        let up = upload_paths(&cfg, &[big.to_string_lossy().to_string()], &remote_root, &mut progress, &cancel).unwrap();
+        assert!(up.cancelled && up.files == 0 && up.failed == 0, "{up:?}");
+        let (_, listing) = with_pooled_sftp("c", &cfg, |sftp| remote_list(sftp, &remote_root)).unwrap();
+        assert!(listing.is_empty(), "partial remote file deleted: {listing:?}");
+
+        // Full upload, then a cancelled download over an existing local file
+        let up = upload_paths(&cfg, &[big.to_string_lossy().to_string()], &remote_root, &mut |_, _, _| {}, &AtomicBool::new(false)).unwrap();
+        assert_eq!(up.files, 1);
+        let dst = base.join("dst");
+        std::fs::create_dir_all(&dst).unwrap();
+        std::fs::write(dst.join("duzy.bin"), b"stara wersja").unwrap();
+        let cancel = AtomicBool::new(false);
+        let mut progress = |_: u32, _: &str, bytes: u64| {
+            if bytes > 4 * 1024 * 1024 {
+                cancel.store(true, Ordering::SeqCst);
+            }
+        };
+        let down = download_paths(&cfg, &[format!("{remote_root}/duzy.bin")], dst.to_str().unwrap(), &mut progress, &cancel).unwrap();
+        assert!(down.cancelled && down.files == 0 && down.failed == 0, "{down:?}");
+        assert_eq!(std::fs::read(dst.join("duzy.bin")).unwrap(), b"stara wersja");
+        let names: Vec<_> = std::fs::read_dir(&dst).unwrap().flatten().map(|e| e.file_name()).collect();
+        assert_eq!(names.len(), 1, "no .rf-part left: {names:?}");
+
+        // Cancel before start: nothing happens
+        let pre = AtomicBool::new(true);
+        let down = download_paths(&cfg, &[format!("{remote_root}/duzy.bin")], dst.to_str().unwrap(), &mut |_, _, _| {}, &pre).unwrap();
+        assert!(down.cancelled && down.files == 0);
+
+        with_pooled_sftp("c", &cfg, |sftp| remote_delete(sftp, &remote_root)).unwrap();
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
     #[test]
     #[ignore]
     fn upload_search_download_delete() {
@@ -812,7 +934,7 @@ mod sftp_e2e {
         .unwrap();
 
         let mut events = 0;
-        let mut progress = |_: u32, _: &str| events += 1;
+        let mut progress = |_: u32, _: &str, _: u64| events += 1;
         let up = upload_paths(
             &cfg,
             &[
@@ -821,6 +943,7 @@ mod sftp_e2e {
             ],
             &remote_root,
             &mut progress,
+            &AtomicBool::new(false),
         )
         .unwrap();
         assert_eq!(up.failed, 0, "{:?}", up.errors);
@@ -841,7 +964,8 @@ mod sftp_e2e {
             &cfg,
             &[format!("{}/projekt", remote_root), format!("{}/pojedynczy.bin", remote_root)],
             dst.to_str().unwrap(),
-            &mut |_, _| {},
+            &mut |_, _, _| {},
+            &AtomicBool::new(false),
         )
         .unwrap();
         assert_eq!(down.failed, 0, "{:?}", down.errors);
@@ -896,12 +1020,12 @@ mod sftp_e2e {
         .unwrap();
 
         // Upload of the folder: file links copied with content, folder links inside not followed
-        let up = upload_paths(&cfg, &[src.to_string_lossy().to_string()], &remote_root, &mut |_, _| {}).unwrap();
+        let up = upload_paths(&cfg, &[src.to_string_lossy().to_string()], &remote_root, &mut |_, _, _| {}, &AtomicBool::new(false)).unwrap();
         assert_eq!(up.files, 3, "a.txt, la, sub/b.txt: {:?}", up.errors);
         assert_eq!(up.skipped_links, 2, "ld and sub/loop");
         assert_eq!(up.failed, 1, "broken link reported");
         // A folder link chosen directly is followed
-        let up2 = upload_paths(&cfg, &[src.join("ld").to_string_lossy().to_string()], &remote_root, &mut |_, _| {}).unwrap();
+        let up2 = upload_paths(&cfg, &[src.join("ld").to_string_lossy().to_string()], &remote_root, &mut |_, _, _| {}, &AtomicBool::new(false)).unwrap();
         assert_eq!((up2.files, up2.skipped_links, up2.failed), (1, 1, 0));
 
         // Remote links (the test server runs on this machine): listed and downloaded the same way
@@ -916,7 +1040,7 @@ mod sftp_e2e {
 
         let dst = base.join("dst");
         std::fs::create_dir_all(&dst).unwrap();
-        let down = download_paths(&cfg, &[remote_src.to_string_lossy().to_string()], dst.to_str().unwrap(), &mut |_, _| {}).unwrap();
+        let down = download_paths(&cfg, &[remote_src.to_string_lossy().to_string()], dst.to_str().unwrap(), &mut |_, _, _| {}, &AtomicBool::new(false)).unwrap();
         assert_eq!(down.failed, 0, "{:?}", down.errors);
         assert_eq!(std::fs::read(dst.join("src").join("rl")).unwrap(), b"hello");
         assert_eq!(down.skipped_links, 1, "rd not followed inside a folder");
