@@ -869,5 +869,6 @@
   "Aktualizacje": "Updates",
   "Sprawdzaj automatycznie": "Check automatically",
   "Przy uruchomieniu i raz dziennie, z wydań projektu na GitHubie. Instalowane są tylko paczki podpisane kluczem projektu.": "At start-up and once a day, from the project's GitHub releases. Only packages signed with the project key are installed.",
-  "Sprawdź teraz": "Check now"
+  "Sprawdź teraz": "Check now",
+  "Schowek jest wyłączony w ustawieniach tego połączenia": "The clipboard is disabled in this connection's settings"
 }

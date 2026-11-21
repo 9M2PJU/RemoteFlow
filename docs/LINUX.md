@@ -50,6 +50,7 @@ sudo pacman -Syu --needed webkit2gtk-4.1 gtk3 openssl libx11 dbus zlib ca-certif
 | Native FreeRDP client | 24.04/26.04: `freerdp3-x11`; 22.04: `freerdp2-x11` | `freerdp` and `which` |
 | FreeRDP embedded in the app on Wayland | `xwayland` | `xorg-xwayland` |
 | SSH agent authentication | `openssh-client` and a running agent | `openssh` and a running agent |
+| Reliable copying to the system clipboard (e.g. passwords) | Wayland: `wl-clipboard`; X11: `xclip` | Wayland: `wl-clipboard`; X11: `xclip` |
 | AppImage reporting missing `libfuse.so.2` | 22.04: `libfuse2`; 24.04/26.04: `libfuse2t64` | `fuse2` |
 
 FreeRDP is optional: SSH, SFTP and the WebAssembly RDP client do not need an external SSH/RDP executable. Embedded native RDP needs `xfreerdp3` or `xfreerdp` and an X11 display (XWayland under Wayland); restart RemoteFlow after enabling that mode. FreeRDP 3 is recommended for the native mode, including certificate approval/retry. Ubuntu 22.04's FreeRDP 2 is a compatibility option and may differ in supported flags.

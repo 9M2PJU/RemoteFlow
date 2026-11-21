@@ -957,6 +957,11 @@ pub fn open_shared_folder(target_dir: Option<String>) -> Result<String, String> 
     };
 
     let _ = std::fs::create_dir_all(&resolved_dir);
+    // Only folders are opened: "opening" a file passed here would run it (an executable, a script,
+    // a .desktop file) through the system file associations.
+    if !resolved_dir.is_dir() {
+        return Err(tr!("To nie jest katalog: {}", "Not a folder: {}", resolved_dir.display()));
+    }
     let path_str = resolved_dir.to_string_lossy().to_string();
 
     #[cfg(target_os = "windows")]

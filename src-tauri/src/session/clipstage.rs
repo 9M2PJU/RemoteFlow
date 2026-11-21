@@ -13,7 +13,13 @@ const MAX_AGE: Duration = Duration::from_secs(24 * 3600);
 const KEEP_NEWEST: usize = 3;
 
 fn staging_root() -> PathBuf {
-    std::env::temp_dir().join("RemoteFlow").join("rdp-clipboard")
+    // Windows: %TEMP% is per user. Elsewhere /tmp is shared by all users – another user could
+    // create the folder first and read the copied files, so the per-user cache folder is used.
+    #[cfg(windows)]
+    let base = std::env::temp_dir();
+    #[cfg(not(windows))]
+    let base = dirs::cache_dir().unwrap_or_else(std::env::temp_dir);
+    base.join("RemoteFlow").join("rdp-clipboard")
 }
 
 fn percent_decode(s: &str) -> Result<String, String> {

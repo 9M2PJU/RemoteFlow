@@ -45,7 +45,7 @@ The application uses **Tauri 2 and Rust** for the native backend, **React 19 and
 - Embedded RDP client (IronRDP compiled to WebAssembly) through a local proxy – the resolution automatically follows the window size.
 - TLS with certificate pinning; automatic fallback to the system TLS stack (Schannel / OpenSSL) for older servers such as Windows Server 2012.
 - Domain accounts: `user` + domain field, `DOMAIN\user`, UPN `user@domain.local` or `.\account` for a local account – normalised the same way for the embedded client, FreeRDP and mstsc.
-- Text clipboard in both directions. On Windows, files copied in the remote session can be pasted directly in Explorer (and vice versa); on Linux files are exchanged through a shared folder.
+- Text clipboard in both directions. On Windows, files copied in the remote session can be pasted directly in Explorer (and vice versa); on Linux files are exchanged through a shared folder. The clipboard can be switched off per connection (applies to the embedded client, FreeRDP and mstsc). Local drives and the home folder are never shared with the server – FreeRDP shares only the dedicated `~/RemoteFlow_Shared` exchange folder.
 - Linux: optional **FreeRDP inside the app window** (Settings → RDP client) – the native client (multi-threaded, H.264) draws the session in the RemoteFlow tab; requires X11 (on Wayland the app then runs through XWayland) and `xfreerdp3`.
 - Performance statistics panel in the RDP view (data rate, screen updates, drawing time, main-thread load).
 - Optional launch of the system client (`mstsc` on Windows, FreeRDP on Linux – started with the graphics pipeline `/gfx` and `/network:auto`; faster than the embedded client for video or heavy scrolling).
@@ -128,15 +128,22 @@ docker build -f docker/Dockerfile.linux --target verify .
 ```
 
 ## Where is my data?
-The vault (`vault.json`) is stored next to the executable (portable mode) when that folder is writable,
-otherwise in the user configuration directory (`%APPDATA%\remoteflow` on Windows, `~/.config/remoteflow` on Linux).
-Backups are kept in the `backups` folder next to the vault. 
+The vault (`vault.json`) is kept in the user configuration directory: `%APPDATA%\remoteflow` on Windows,
+`~/.config/remoteflow` on Linux. Updating or uninstalling the application does not delete it.
+
+**Portable mode** (e.g. on a USB drive): put an empty file named `remoteflow.portable` next to the executable (for an
+AppImage – next to the `.AppImage` file); a new vault is then created in that folder. A `vault.json` that already lies
+next to the executable is always used – also one created there by versions before 1.13.2.
+Backups are kept in the `backups` folder next to the vault, or in another folder chosen in *Settings → Vault backups*.
+Besides the encrypted vault, only non-sensitive settings are stored unencrypted: window rendering options
+(`display.json` next to the vault) and interface preferences such as language, theme, panel width and expanded groups
+(web view storage). Files you exchange with RDP sessions on Linux are kept in `~/RemoteFlow_Shared`.
 
 ## Technology stack
 | Layer | Technologies |
 |---|---|
 | Application shell | Tauri 2, WebView2 (Windows) / WebKitGTK (Linux) |
-| Backend | Rust 2024, tokio, ssh2 (libssh2), rustls + native-tls, tokio-tungstenite, ironrdp-rdcleanpath |
+| Backend | Rust 2024, tokio, ssh2 (libssh2), ssh-key, rustls + native-tls, tokio-tungstenite, ironrdp-rdcleanpath, tauri-plugin-updater |
 | Cryptography | argon2, aes-gcm, hmac + sha2, zeroize |
 | UI | React 19, TypeScript, Vite 8, Tailwind CSS 4, lucide-react |
 | Terminal / RDP | xterm.js 6, IronRDP (WebAssembly), optional FreeRDP on Linux and system RDP clients |

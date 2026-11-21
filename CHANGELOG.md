@@ -4,6 +4,23 @@ Numer wersji: `MAJOR.MINOR.PATCH`. Każda zmiana podnosi co najmniej numer PATCH
 Wersja jest zapisana w trzech plikach, które muszą być zgodne (pilnuje tego test `version_tests` w `src-tauri/src/lib.rs`):
 `package.json` (wyświetlana w aplikacji), `src-tauri/tauri.conf.json` (instalator) i `src-tauri/Cargo.toml`.
 
+## 1.13.2 – sejf w katalogu konfiguracji użytkownika
+- **Nowy sejf jest zawsze tworzony w katalogu konfiguracji użytkownika** (`%APPDATA%\remoteflow` na Windows, `~/.config/remoteflow` na Linuksie). Wcześniej powstawał obok pliku programu, jeśli ten folder był zapisywalny – przy instalatorze Windows „dla bieżącego użytkownika” był to katalog instalacji programu.
+- **Tryb przenośny na życzenie:** pusty plik `remoteflow.portable` obok pliku programu (dla AppImage – obok pliku `.AppImage`) sprawia, że nowy sejf powstaje w tym folderze.
+- **Istniejące sejfy się nie przenoszą:** `vault.json` leżący obok pliku programu (tryb przenośny albo utworzony przez wcześniejsze wersje) jest nadal używany, podobnie sejf w katalogu konfiguracji. Kolejność: obok programu → katalog konfiguracji → katalog roboczy (najstarsze wersje).
+- AppImage: „obok programu” oznacza folder z plikiem `.AppImage` (sam program działa z zamontowanego obrazu tylko do odczytu).
+- Test: reguły wyboru miejsca sejfu (nowy sejf, istniejący obok programu, w katalogu konfiguracji, w katalogu roboczym, znacznik trybu przenośnego).
+
+## 1.13.1 – przegląd bezpieczeństwa przed publikacją kodu
+- **RDP przez FreeRDP nie udostępnia już katalogu domowego.** Do sesji przekazywana była opcja `+home-drive`, która dawała serwerowi zdalnemu (czyli każdemu serwerowi, z którym się łączysz) dostęp do odczytu i zapisu całego katalogu domowego – kluczy SSH, sejfu, dokumentów. Teraz udostępniany jest tylko wydzielony folder wymiany `~/RemoteFlow_Shared`.
+- **Plik `.rdp` do pobrania (dla mstsc) nie udostępnia dysków lokalnych** (`redirectdrives:i:0`; wcześniej `1` – wszystkie dyski komputera były widoczne na serwerze). Plik tymczasowy dla mstsc uruchamianego z programu ma to samo ustawienie.
+- **Opcja „Schowek” w ustawieniach RDP połączenia działa.** Wcześniej była zapisywana, ale nigdzie nie stosowana – schowek (tekst i pliki) był zawsze współdzielony. Teraz jej wyłączenie wyłącza schowek we wbudowanym kliencie (bez kanału schowka, przycisk „Pliki i schowek” nieaktywny), w FreeRDP (`-clipboard`) i w mstsc (`redirectclipboard:i:0`).
+- **Sejf z katalogu roboczego** (zgodność z bardzo starymi wersjami) jest brany pod uwagę dopiero po katalogu konfiguracji użytkownika – plik `vault.json` w folderze, z którego akurat uruchomiono program (np. Pobrane), nie może zastąpić sejfu użytkownika.
+- **„Otwórz folder wymiany”** otwiera wyłącznie katalogi – ścieżka do pliku nie jest przekazywana do Eksploratora / `xdg-open` (które uruchomiłyby plik wykonywalny lub skrypt).
+- **Linux: katalog tymczasowy schowka plików RDP** w katalogu podręcznym użytkownika (`~/.cache/RemoteFlow`) zamiast współdzielonego `/tmp`, w którym inny użytkownik komputera mógł utworzyć go wcześniej i czytać kopiowane pliki.
+- **Zależności:** aktualizacja `rustls-webpki` 0.103.17 (RUSTSEC-2026-0382 – weryfikacja certyfikatów), `libz-sys` 1.1.33 (RUSTSEC-2026-0544, RUSTSEC-2026-0418), `rustix` 1.1.6, `clipboard-win` 5.4.3 i `async-executor` 1.14.1 (wycofane wersje). `npm audit`: 0 podatności.
+- **README:** dokładniejszy opis miejsca przechowywania danych (kolejność wyszukiwania sejfu, kopie, pliki niezaszyfrowane), schowka i udostępniania folderów w RDP, uzupełniony stos technologiczny; w `docs/LINUX*.md` pakiety do kopiowania do schowka (`wl-clipboard` / `xclip`).
+
 ## 1.13.0 – aktualizacje z GitHub Releases, przygotowanie do publikacji kodu
 - **Automatyczne aktualizacje.** Program sprawdza wydania projektu na GitHubie przy uruchomieniu i raz dziennie. Gdy jest nowsza wersja, w prawym dolnym rogu pojawia się okienko z listą zmian (sekcja CHANGELOG) i przyciskami „Zainstaluj i uruchom ponownie”, „Później”, „Pomiń tę wersję”. Przy aktywnych połączeniach okienko ostrzega, że instalacja je zamknie. W *Ustawieniach → Aktualizacje*: wyłączenie automatycznego sprawdzania i „Sprawdź teraz”.
 - **Podpisane paczki.** Instalowana jest wyłącznie paczka podpisana kluczem projektu (klucz publiczny w `tauri.conf.json`, `plugins.updater.pubkey`); paczka podmieniona na serwerze jest odrzucana („The signature verification failed”). Windows (NSIS/MSI) i AppImage aktualizują się na miejscu, `.deb`/`.rpm` przez `pkexec`.

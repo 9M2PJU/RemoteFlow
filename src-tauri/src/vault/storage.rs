@@ -29,45 +29,54 @@ fn dir_is_writable(dir: &Path) -> bool {
     }
 }
 
+/// Marker file that turns a copy of the program into a portable one (vault next to the program).
+pub const PORTABLE_MARKER: &str = "remoteflow.portable";
+
+/// Folder of the program as the user sees it: for an AppImage the folder of the .AppImage file
+/// (the executable itself runs from a read-only mount), otherwise the folder of the executable.
+#[cfg_attr(test, allow(dead_code))]
+fn program_dir() -> Option<PathBuf> {
+    if let Some(appimage) = std::env::var_os("APPIMAGE").filter(|v| !v.is_empty()) {
+        if let Some(dir) = Path::new(&appimage).parent() {
+            return Some(dir.to_path_buf());
+        }
+    }
+    std::env::current_exe().ok().and_then(|p| p.parent().map(|d| d.to_path_buf()))
+}
+
 #[cfg_attr(test, allow(dead_code))]
 fn resolve_vault_path() -> PathBuf {
-    let exe_dir = std::env::current_exe()
-        .ok()
-        .and_then(|p| p.parent().map(|d| d.to_path_buf()));
-    let config_vault = dirs::config_dir().map(|d| d.join("remoteflow").join("vault.json"));
+    let config_dir = dirs::config_dir().map(|d| d.join("remoteflow"));
+    choose_vault_path(program_dir().as_deref(), config_dir.as_deref(), std::env::current_dir().ok().as_deref())
+}
 
-    // 1. Portable mode: vault.json next to the executable.
-    if let Some(dir) = &exe_dir {
-        let p = dir.join("vault.json");
-        if p.exists() {
-            return p;
-        }
+/// Where the vault is:
+/// 1. next to the program, if a vault is already there (portable copy, also older versions that
+///    created the vault there whenever the folder was writable),
+/// 2. the per-user configuration folder (%APPDATA%\remoteflow, ~/.config/remoteflow),
+/// 3. the working folder (very early versions) – last, so a vault.json in whatever folder the
+///    program is started from can never take the place of the user's own vault.
+/// A NEW vault goes to the configuration folder; next to the program only for a portable copy,
+/// i.e. when the folder contains the `remoteflow.portable` marker file (and is writable). Installed
+/// copies therefore never keep data in the installation folder.
+fn choose_vault_path(program_dir: Option<&Path>, config_dir: Option<&Path>, cwd: Option<&Path>) -> PathBuf {
+    if let Some(p) = program_dir.map(|d| d.join("vault.json")).filter(|p| p.exists()) {
+        return p;
     }
-
-    // 2. Backward compatibility: earlier versions kept the vault in the working directory.
-    //    Only used when no vault exists next to the executable.
-    if let Ok(cwd) = std::env::current_dir() {
-        let p = cwd.join("vault.json");
-        if p.exists() {
-            eprintln!("[RemoteFlow] Używam sejfu z katalogu roboczego: {:?}", p);
-            return p;
-        }
+    if let Some(p) = config_dir.map(|d| d.join("vault.json")).filter(|p| p.exists()) {
+        return p;
     }
-
-    // 3. Per-user configuration directory (%APPDATA%\remoteflow, ~/.config/remoteflow).
-    if let Some(p) = &config_vault {
-        if p.exists() {
-            return p.clone();
-        }
+    if let Some(p) = cwd.map(|d| d.join("vault.json")).filter(|p| p.exists()) {
+        eprintln!("[RemoteFlow] Używam sejfu z katalogu roboczego: {:?}", p);
+        return p;
     }
-
-    // New vault: next to the executable when that directory is writable, otherwise per-user config.
-    if let Some(dir) = &exe_dir {
-        if dir_is_writable(dir) {
-            return dir.join("vault.json");
-        }
+    if let Some(dir) = program_dir.filter(|d| d.join(PORTABLE_MARKER).is_file() && dir_is_writable(d)) {
+        return dir.join("vault.json");
     }
-    config_vault.unwrap_or_else(|| PathBuf::from("vault.json"))
+    config_dir
+        .map(|d| d.join("vault.json"))
+        .or_else(|| program_dir.map(|d| d.join("vault.json")))
+        .unwrap_or_else(|| PathBuf::from("vault.json"))
 }
 
 /// The vault location is resolved once per process so it cannot change while the app runs.
@@ -339,5 +348,33 @@ mod tests {
         create_private_dir(&new_dir).unwrap();
         assert_eq!(fs::metadata(&new_dir).unwrap().permissions().mode() & 0o777, 0o700);
         let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn vault_location_rules() {
+        let base = std::env::temp_dir().join(format!("rf-vault-loc-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&base);
+        let (prog, conf, cwd) = (base.join("prog"), base.join("conf"), base.join("cwd"));
+        for d in [&prog, &conf, &cwd] {
+            fs::create_dir_all(d).unwrap();
+        }
+        let choose = || choose_vault_path(Some(&prog), Some(&conf), Some(&cwd));
+        // New vault: configuration folder, even though the program folder is writable
+        assert_eq!(choose(), conf.join("vault.json"));
+        // A vault.json in the working folder does not win over the user's vault
+        fs::write(cwd.join("vault.json"), "{}").unwrap();
+        assert_eq!(choose(), cwd.join("vault.json"), "only when nothing else exists (very old versions)");
+        fs::write(conf.join("vault.json"), "{}").unwrap();
+        assert_eq!(choose(), conf.join("vault.json"));
+        // Existing vault next to the program (portable copy / older versions) is kept
+        fs::write(prog.join("vault.json"), "{}").unwrap();
+        assert_eq!(choose(), prog.join("vault.json"));
+        // Portable marker: a new vault next to the program
+        let _ = fs::remove_file(prog.join("vault.json"));
+        let _ = fs::remove_file(conf.join("vault.json"));
+        let _ = fs::remove_file(cwd.join("vault.json"));
+        fs::write(prog.join(PORTABLE_MARKER), "").unwrap();
+        assert_eq!(choose(), prog.join("vault.json"));
+        let _ = fs::remove_dir_all(&base);
     }
 }

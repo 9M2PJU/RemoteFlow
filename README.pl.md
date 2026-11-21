@@ -45,7 +45,7 @@ Aplikacja wykorzystuje **Tauri 2 i Rust** jako natywny backend, **React 19 i Typ
 - Wbudowany klient RDP (IronRDP skompilowany do WebAssembly) działający przez lokalne proxy – rozdzielczość automatycznie dopasowuje się do okna.
 - TLS z przypinaniem certyfikatu; automatyczne przejście na systemowy stos TLS (Schannel / OpenSSL) dla starszych serwerów, np. Windows Server 2012.
 - Konta domenowe: `użytkownik` + pole „Domena”, `DOMENA\użytkownik`, UPN `użytkownik@domena.local` lub `.\konto` dla konta lokalnego – tak samo dla wbudowanego klienta, FreeRDP i mstsc.
-- Schowek tekstowy w obie strony. Na Windows pliki skopiowane w sesji zdalnej można od razu wkleić w Eksploratorze (i odwrotnie); na Linuksie pliki są wymieniane przez folder współdzielony.
+- Schowek tekstowy w obie strony. Na Windows pliki skopiowane w sesji zdalnej można od razu wkleić w Eksploratorze (i odwrotnie); na Linuksie pliki są wymieniane przez folder współdzielony. Schowek można wyłączyć dla wybranego połączenia (dotyczy wbudowanego klienta, FreeRDP i mstsc). Dyski lokalne i katalog domowy nigdy nie są udostępniane serwerowi – FreeRDP udostępnia tylko wydzielony folder wymiany `~/RemoteFlow_Shared`.
 - Linux: opcjonalnie **FreeRDP w oknie aplikacji** (Ustawienia → Klient RDP) – natywny klient (wiele wątków, H.264) rysuje sesję w zakładce RemoteFlow; wymaga X11 (na Wayland program uruchamia się wtedy przez XWayland) i `xfreerdp3`.
 - Panel statystyk wydajności w oknie RDP (przepustowość, aktualizacje ekranu, czas rysowania, obciążenie wątku głównego).
 - Opcjonalne uruchomienie systemowego klienta (`mstsc` na Windows, FreeRDP na Linuksie – z potokiem graficznym `/gfx` i `/network:auto`; szybszy od wbudowanego klienta przy wideo lub intensywnym przewijaniu).
@@ -136,15 +136,22 @@ docker build -f docker/Dockerfile.linux --target verify .
 ```
 
 ## Gdzie są moje dane?
-Sejf (`vault.json`) jest zapisywany obok pliku programu (tryb przenośny), jeśli ten folder jest zapisywalny,
-w przeciwnym razie w katalogu konfiguracji użytkownika (`%APPDATA%\remoteflow` na Windows, `~/.config/remoteflow` na Linuksie).
-Kopie zapasowe trafiają do folderu `backups` obok sejfu. 
+Sejf (`vault.json`) jest przechowywany w katalogu konfiguracji użytkownika: `%APPDATA%\remoteflow` na Windows,
+`~/.config/remoteflow` na Linuksie. Aktualizacja ani odinstalowanie programu go nie usuwa.
+
+**Tryb przenośny** (np. na pendrive): umieść obok pliku programu pusty plik o nazwie `remoteflow.portable` (dla AppImage
+– obok pliku `.AppImage`); nowy sejf powstanie wtedy w tym folderze. Plik `vault.json`, który już leży obok pliku
+programu, jest zawsze używany – także utworzony tam przez wersje sprzed 1.13.2.
+Kopie zapasowe trafiają do folderu `backups` obok sejfu albo do innego folderu wybranego w *Ustawienia → Kopie zapasowe sejfu*.
+Poza zaszyfrowanym sejfem bez szyfrowania zapisywane są tylko ustawienia niezawierające poufnych danych: opcje
+renderowania okna (`display.json` obok sejfu) i preferencje interfejsu, np. język, motyw, szerokość panelu i rozwinięte
+grupy (pamięć przeglądarki wbudowanej). Pliki wymieniane z sesjami RDP na Linuksie trafiają do `~/RemoteFlow_Shared`.
 
 ## Stos technologiczny
 | Warstwa | Technologie |
 |---|---|
 | Powłoka aplikacji | Tauri 2, WebView2 (Windows) / WebKitGTK (Linux) |
-| Backend | Rust 2024, tokio, ssh2 (libssh2), rustls + native-tls, tokio-tungstenite, ironrdp-rdcleanpath |
+| Backend | Rust 2024, tokio, ssh2 (libssh2), ssh-key, rustls + native-tls, tokio-tungstenite, ironrdp-rdcleanpath, tauri-plugin-updater |
 | Kryptografia | argon2, aes-gcm, hmac + sha2, zeroize |
 | Interfejs | React 19, TypeScript, Vite 8, Tailwind CSS 4, lucide-react |
 | Terminal / RDP | xterm.js 6, IronRDP (WebAssembly), opcjonalnie FreeRDP na Linuksie i systemowe klienty RDP |

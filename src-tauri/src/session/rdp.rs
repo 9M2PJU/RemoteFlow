@@ -72,7 +72,7 @@ pub fn display_rdp_login(username: &str, domain: Option<&str>) -> String {
 }
 
 /// Minimal .rdp file for mstsc: address + pre-filled user name (no password).
-fn write_mstsc_rdp_file(session_id: &str, host: &str, port: u16, login: &str) -> std::io::Result<std::path::PathBuf> {
+fn write_mstsc_rdp_file(session_id: &str, host: &str, port: u16, login: &str, clipboard: bool) -> std::io::Result<std::path::PathBuf> {
     let dir = std::env::temp_dir().join("RemoteFlow").join("mstsc");
     std::fs::create_dir_all(&dir)?;
     let safe_id: String = session_id.chars().filter(|c| c.is_ascii_alphanumeric() || *c == '-').collect();
@@ -83,6 +83,9 @@ fn write_mstsc_rdp_file(session_id: &str, host: &str, port: u16, login: &str) ->
         content.push_str(&format!("username:s:{}\r\n", clean(login)));
     }
     content.push_str("prompt for credentials:i:1\r\n");
+    // Clipboard as in the connection's RDP settings; local drives are never shared with the server
+    content.push_str(&format!("redirectclipboard:i:{}\r\n", u8::from(clipboard)));
+    content.push_str("redirectdrives:i:0\r\ndrivestoredirect:s:\r\n");
     std::fs::write(&path, content)?;
     Ok(path)
 }
@@ -238,7 +241,11 @@ pub fn spawn_rdp_session(
                     return;
                 }
             }
-            if binary.contains("freerdp3") {
+            // "Clipboard" in the connection's RDP settings (default on)
+            let clipboard = config.rdp_settings.as_ref().is_none_or(|s| s.clipboard);
+            if !clipboard {
+                cmd.arg("-clipboard");
+            } else if binary.contains("freerdp3") {
                 cmd.arg("/clipboard:direction-to:all,files-to:all");
             } else {
                 cmd.arg("+clipboard");
@@ -250,14 +257,14 @@ pub fn spawn_rdp_session(
             cmd.arg("/gfx");
             cmd.arg("/network:auto");
 
-            // Drive redirection: share local folder and home with remote Windows session
-            // Visible in Windows Explorer under "Ten komputer" (This PC) as "RemoteFlow on <hostname>" or \\tsclient\RemoteFlow
+            // Only the dedicated exchange folder is shared with the remote session (visible in Windows
+            // Explorer as "RemoteFlow on <hostname>" / \\tsclient\RemoteFlow). The home folder is NOT
+            // shared – the server would get read/write access to all personal files (SSH keys, the vault…).
             let shared_dir = dirs::home_dir()
                 .map(|h| h.join("RemoteFlow_Shared"))
                 .unwrap_or_else(|| std::path::PathBuf::from("/tmp/remoteflow_shared"));
             let _ = std::fs::create_dir_all(&shared_dir);
             cmd.arg(format!("/drive:RemoteFlow,{}", shared_dir.to_string_lossy()));
-            cmd.arg("+home-drive");
 
             if let Some(settings) = &config.rdp_settings {
                 if settings.sound {
@@ -270,7 +277,8 @@ pub fn spawn_rdp_session(
         } else if binary.contains("mstsc") {
             // mstsc has no command line switch for the user name: a temporary .rdp file pre-fills
             // DOMAIN\user in the login prompt (the password is never written to disk).
-            match write_mstsc_rdp_file(&sid, &config.host, config.port, &display_rdp_login(&rdp_user, rdp_domain.as_deref())) {
+            let clipboard = config.rdp_settings.as_ref().is_none_or(|s| s.clipboard);
+            match write_mstsc_rdp_file(&sid, &config.host, config.port, &display_rdp_login(&rdp_user, rdp_domain.as_deref()), clipboard) {
                 Ok(path) => {
                     cmd.arg(&path);
                     let cleanup = path.clone();

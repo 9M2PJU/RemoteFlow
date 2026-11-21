@@ -287,6 +287,11 @@ export const RdpViewer: React.FC<Props> = ({ session, isActive }) => {
   const lastAppliedResRef = useRef<{ width: number; height: number } | null>(null);
   // Throttling of focus-triggered clipboard sync (each sync may reach the OS clipboard)
   const clipboardSyncInFlightRef = useRef<boolean>(false);
+  // "Clipboard" in the connection's RDP settings: when off, nothing is exchanged with the remote
+  // clipboard (text or files) in either direction.
+  const clipboardAllowed = session.rdpSettings?.clipboard !== false;
+  const clipboardAllowedRef = useRef(clipboardAllowed);
+  clipboardAllowedRef.current = clipboardAllowed;
   const clipboardSyncPendingRef = useRef<boolean>(false);
   const lastClipboardSyncAtRef = useRef<number>(0);
   // Last error reported by the local Rust RDP proxy (more precise than the WASM client's error)
@@ -672,6 +677,7 @@ export const RdpViewer: React.FC<Props> = ({ session, isActive }) => {
 
   // Synchronize local Linux clipboard -> Remote Windows session
   const syncLocalClipboardToRemote = useCallback(async (force = false) => {
+    if (!clipboardAllowedRef.current) return;
     if (!force) {
       if (clipboardSyncInFlightRef.current) {
         // A sync is running – run once more afterwards so a copy made meanwhile is not missed.
@@ -924,6 +930,8 @@ export const RdpViewer: React.FC<Props> = ({ session, isActive }) => {
         private _ensureClipCallbacks() {
           if (this._clipCallbacksRegistered) return;
           this._clipCallbacksRegistered = true;
+          // Clipboard disabled for this connection: no CLIPRDR callbacks at all
+          if (!clipboardAllowedRef.current) return;
 
           super.remoteClipboardChangedCallback((clipData: any) => {
             if (!isSubscribed) return;
@@ -1002,14 +1010,14 @@ export const RdpViewer: React.FC<Props> = ({ session, isActive }) => {
 
         // Enable clipboard, disable IronRDP's buggy browser-polling loop in favor of our native GTK/Wayland sync
         try {
-          ui.setEnableClipboard(true);
+          ui.setEnableClipboard(clipboardAllowedRef.current);
           ui.setEnableAutoClipboard(false);
         } catch (clipErr) {
           console.warn('[RemoteFlow RDP] Błąd konfiguracji schowka:', clipErr);
         }
 
-        // Enable Native RDP File & Directory Transfer (CLIPRDR)
-        try {
+        // Enable Native RDP File & Directory Transfer (CLIPRDR) – only with the clipboard enabled
+        if (clipboardAllowedRef.current) try {
           const ftProvider = new RdpFileTransferProvider({ chunkSize: 64 * 1024 });
           const origSetSession = ftProvider.setSession.bind(ftProvider);
           ftProvider.setSession = (wasmSess: any) => {
@@ -1411,8 +1419,9 @@ export const RdpViewer: React.FC<Props> = ({ session, isActive }) => {
       `compression:i:1`,
       `keyboardhook:i:2`,
       `audiomode:i:${session.rdpSettings?.sound ? 0 : 2}`,
-      `redirectclipboard:i:1`,
-      `redirectdrives:i:1`,
+      `redirectclipboard:i:${clipboardAllowed ? 1 : 0}`,
+      // Local drives are never shared with the server (it would get access to all local files)
+      `redirectdrives:i:0`,
       `redirectprinters:i:0`,
       `displayconnectionbar:i:1`,
       `autoreconnection enabled:i:1`,
@@ -1741,14 +1750,15 @@ export const RdpViewer: React.FC<Props> = ({ session, isActive }) => {
           {/* Toggle Unified Files & Clipboard Drawer */}
           <button
             onClick={() => setIsClipboardDrawerOpen((v) => !v)}
-            title={t('Transfer plików, katalogów i menedżer schowka RDP')}
+            disabled={!clipboardAllowed}
+            title={clipboardAllowed ? t('Transfer plików, katalogów i menedżer schowka RDP') : t('Schowek jest wyłączony w ustawieniach tego połączenia')}
             className={`relative flex items-center gap-1 rounded-lg border px-2.5 py-1 text-xs transition-colors ${
               isClipboardDrawerOpen
                 ? 'border-emerald-500 bg-emerald-950/60 text-emerald-200 shadow-xs'
                 : remoteAvailableFiles.length > 0 || stagedUploadNames.length > 0
                 ? 'border-cyan-500 bg-cyan-950/50 text-cyan-200'
                 : 'border-slate-700 bg-slate-800/80 text-slate-200 hover:bg-slate-700 hover:text-white'
-            }`}
+            } disabled:cursor-default disabled:opacity-40`}
           >
             <FolderSync className="h-3.5 w-3.5 text-emerald-400" />
             <span className="text-[11px] font-medium hidden sm:inline">{t('Pliki i Schowek')}</span>
