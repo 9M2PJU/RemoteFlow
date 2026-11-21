@@ -52,3 +52,6 @@ vault*.json
 
 # Files saved by the Claude desktop app (not part of the project)
 Claude outputs/
+
+# GitHub Wiki pages (separate repository RemoteFlow.wiki.git)
+wiki/
