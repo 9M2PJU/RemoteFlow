@@ -69,7 +69,10 @@ The application uses **Tauri 2 and Rust** for the native backend, **React 19 and
 
 ## Download
 
-Ready-made builds are published on the [Releases](https://github.com/jacek-nikiel/RemoteFlow/releases) page (when available).
+Ready-made builds are published on the [Releases](https://github.com/jacek-nikiel/RemoteFlow/releases) page: Windows installer (`.exe`, `.msi`) and Linux packages (`.AppImage`, `.deb`, `.rpm`). They are built from this repository by GitHub Actions ([release workflow](.github/workflows/release.yml)) – the build log of every release is public.
+
+### Updates
+The application checks the Releases page at start-up and once a day and offers a new version with its release notes (*Settings → Updates*: switch off automatic checks or check now). Every update package is signed; the application installs only packages signed with the project key whose public part is in [`tauri.conf.json`](src-tauri/tauri.conf.json) (`plugins.updater.pubkey`). Windows and AppImage update in place; `.deb` / `.rpm` are installed with `pkexec` (administrator password prompt).
 Requirements: Windows 10/11 x64 with the Microsoft Edge WebView2 Runtime, or Linux with WebKitGTK 4.1 and GTK 3. Embedding the native Linux RDP client additionally requires FreeRDP and X11/XWayland.
 
 **Linux users:** see [runtime packages and installation commands](docs/LINUX.md) for Ubuntu and CachyOS/Arch, including optional FreeRDP, file pickers and AppImage requirements. This list is separate from the build dependencies below.
@@ -143,6 +146,26 @@ Backups are kept in the `backups` folder next to the vault.
 The project uses [semantic versioning](https://semver.org/). Every change increases at least the patch number –
 see [CHANGELOG.md](CHANGELOG.md). The version is kept in `package.json`, `src-tauri/tauri.conf.json` and
 `src-tauri/Cargo.toml` (a unit test checks that they match) and is shown next to the logo and on the login screen.
+
+## Releases (maintainers)
+One-time setup:
+1. Generate the updater signing key on your computer (never commit the private key):
+   ```bash
+   npx tauri signer generate -w ~/.tauri/remoteflow.key        # Windows: -w %USERPROFILE%\.tauri\remoteflow.key
+   ```
+2. Put the content of `remoteflow.key.pub` into `src-tauri/tauri.conf.json` → `plugins.updater.pubkey`.
+3. In GitHub → *Settings → Secrets and variables → Actions* add `TAURI_SIGNING_PRIVATE_KEY` (content of `remoteflow.key`) and `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`.
+
+Each release:
+```bash
+git tag v1.2.3            # must match the version in package.json; CHANGELOG.md needs a "## 1.2.3 – …" section
+git push origin v1.2.3
+```
+GitHub Actions builds Windows and Linux, signs the update packages and creates a **draft** release with the CHANGELOG section as notes. Check it and press *Publish* – from then on the application offers the update.
+Losing the private key means existing installations cannot verify new updates (users would have to install a new version manually) – keep a backup.
+
+## Security
+See [SECURITY.md](SECURITY.md) for how to report a vulnerability.
 
 ## License
 [MIT](LICENSE) © 2026 Jacek Nikiel

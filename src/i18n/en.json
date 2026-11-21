@@ -852,5 +852,22 @@
   "Przerwano pobieranie (niedokończony plik nie został zapisany). ": "Download stopped (the unfinished file was not saved). ",
   "Przerywanie… ": "Stopping… ",
   "Przerwij przesyłanie (pliki już przesłane pozostają)": "Stop the transfer (files already transferred are kept)",
-  "Przerwij": "Stop"
+  "Przerwij": "Stop",
+  "Dostępna aktualizacja": "Update available",
+  "Dostępna nowa wersja {version}": "New version {version} available",
+  "Zainstalowana wersja: {version}": "Installed version: {version}",
+  "Później": "Later",
+  "Instalacja zamknie program i wszystkie aktywne połączenia ({count}).": "Installing closes the program and all active connections ({count}).",
+  "Instalowanie – program uruchomi się ponownie…": "Installing – the program will restart…",
+  "Pobieranie {done} MB{total}": "Downloading {done} MB{total}",
+  "Nie udało się zainstalować aktualizacji: {error}": "Could not install the update: {error}",
+  "Pomiń tę wersję": "Skip this version",
+  "Zainstaluj i uruchom ponownie": "Install and restart",
+  "Dostępna wersja {version} – szczegóły w okienku w prawym dolnym rogu.": "Version {version} is available – see the notice in the bottom-right corner.",
+  "Masz najnowszą wersję.": "You have the latest version.",
+  "Nie udało się sprawdzić aktualizacji: {error}": "Could not check for updates: {error}",
+  "Aktualizacje": "Updates",
+  "Sprawdzaj automatycznie": "Check automatically",
+  "Przy uruchomieniu i raz dziennie, z wydań projektu na GitHubie. Instalowane są tylko paczki podpisane kluczem projektu.": "At start-up and once a day, from the project's GitHub releases. Only packages signed with the project key are installed.",
+  "Sprawdź teraz": "Check now"
 }

@@ -4,6 +4,14 @@ Numer wersji: `MAJOR.MINOR.PATCH`. Każda zmiana podnosi co najmniej numer PATCH
 Wersja jest zapisana w trzech plikach, które muszą być zgodne (pilnuje tego test `version_tests` w `src-tauri/src/lib.rs`):
 `package.json` (wyświetlana w aplikacji), `src-tauri/tauri.conf.json` (instalator) i `src-tauri/Cargo.toml`.
 
+## 1.13.0 – aktualizacje z GitHub Releases, przygotowanie do publikacji kodu
+- **Automatyczne aktualizacje.** Program sprawdza wydania projektu na GitHubie przy uruchomieniu i raz dziennie. Gdy jest nowsza wersja, w prawym dolnym rogu pojawia się okienko z listą zmian (sekcja CHANGELOG) i przyciskami „Zainstaluj i uruchom ponownie”, „Później”, „Pomiń tę wersję”. Przy aktywnych połączeniach okienko ostrzega, że instalacja je zamknie. W *Ustawieniach → Aktualizacje*: wyłączenie automatycznego sprawdzania i „Sprawdź teraz”.
+- **Podpisane paczki.** Instalowana jest wyłącznie paczka podpisana kluczem projektu (klucz publiczny w `tauri.conf.json`, `plugins.updater.pubkey`); paczka podmieniona na serwerze jest odrzucana („The signature verification failed”). Windows (NSIS/MSI) i AppImage aktualizują się na miejscu, `.deb`/`.rpm` przez `pkexec`.
+- **Wydania z GitHub Actions** (`.github/workflows/release.yml`): tag `vX.Y.Z` → budowanie Windows i Linux na serwerach GitHuba, podpis paczek, szkic wydania z instalatorami, `latest.json` i opisem z CHANGELOG; po kliknięciu *Publish* aktualizacja trafia do użytkowników. Workflow sprawdza zgodność tagu z wersją i uruchamia testy. Opis w README („Wydania”).
+- Klucz publiczny aktualizacji projektu: minisign `20074AF8B1577214`.
+- `SECURITY.md` – zasady zgłaszania podatności; `.gitignore` chroni przed dodaniem klucza prywatnego.
+- Testy w aplikacji: lokalny serwer z `latest.json` (wersja 9.9.9) – okienko z listą zmian, pobieranie z postępem, poprawny podpis przyjęty, podmieniona paczka odrzucona.
+
 ## 1.12.1 – SFTP: plik zastępowany dopiero po przesłaniu w całości
 - **Wysyłanie na serwer:** plik jest zapisywany do pliku tymczasowego obok docelowego (`.nazwa.rf-part`) i dopiero po przesłaniu w całości zastępuje plik na serwerze. Wcześniej istniejący plik był od razu nadpisywany – przerwanie (przycisk „Przerwij”, zerwane połączenie, błąd) zostawiało plik ucięty albo usunięty. Teraz poprzednia wersja pozostaje nienaruszona do końca przesyłania, a po przerwaniu usuwany jest tylko plik tymczasowy.
 - Zastępowany plik zachowuje swoje uprawnienia (np. wykonywalne skrypty). Serwery SFTP w wersji 3 (OpenSSH) nie pozwalają nadpisać pliku przez zmianę nazwy, więc stary plik jest na chwilę odsuwany (`.nazwa.rf-old`), nowy wstawiany na jego miejsce, a stary usuwany; gdy coś się nie uda, stary plik wraca na miejsce. Dowiązanie symboliczne na serwerze nie jest zamieniane na zwykły plik – aktualizowany jest plik, na który wskazuje.

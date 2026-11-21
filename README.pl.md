@@ -69,7 +69,10 @@ Aplikacja wykorzystuje **Tauri 2 i Rust** jako natywny backend, **React 19 i Typ
 
 ## Pobieranie
 
-Gotowe wersje są publikowane na stronie [Releases](https://github.com/jacek-nikiel/RemoteFlow/releases) (gdy będą dostępne).
+Gotowe wersje są publikowane na stronie [Releases](https://github.com/jacek-nikiel/RemoteFlow/releases): instalator Windows (`.exe`, `.msi`) i paczki Linux (`.AppImage`, `.deb`, `.rpm`). Są budowane z tego repozytorium przez GitHub Actions ([workflow wydań](.github/workflows/release.yml)) – log budowania każdego wydania jest publiczny.
+
+### Aktualizacje
+Program sprawdza stronę wydań przy uruchomieniu i raz dziennie i proponuje nową wersję wraz z listą zmian (*Ustawienia → Aktualizacje*: wyłączenie automatycznego sprawdzania lub sprawdzenie od razu). Każda paczka aktualizacji jest podpisana; program instaluje tylko paczki podpisane kluczem projektu, którego część publiczna jest w [`tauri.conf.json`](src-tauri/tauri.conf.json) (`plugins.updater.pubkey`). Windows i AppImage aktualizują się na miejscu; `.deb` / `.rpm` są instalowane przez `pkexec` (pytanie o hasło administratora).
 Wymagania: Windows 10/11 x64 ze środowiskiem Microsoft Edge WebView2 Runtime lub Linux z WebKitGTK 4.1 i GTK 3. Osadzanie natywnego klienta RDP na Linuksie wymaga dodatkowo FreeRDP i X11/XWayland.
 
 **Dla użytkowników Linuksa:** przygotowano [listę pakietów i polecenia instalacji](docs/LINUX.pl.md) dla Ubuntu i CachyOS/Arch, wraz z opcjonalnym FreeRDP, oknami wyboru plików i wymaganiami AppImage. To osobna lista od zależności do kompilacji opisanych poniżej.
@@ -151,6 +154,26 @@ Kopie zapasowe trafiają do folderu `backups` obok sejfu.
 Projekt stosuje [wersjonowanie semantyczne](https://semver.org/lang/pl/). Każda zmiana podnosi co najmniej numer poprawki –
 zobacz [CHANGELOG.md](CHANGELOG.md). Wersja jest zapisana w `package.json`, `src-tauri/tauri.conf.json` i
 `src-tauri/Cargo.toml` (test jednostkowy sprawdza ich zgodność) i jest wyświetlana obok logo oraz na ekranie logowania.
+
+## Wydania (dla opiekuna projektu)
+Jednorazowo:
+1. Wygeneruj klucz podpisu aktualizacji na swoim komputerze (klucza prywatnego nigdy nie dodawaj do repozytorium):
+   ```bash
+   npx tauri signer generate -w ~/.tauri/remoteflow.key        # Windows: -w %USERPROFILE%\.tauri\remoteflow.key
+   ```
+2. Treść pliku `remoteflow.key.pub` wpisz do `src-tauri/tauri.conf.json` → `plugins.updater.pubkey`.
+3. W GitHubie → *Settings → Secrets and variables → Actions* dodaj `TAURI_SIGNING_PRIVATE_KEY` (treść pliku `remoteflow.key`) i `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`.
+
+Każde wydanie:
+```bash
+git tag v1.2.3            # musi odpowiadać wersji w package.json; CHANGELOG.md musi mieć sekcję „## 1.2.3 – …”
+git push origin v1.2.3
+```
+GitHub Actions buduje wersje Windows i Linux, podpisuje paczki aktualizacji i tworzy **szkic** wydania z sekcją CHANGELOG jako opisem. Sprawdź go i kliknij *Publish* – od tej chwili program proponuje aktualizację.
+Utrata klucza prywatnego oznacza, że zainstalowane kopie nie zweryfikują nowych aktualizacji (użytkownicy musieliby ręcznie zainstalować nową wersję) – zrób kopię zapasową klucza.
+
+## Bezpieczeństwo
+Zgłaszanie podatności: zobacz [SECURITY.md](SECURITY.md).
 
 ## Licencja
 [MIT](LICENSE) © 2026 Jacek Nikiel

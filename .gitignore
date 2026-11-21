@@ -45,3 +45,7 @@ vault*.json
 .env
 .env.*
 !.env.example
+
+# Updater signing keys (the private key must never be committed; the public key goes into tauri.conf.json)
+*.key
+.tauri/

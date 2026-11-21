@@ -18,7 +18,10 @@ import {
   Languages,
   Palette,
   SquareTerminal,
+  Download,
 } from 'lucide-react';
+import { APP_VERSION } from '../../version';
+import { announceUpdate, autoCheckEnabled, checkForUpdate, setAutoCheckEnabled, skipVersion } from '../../utils/updater';
 import {
   clampScrollback,
   DEFAULT_TERMINAL_SCROLLBACK,
@@ -548,6 +551,9 @@ export const SettingsModal: React.FC<Props> = ({
               <LinuxRdpClientSetting />
             </div>
 
+            {/* Updates (GitHub Releases) */}
+            <UpdateSettings />
+
             {/* SSH terminal */}
             <div className="rounded-xl border border-slate-800 bg-slate-950/40 p-4 space-y-3">
               <div className="text-xs font-bold text-white uppercase tracking-wider flex items-center gap-1.5">
@@ -844,6 +850,76 @@ export const SettingsModal: React.FC<Props> = ({
         onConfirm={() => restoreCandidate && handleRestoreBackup(restoreCandidate)}
         onCancel={() => setRestoreCandidate(null)}
       />
+    </div>
+  );
+};
+
+/** Settings → Updates: automatic checks and a manual "check now". */
+const UpdateSettings: React.FC = () => {
+  const t = useT();
+  const [auto, setAuto] = useState(autoCheckEnabled());
+  const [checking, setChecking] = useState(false);
+  const [result, setResult] = useState<{ text: string; error?: boolean } | null>(null);
+
+  const checkNow = async () => {
+    setChecking(true);
+    setResult(null);
+    try {
+      const update = await checkForUpdate();
+      if (update) {
+        skipVersion(null); // a manual check shows also a version skipped before
+        announceUpdate(update);
+        setResult({ text: t('Dostępna wersja {version} – szczegóły w okienku w prawym dolnym rogu.', { version: update.version }) });
+      } else {
+        setResult({ text: t('Masz najnowszą wersję.') });
+      }
+    } catch (err: any) {
+      setResult({ text: t('Nie udało się sprawdzić aktualizacji: {error}', { error: String(err?.message || err) }), error: true });
+    } finally {
+      setChecking(false);
+    }
+  };
+
+  return (
+    <div className="rounded-xl border border-slate-800 bg-slate-950/40 p-4 space-y-3">
+      <div className="text-xs font-bold text-white uppercase tracking-wider flex items-center gap-1.5">
+        <Download className="h-3.5 w-3.5 text-cyan-400" />
+        {t('Aktualizacje')}
+      </div>
+      <label className="flex items-center justify-between cursor-pointer">
+        <div className="text-xs text-slate-300">
+          {t('Sprawdzaj automatycznie')}
+          <div className="text-[10px] text-slate-500">
+            {t('Przy uruchomieniu i raz dziennie, z wydań projektu na GitHubie. Instalowane są tylko paczki podpisane kluczem projektu.')}
+          </div>
+        </div>
+        <input
+          type="checkbox"
+          checked={auto}
+          onChange={(e) => {
+            setAuto(e.target.checked);
+            setAutoCheckEnabled(e.target.checked);
+          }}
+          className="h-4 w-4 rounded border-slate-700 bg-slate-800 text-cyan-500 focus:ring-0"
+        />
+      </label>
+      <div className="flex items-center justify-between gap-3 pt-2 border-t border-slate-800/80">
+        <div className="text-xs text-slate-300">
+          {t('Zainstalowana wersja: {version}', { version: APP_VERSION })}
+          {result && (
+            <div className={`text-[10px] ${result.error ? 'text-red-400' : 'text-emerald-300'}`}>{result.text}</div>
+          )}
+        </div>
+        <button
+          type="button"
+          onClick={checkNow}
+          disabled={checking}
+          className="flex shrink-0 items-center gap-1.5 rounded-lg border border-slate-700 bg-slate-800/80 px-3 py-1.5 text-[11px] text-slate-200 hover:bg-slate-700 disabled:opacity-60"
+        >
+          {checking ? <Loader2 className="h-3 w-3 animate-spin" /> : <Download className="h-3 w-3" />}
+          {t('Sprawdź teraz')}
+        </button>
+      </div>
     </div>
   );
 };

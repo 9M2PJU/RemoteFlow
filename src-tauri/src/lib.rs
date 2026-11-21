@@ -35,6 +35,9 @@ pub fn run() {
 
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
+        // Updates from GitHub Releases, verified with the public key in tauri.conf.json
+        .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(tauri_plugin_process::init())
         .manage(auth_state)
         .manage(session_state)
         .setup(|app| {

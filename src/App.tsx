@@ -14,6 +14,7 @@ import { ConnectionModal } from './components/dialogs/ConnectionModal';
 import { GroupModal } from './components/dialogs/GroupModal';
 import { CredentialsModal } from './components/dialogs/CredentialsModal';
 import { SettingsModal } from './components/dialogs/SettingsModal';
+import { UpdateNotice } from './components/common/UpdateNotice';
 import { ImportExportModal } from './components/dialogs/ImportExportModal';
 import { PassphrasePromptModal } from './components/dialogs/PassphrasePromptModal';
 import { ConfirmDialog, DialogAnchor } from './components/dialogs/ConfirmDialog';
@@ -885,6 +886,8 @@ const t = useT();
           </div>
         </div>
       )}
+      {/* New version from GitHub Releases */}
+      <UpdateNotice activeSessions={sessions.length} />
       {/* Top Header Bar */}
       <Header
         isSidebarCollapsed={isSidebarCollapsed}
