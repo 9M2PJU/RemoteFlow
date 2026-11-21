@@ -2,6 +2,8 @@
 
 **English** | [Polski](README.pl.md)
 
+[![Buy Me a Coffee](https://img.shields.io/badge/Buy%20me%20a%20coffee-FFDD00?logo=buymeacoffee&logoColor=black)](https://buymeacoffee.com/nikieljacek)
+
 RemoteFlow is a desktop **SSH, SFTP and RDP connection manager for Windows and Linux**, inspired by mRemoteNG. It brings remote terminals, remote desktops, file transfers and SSH tunnels into one tabbed workspace with split-screen layouts.
 
 Organise hosts into nested groups, reuse credential profiles and switch between active sessions without opening separate client windows. Connection settings, passwords and stored private keys are kept in a local encrypted vault protected by a Master Password.
@@ -173,6 +175,10 @@ Losing the private key means existing installations cannot verify new updates (u
 
 ## Security
 See [SECURITY.md](SECURITY.md) for how to report a vulnerability.
+
+## Support the project
+RemoteFlow is free and open source, developed after hours. If it saves you time, you can support further development:
+**[buymeacoffee.com/nikieljacek](https://buymeacoffee.com/nikieljacek)** – thank you! Bug reports and ideas in [Issues](https://github.com/jacek-nikiel/RemoteFlow/issues) help just as much.
 
 ## License
 [MIT](LICENSE) © 2026 Jacek Nikiel
