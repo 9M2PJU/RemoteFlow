@@ -688,7 +688,14 @@ const t = useT();
     });
   };
 
-  const handleCloneConnection = async (source: Connection) => {
+  // Cloning asks for confirmation next to the clicked connection
+  const [pendingClone, setPendingClone] = useState<{ connection: Connection; anchor: DialogAnchor | null } | null>(null);
+
+  const handleCloneConnection = (source: Connection, anchor?: DialogAnchor | null) => {
+    setPendingClone({ connection: source, anchor: anchor ?? null });
+  };
+
+  const cloneConnectionNow = async (source: Connection) => {
     try {
       const copy = await api.cloneConnection(source.id);
       setConnections((previous) => {
@@ -1002,6 +1009,31 @@ const t = useT();
         confirmLabel={t('Rozłącz')}
         onConfirm={confirmPendingClose}
         onCancel={() => setPendingClose(null)}
+      />
+
+      {/* Confirmation before cloning a connection (shown next to the clicked item) */}
+      <ConfirmDialog
+        isOpen={pendingClone !== null}
+        anchor={pendingClone?.anchor}
+        variant="info"
+        title={t('Sklonować połączenie?')}
+        message={
+          pendingClone
+            ? t('Zostanie utworzona kopia połączenia „{name}” ({p1} {host}:{port}) razem z zapisanymi danymi logowania i tunelami.', {
+                name: pendingClone.connection.name,
+                p1: pendingClone.connection.protocol.toUpperCase(),
+                host: pendingClone.connection.host,
+                port: pendingClone.connection.port,
+              })
+            : ''
+        }
+        confirmLabel={t('Klonuj')}
+        onConfirm={() => {
+          const req = pendingClone;
+          setPendingClone(null);
+          if (req) void cloneConnectionNow(req.connection);
+        }}
+        onCancel={() => setPendingClone(null)}
       />
 
       {/* Confirmation before deleting a connection / folder (shown next to the clicked item) */}

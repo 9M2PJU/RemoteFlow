@@ -1,10 +1,11 @@
 import React, { useEffect, useState } from 'react';
-import { Download, Loader2, RefreshCw, X } from 'lucide-react';
+import { Download, ExternalLink, Loader2, RefreshCw, X } from 'lucide-react';
 import { useT } from '../../i18n';
 import {
   AvailableUpdate,
   autoCheckEnabled,
   checkForUpdate,
+  openReleasesPage,
   skipVersion,
   skippedVersion,
   UPDATE_EVENT,
@@ -96,7 +97,13 @@ export const UpdateNotice: React.FC<{ activeSessions: number }> = ({ activeSessi
         </div>
       )}
 
-      {activeSessions > 0 && !installing && (
+      {!update.canSelfUpdate && (
+        <div className="mb-3 rounded-lg border border-slate-700 bg-slate-950/60 p-2 text-[11px] text-slate-300">
+          {t('To jest kopia przenośna – pobierz nową wersję ze strony wydań i zastąp nią obecny plik programu (dane i ustawienia zostaną zachowane).')}
+        </div>
+      )}
+
+      {update.canSelfUpdate && activeSessions > 0 && !installing && (
         <div className="mb-3 rounded-lg border border-amber-500/30 bg-amber-500/10 p-2 text-[11px] text-amber-200">
           {t('Instalacja zamknie program i wszystkie aktywne połączenia ({count}).', { count: activeSessions })}
         </div>
@@ -121,7 +128,9 @@ export const UpdateNotice: React.FC<{ activeSessions: number }> = ({ activeSessi
 
       {error && (
         <div className="mb-3 whitespace-pre-wrap break-words rounded-lg border border-red-500/30 bg-red-500/10 p-2 text-[11px] text-red-300">
-          {t('Nie udało się zainstalować aktualizacji: {error}', { error })}
+          {update.canSelfUpdate
+            ? t('Nie udało się zainstalować aktualizacji: {error}', { error })
+            : t('Nie udało się otworzyć strony: {error}', { error })}
         </div>
       )}
 
@@ -144,6 +153,7 @@ export const UpdateNotice: React.FC<{ activeSessions: number }> = ({ activeSessi
           >
             {t('Później')}
           </button>
+          {update.canSelfUpdate ? (
           <button
             type="button"
             onClick={install}
@@ -152,6 +162,20 @@ export const UpdateNotice: React.FC<{ activeSessions: number }> = ({ activeSessi
             <RefreshCw className="h-3 w-3" />
             {t('Zainstaluj i uruchom ponownie')}
           </button>
+          ) : (
+          <button
+            type="button"
+            onClick={() => {
+              openReleasesPage()
+                .then(() => setUpdate(null))
+                .catch((err: any) => setError(String(err?.message || err)));
+            }}
+            className="flex items-center gap-1.5 rounded-lg bg-cyan-600 px-3 py-1.5 text-[11px] font-semibold text-white hover:bg-cyan-500"
+          >
+            <ExternalLink className="h-3 w-3" />
+            {t('Pobierz nową wersję')}
+          </button>
+          )}
         </div>
       )}
     </div>

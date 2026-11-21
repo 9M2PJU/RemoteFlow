@@ -10,11 +10,19 @@
  */
 import { isTauri } from '../services/api';
 
+/** Release page – portable copies download the new version from here. */
+export const RELEASES_URL = 'https://github.com/jacek-nikiel/RemoteFlow/releases/latest';
+
 export interface AvailableUpdate {
   version: string;
   currentVersion: string;
   notes: string;
   date?: string;
+  /**
+   * False for a portable copy (loose remoteflow.exe / binary): the installer would put a second,
+   * separate copy into the installation folder, so only a link to the download page is offered.
+   */
+  canSelfUpdate: boolean;
   /** Downloads, verifies and installs; `onProgress(downloaded, total)` while downloading. */
   install: (onProgress: (downloaded: number, total: number | null) => void) => Promise<void>;
 }
@@ -62,7 +70,10 @@ export async function checkForUpdate(): Promise<AvailableUpdate | null> {
   const { check } = await import('@tauri-apps/plugin-updater');
   const update = await check({ timeout: 20_000 });
   if (!update) return null;
+  const { invoke } = await import('@tauri-apps/api/core');
+  const info = await invoke<{ canSelfUpdate: boolean; kind: string }>('app_install_info').catch(() => null);
   return {
+    canSelfUpdate: info?.canSelfUpdate ?? false,
     version: update.version,
     currentVersion: update.currentVersion,
     notes: update.body ?? '',
@@ -84,6 +95,12 @@ export async function checkForUpdate(): Promise<AvailableUpdate | null> {
       await relaunch();
     },
   };
+}
+
+/** Opens the release page in the default browser (portable copies). */
+export async function openReleasesPage(): Promise<void> {
+  const { openUrl } = await import('@tauri-apps/plugin-opener');
+  await openUrl(RELEASES_URL);
 }
 
 /** Shows the update notice (UpdateNotice) – used by the manual check in Settings. */

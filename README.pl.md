@@ -19,7 +19,7 @@ Aplikacja wykorzystuje **Tauri 2 i Rust** jako natywny backend, **React 19 i Typ
 - Ciemny lub jasny motyw (Ustawienia), opcjonalnie z ciemnym terminalem w jasnym motywie.
 - Drzewo połączeń z zagnieżdżonymi grupami, kolorami, wyszukiwaniem (nazwa, host, IP, tagi) i przeciąganiem. Stan rozwinięcia grup i sortowanie A–Z w wybranych grupach są zapamiętywane po restarcie.
 - Menu kontekstowe grup: połączenie z hostami w grupie, dodawanie hostów i podgrup, sortowanie, edycja, usuwanie oraz rozwijanie i zwijanie wszystkich grup.
-- Klonowanie zapisanej konfiguracji połączenia lub otwieranie kolejnej sesji tego samego połączenia.
+- Klonowanie zapisanej konfiguracji połączenia (po potwierdzeniu) lub otwieranie kolejnej sesji tego samego połączenia.
 - Zakładki i podział ekranu: pojedynczy, poziomy, pionowy, 3 kolumny i siatka 2×2. Zmiana kolejności zakładek przeciąganiem lub z menu zakładki (na początek/koniec, w lewo/w prawo) bez przerywania połączenia; przeciąganie zakładek między panelami i wybór sesji dla każdego panelu.
 - Przyciski przewijania zakładek i przeszukiwalna lista otwartych sesji ze ścieżką grupy, danymi hosta i stanem połączenia. Długie etykiety przewijają się, odsłaniając zawartość.
 - Wspólne profile poświadczeń używane przez wiele połączeń.
@@ -74,7 +74,7 @@ Aplikacja wykorzystuje **Tauri 2 i Rust** jako natywny backend, **React 19 i Typ
 Gotowe wersje są publikowane na stronie [Releases](https://github.com/jacek-nikiel/RemoteFlow/releases): instalator Windows (`.exe`, `.msi`) i paczki Linux (`.AppImage`, `.deb`, `.rpm`). Są budowane z tego repozytorium przez GitHub Actions ([workflow wydań](.github/workflows/release.yml)) – log budowania każdego wydania jest publiczny.
 
 ### Aktualizacje
-Program sprawdza stronę wydań przy uruchomieniu i raz dziennie i proponuje nową wersję wraz z listą zmian (*Ustawienia → Aktualizacje*: wyłączenie automatycznego sprawdzania lub sprawdzenie od razu). Każda paczka aktualizacji jest podpisana; program instaluje tylko paczki podpisane kluczem projektu, którego część publiczna jest w [`tauri.conf.json`](src-tauri/tauri.conf.json) (`plugins.updater.pubkey`). Windows i AppImage aktualizują się na miejscu; `.deb` / `.rpm` są instalowane przez `pkexec` (pytanie o hasło administratora).
+Program sprawdza stronę wydań przy uruchomieniu i raz dziennie i proponuje nową wersję wraz z listą zmian (*Ustawienia → Aktualizacje*: wyłączenie automatycznego sprawdzania lub sprawdzenie od razu). Każda paczka aktualizacji jest podpisana; program instaluje tylko paczki podpisane kluczem projektu, którego część publiczna jest w [`tauri.conf.json`](src-tauri/tauri.conf.json) (`plugins.updater.pubkey`). Windows i AppImage aktualizują się na miejscu; `.deb` / `.rpm` są instalowane przez `pkexec` (pytanie o hasło administratora). Kopia przenośna (sam plik programu bez instalatora, np. na pendrivie, albo ze znacznikiem `remoteflow.portable`) nie instaluje aktualizacji sama – okienko aktualizacji otwiera stronę wydań, skąd pobierasz nowy plik i zastępujesz nim obecny.
 Wymagania: Windows 10/11 x64 ze środowiskiem Microsoft Edge WebView2 Runtime lub Linux z WebKitGTK 4.1 i GTK 3. Osadzanie natywnego klienta RDP na Linuksie wymaga dodatkowo FreeRDP i X11/XWayland.
 
 **Dla użytkowników Linuksa:** przygotowano [listę pakietów i polecenia instalacji](docs/LINUX.pl.md) dla Ubuntu i CachyOS/Arch, wraz z opcjonalnym FreeRDP, oknami wyboru plików i wymaganiami AppImage. To osobna lista od zależności do kompilacji opisanych poniżej.

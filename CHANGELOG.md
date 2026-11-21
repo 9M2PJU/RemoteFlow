@@ -4,6 +4,13 @@ Numer wersji: `MAJOR.MINOR.PATCH`. Każda zmiana podnosi co najmniej numer PATCH
 Wersja jest zapisana w trzech plikach, które muszą być zgodne (pilnuje tego test `version_tests` w `src-tauri/src/lib.rs`):
 `package.json` (wyświetlana w aplikacji), `src-tauri/tauri.conf.json` (instalator) i `src-tauri/Cargo.toml`.
 
+## 1.13.3 – potwierdzenie klonowania, aktualizacje kopii przenośnych
+- Pierwsze wydanie dostarczane przez wbudowany aktualizator (z wersji 1.13.2) – sprawdzenie całego łańcucha: wykrycie nowej wersji, pobranie, weryfikacja podpisu, instalacja i ponowne uruchomienie.
+- **Kopie przenośne nie uruchamiają instalatora.** Aktualizator instalował nową wersję instalatorem także wtedy, gdy program działał jako luźny plik `remoteflow.exe` (np. z pendrive’a) – na Windows powstawała wtedy druga, osobna kopia w folderze instalacji, a uruchamiany plik zostawał stary. Teraz program rozpoznaje sposób instalacji: instalator NSIS (`uninstall.exe` obok programu), MSI (folder Program Files), AppImage, pakiet `.deb`/`.rpm` (`/usr/`). Pozostałe kopie – oraz każda ze znacznikiem `remoteflow.portable` – dostają w okienku aktualizacji przycisk „Pobierz nową wersję” (strona wydań w przeglądarce) i wskazówkę, by zastąpić plik programu. Uwaga: dotyczy to kopii od wersji 1.13.3 – w przenośnej 1.13.2 nie używaj „Zainstaluj”.
+- **Potwierdzenie przy klonowaniu połączenia.** „Klonuj połączenie” w menu połączenia pokazuje przy nim okienko z nazwą i adresem połączenia oraz informacją, że kopia obejmie zapisane dane logowania i tunele; kopia powstaje dopiero po „Klonuj”.
+- `.gitignore`: folder `Claude outputs/` (pliki zapisywane przez aplikację Claude) nie trafia do repozytorium.
+- README: sekcja „Wsparcie projektu” z linkiem do Buy Me a Coffee.
+
 ## 1.13.2 – sejf w katalogu konfiguracji użytkownika
 - **Nowy sejf jest zawsze tworzony w katalogu konfiguracji użytkownika** (`%APPDATA%\remoteflow` na Windows, `~/.config/remoteflow` na Linuksie). Wcześniej powstawał obok pliku programu, jeśli ten folder był zapisywalny – przy instalatorze Windows „dla bieżącego użytkownika” był to katalog instalacji programu.
 - **Tryb przenośny na życzenie:** pusty plik `remoteflow.portable` obok pliku programu (dla AppImage – obok pliku `.AppImage`) sprawia, że nowy sejf powstaje w tym folderze.

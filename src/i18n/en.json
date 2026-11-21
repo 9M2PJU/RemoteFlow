@@ -870,5 +870,11 @@
   "Sprawdzaj automatycznie": "Check automatically",
   "Przy uruchomieniu i raz dziennie, z wydań projektu na GitHubie. Instalowane są tylko paczki podpisane kluczem projektu.": "At start-up and once a day, from the project's GitHub releases. Only packages signed with the project key are installed.",
   "Sprawdź teraz": "Check now",
-  "Schowek jest wyłączony w ustawieniach tego połączenia": "The clipboard is disabled in this connection's settings"
+  "Schowek jest wyłączony w ustawieniach tego połączenia": "The clipboard is disabled in this connection's settings",
+  "Sklonować połączenie?": "Clone the connection?",
+  "Zostanie utworzona kopia połączenia „{name}” ({p1} {host}:{port}) razem z zapisanymi danymi logowania i tunelami.": "A copy of the connection “{name}” ({p1} {host}:{port}) will be created, including the saved credentials and tunnels.",
+  "Klonuj": "Clone",
+  "To jest kopia przenośna – pobierz nową wersję ze strony wydań i zastąp nią obecny plik programu (dane i ustawienia zostaną zachowane).": "This is a portable copy – download the new version from the releases page and replace the current program file with it (your data and settings are kept).",
+  "Pobierz nową wersję": "Download the new version",
+  "Nie udało się otworzyć strony: {error}": "Could not open the page: {error}"
 }

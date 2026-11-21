@@ -34,8 +34,7 @@ pub const PORTABLE_MARKER: &str = "remoteflow.portable";
 
 /// Folder of the program as the user sees it: for an AppImage the folder of the .AppImage file
 /// (the executable itself runs from a read-only mount), otherwise the folder of the executable.
-#[cfg_attr(test, allow(dead_code))]
-fn program_dir() -> Option<PathBuf> {
+pub(crate) fn program_dir() -> Option<PathBuf> {
     if let Some(appimage) = std::env::var_os("APPIMAGE").filter(|v| !v.is_empty()) {
         if let Some(dir) = Path::new(&appimage).parent() {
             return Some(dir.to_path_buf());

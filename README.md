@@ -19,7 +19,7 @@ The application uses **Tauri 2 and Rust** for the native backend, **React 19 and
 - Dark or light theme (Settings), optionally with a dark terminal in the light theme.
 - Connection tree with nested groups, colours, search (name, host, IP, tags) and drag & drop. Group expansion and per-group A–Z sorting are remembered between launches.
 - Group context menus: connect to a group, add hosts or subgroups, sort, edit, delete, and expand or collapse all groups.
-- Clone a saved connection configuration or open another session using the same connection.
+- Clone a saved connection configuration (after confirmation) or open another session using the same connection.
 - Tabs and split-screen layouts: single, horizontal, vertical, 3 columns and 2×2 grid. Reorder tabs by dragging or from the tab menu (move to the beginning/end, left/right) without interrupting the connection; drag tabs between panes and choose a session for each pane.
 - Tab scroll buttons and a searchable list of open sessions with group paths, host details and connection status. Long labels scroll to reveal their contents.
 - Reusable credential profiles shared by many connections.
@@ -74,7 +74,7 @@ The application uses **Tauri 2 and Rust** for the native backend, **React 19 and
 Ready-made builds are published on the [Releases](https://github.com/jacek-nikiel/RemoteFlow/releases) page: Windows installer (`.exe`, `.msi`) and Linux packages (`.AppImage`, `.deb`, `.rpm`). They are built from this repository by GitHub Actions ([release workflow](.github/workflows/release.yml)) – the build log of every release is public.
 
 ### Updates
-The application checks the Releases page at start-up and once a day and offers a new version with its release notes (*Settings → Updates*: switch off automatic checks or check now). Every update package is signed; the application installs only packages signed with the project key whose public part is in [`tauri.conf.json`](src-tauri/tauri.conf.json) (`plugins.updater.pubkey`). Windows and AppImage update in place; `.deb` / `.rpm` are installed with `pkexec` (administrator password prompt).
+The application checks the Releases page at start-up and once a day and offers a new version with its release notes (*Settings → Updates*: switch off automatic checks or check now). Every update package is signed; the application installs only packages signed with the project key whose public part is in [`tauri.conf.json`](src-tauri/tauri.conf.json) (`plugins.updater.pubkey`). Windows and AppImage update in place; `.deb` / `.rpm` are installed with `pkexec` (administrator password prompt). A portable copy (the bare executable without an installer, e.g. on a USB drive, or one with the `remoteflow.portable` marker) does not install updates itself – the update notice opens the Releases page, where you download the new file and replace the current one.
 Requirements: Windows 10/11 x64 with the Microsoft Edge WebView2 Runtime, or Linux with WebKitGTK 4.1 and GTK 3. Embedding the native Linux RDP client additionally requires FreeRDP and X11/XWayland.
 
 **Linux users:** see [runtime packages and installation commands](docs/LINUX.md) for Ubuntu and CachyOS/Arch, including optional FreeRDP, file pickers and AppImage requirements. This list is separate from the build dependencies below.

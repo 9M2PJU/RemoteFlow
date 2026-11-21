@@ -39,7 +39,7 @@ interface Props {
   onConnect: (connection: Connection, allowDuplicate?: boolean) => void;
   onConnectAllInGroup: (group: Group, conns: Connection[]) => void;
   onEditConnection: (connection: Connection) => void;
-  onCloneConnection: (connection: Connection) => Promise<void>;
+  onCloneConnection: (connection: Connection, anchor?: DialogAnchor | null) => void;
   onDeleteConnection: (connectionId: string, anchor?: DialogAnchor | null) => void;
   onEditGroup: (group: Group) => void;
   onDeleteGroup: (groupId: string, anchor?: DialogAnchor | null) => void;
@@ -633,7 +633,7 @@ interface ConnectionItemProps {
   onDragEnd: () => void;
   onConnect: (connection: Connection, allowDuplicate?: boolean) => void;
   onEdit: (connection: Connection) => void;
-  onClone: (connection: Connection) => Promise<void>;
+  onClone: (connection: Connection, anchor?: DialogAnchor | null) => void;
   onDelete: (id: string, anchor?: DialogAnchor | null) => void;
 }
 
@@ -655,12 +655,10 @@ const ConnectionItem: React.FC<ConnectionItemProps> = ({
   const rowRef = useRef<HTMLDivElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
   const menuStyle = useMenuPosition(menuRef, contextMenu);
-  const [isCloning, setIsCloning] = useState(false);
-  const cloneConnection = async () => {
-    if (isCloning) return;
+  // Asks for confirmation next to the connection (App.tsx), then clones
+  const cloneConnection = () => {
     setContextMenu(null);
-    setIsCloning(true);
-    try { await onClone(connection); } finally { setIsCloning(false); }
+    onClone(connection, anchorFromElement(rowRef.current));
   };
 
   useEffect(() => {
@@ -855,7 +853,7 @@ const ConnectionItem: React.FC<ConnectionItemProps> = ({
               <span>{t('Edytuj konfigurację')}</span>
             </button>
 
-            <button type="button" onClick={() => { void cloneConnection(); }} disabled={isCloning}
+            <button type="button" onClick={cloneConnection}
               className="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 hover:bg-slate-800 hover:text-white transition-colors disabled:opacity-40">
               <CopyPlus className="h-3.5 w-3.5 text-cyan-400" />
               <span>{t('Klonuj połączenie')}</span>

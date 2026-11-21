@@ -5,6 +5,7 @@ pub mod auth;
 pub mod oslock;
 pub mod session;
 pub mod vault;
+pub mod install;
 
 use auth::{
     vault_batch_import, vault_change_master_password, vault_delete_connection,
@@ -118,6 +119,7 @@ pub fn run() {
             pick_ssh_certificate_file,
             read_local_paths_for_rdp_clipboard,
             app_exit,
+            install::app_install_info,
             i18n::app_set_language,
             app_maximize_window,
             rdp_clip_stage_begin,
