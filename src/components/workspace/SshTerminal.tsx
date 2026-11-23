@@ -22,7 +22,7 @@ import {
   terminalScrollback,
 } from '../../utils/terminalSettings';
 import { SftpManager } from './SftpManager';
-import { useT } from '../../i18n';
+import { tn, useT } from '../../i18n';
 import { useLightTerminal } from '../../theme';
 import { useMenuPosition } from '../../utils/useMenuPosition';
 
@@ -153,10 +153,10 @@ export const SshTerminal: React.FC<Props> = ({ session, isActive, splitLayout = 
       const clipFiles = await api.clipboardReadFiles();
       if (clipFiles.length > 0) {
         setIsUploading(true);
-        showNotification(t('Przesyłanie {length} elementów ze schowka przez SFTP...', { length: clipFiles.length }));
+        showNotification(tn(clipFiles.length, ['Przesyłanie {length} elementu ze schowka przez SFTP...', 'Przesyłanie {length} elementów ze schowka przez SFTP...', 'Przesyłanie {length} elementów ze schowka przez SFTP...'], { length: clipFiles.length }));
         try {
           const count = await api.sftpUploadPaths(session.connectionId, '.', clipFiles);
-          showNotification(t('Przesłano ze schowka {count} plików do katalogu domowego', { count }));
+          showNotification(tn(count, ['Przesłano ze schowka {count} plik do katalogu domowego', 'Przesłano ze schowka {count} pliki do katalogu domowego', 'Przesłano ze schowka {count} plików do katalogu domowego'], { count }));
         } catch (err: any) {
           showNotification(t('Błąd przesyłania: {p0}', { p0: err?.message || err }));
         } finally {
@@ -569,10 +569,10 @@ export const SshTerminal: React.FC<Props> = ({ session, isActive, splitLayout = 
 
       if (paths.length > 0) {
         setIsUploading(true);
-        showNotification(t('Przesyłanie rekursywne {length} elementów przez SFTP...', { length: paths.length }));
+        showNotification(tn(paths.length, ['Przesyłanie rekursywne {length} elementu przez SFTP...', 'Przesyłanie rekursywne {length} elementów przez SFTP...', 'Przesyłanie rekursywne {length} elementów przez SFTP...'], { length: paths.length }));
         try {
           const count = await api.sftpUploadPaths(session.connectionId, '.', paths);
-          showNotification(t('Przesłano pomyślnie {count} plików do katalogu domowego', { count }));
+          showNotification(tn(count, ['Przesłano pomyślnie {count} plik do katalogu domowego', 'Przesłano pomyślnie {count} pliki do katalogu domowego', 'Przesłano pomyślnie {count} plików do katalogu domowego'], { count }));
         } catch (err: any) {
           showNotification(t('Błąd przesyłania: {p0}', { p0: err?.message || err }));
         } finally {
@@ -586,7 +586,7 @@ export const SshTerminal: React.FC<Props> = ({ session, isActive, splitLayout = 
     if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
       const files = e.dataTransfer.files;
       setIsUploading(true);
-      showNotification(t('Przesyłanie {length} plików przez SFTP...', { length: files.length }));
+      showNotification(tn(files.length, ['Przesyłanie {length} pliku przez SFTP...', 'Przesyłanie {length} plików przez SFTP...', 'Przesyłanie {length} plików przez SFTP...'], { length: files.length }));
 
       let count = 0;
       for (let i = 0; i < files.length; i++) {
@@ -607,7 +607,7 @@ export const SshTerminal: React.FC<Props> = ({ session, isActive, splitLayout = 
         }
       }
       setIsUploading(false);
-      showNotification(t('Przesłano pomyślnie {count} z {length} plików do katalogu domowego', { count, length: files.length }));
+      showNotification(tn(files.length, ['Przesłano pomyślnie {count} z {length} pliku do katalogu domowego', 'Przesłano pomyślnie {count} z {length} plików do katalogu domowego', 'Przesłano pomyślnie {count} z {length} plików do katalogu domowego'], { count, length: files.length }));
       return;
     }
 

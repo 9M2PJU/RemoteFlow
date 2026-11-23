@@ -37,7 +37,7 @@ import { getOscCwd } from '../../utils/terminalCwd';
 import { api, isTauri } from '../../services/api';
 import { SftpFileEntry, TransferProgress, TransferSummary } from '../../types';
 import { ConfirmDialog } from '../dialogs/ConfirmDialog';
-import { locale, useT } from '../../i18n';
+import { locale, tn, useT } from '../../i18n';
 import { useMenuPosition } from '../../utils/useMenuPosition';
 
 type Side = 'local' | 'remote';
@@ -348,7 +348,7 @@ export const SftpManager: React.FC<Props> = ({
       setActiveTransfer(transferId);
       setCancelling(false);
       setProgress(null);
-      const what = paths.length === 1 ? baseName(paths[0]) : t('{length} elementów', { length: paths.length });
+      const what = paths.length === 1 ? baseName(paths[0]) : tn(paths.length, ['{length} element', '{length} elementy', '{length} elementów'], { length: paths.length });
       const label = from === 'local' ? t('Wysyłanie {what} → {targetDir}', { what, targetDir }) : t('Pobieranie {what} → {targetDir}', { what, targetDir });
       busyRef.current = label;
       setBusy(label);
@@ -365,7 +365,7 @@ export const SftpManager: React.FC<Props> = ({
                 ? t('Przerwano wysyłanie (niedokończony plik na serwerze usunięto). ')
                 : t('Przerwano pobieranie (niedokończony plik nie został zapisany). '))
             : '') +
-          t('{verb} {files} plików ({p2})', { verb, files: sum.files, p2: formatBytes(sum.bytes) }) +
+          tn(sum.files, ['{verb} {files} plik ({p2})', '{verb} {files} pliki ({p2})', '{verb} {files} plików ({p2})'], { verb, files: sum.files, p2: formatBytes(sum.bytes) }) +
           (sum.folders ? t(', katalogów: {folders}', { folders: sum.folders }) : '') +
           (sum.skippedLinks
             ? t(', pominięto dowiązań do katalogów: {n}', { n: sum.skippedLinks })
@@ -467,7 +467,7 @@ export const SftpManager: React.FC<Props> = ({
         if (Math.hypot(e.clientX - pending.x, e.clientY - pending.y) < 6) return;
         const pane = pending.from === 'local' ? local : remote;
         const paths = pane.selected.includes(pending.path) ? pane.selected : [pending.path];
-        const label = paths.length === 1 ? baseName(paths[0]) : t('{length} elementów', { length: paths.length });
+        const label = paths.length === 1 ? baseName(paths[0]) : tn(paths.length, ['{length} element', '{length} elementy', '{length} elementów'], { length: paths.length });
         setDrag({ from: pending.from, paths, label, x: e.clientX, y: e.clientY, overSide: null, overFolder: null });
         return;
       }
@@ -542,7 +542,7 @@ export const SftpManager: React.FC<Props> = ({
     setConfirm({
       title: t('Usunąć z serwera?'),
       message:
-        t('Zostanie trwale usuniętych {length} elementów (katalogi razem z zawartością): ', { length: paths.length }) +
+        tn(paths.length, ['Zostanie trwale usunięty {length} element (katalogi razem z zawartością): ', 'Zostaną trwale usunięte {length} elementy (katalogi razem z zawartością): ', 'Zostanie trwale usuniętych {length} elementów (katalogi razem z zawartością): '], { length: paths.length }) +
         paths.slice(0, 6).map(baseName).join(', ') +
         (paths.length > 6 ? '…' : ''),
       label: t('Usuń'),
@@ -562,7 +562,7 @@ export const SftpManager: React.FC<Props> = ({
             await api.sftpDeletePaths(connectionId, [path]);
             completed++;
           }
-          const text = t('Usunięto {length} elementów', { length: completed });
+          const text = tn(completed, ['Usunięto {length} element', 'Usunięto {length} elementy', 'Usunięto {length} elementów'], { length: completed });
           showStatus(text);
           onNotify?.(text);
         } catch (err: any) {
@@ -1273,7 +1273,7 @@ const FilePane: React.FC<PaneProps> = ({
       {/* Footer */}
       <div className="flex h-6 shrink-0 items-center justify-between border-t border-slate-800 px-2 text-[10px] text-slate-500">
         <span>
-          {t('{n} elementów', { n: visible.length })}
+          {tn(visible.length, ['{n} element', '{n} elementy', '{n} elementów'], { n: visible.length })}
           {pane.selected.length > 0 &&
             ' · ' + t('zaznaczono {n}', { n: pane.selected.length }) + (selectedBytes ? ` (${formatBytes(selectedBytes)})` : '')}
         </span>

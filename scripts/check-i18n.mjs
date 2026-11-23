@@ -1,4 +1,4 @@
-// Verifies that every t('...') text used in src/ has an English translation in src/i18n/en.json,
+// Verifies that every t('...') text (and every form in tn(n, [...])) used in src/ has an English translation in src/i18n/en.json,
 // and lists Polish-looking text that is not wrapped in t().  Usage: node scripts/check-i18n.mjs
 import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
@@ -19,12 +19,22 @@ walk(join(root, 'src'));
 const used = new Set();
 const missing = [];
 const callRe = /\bt\(\s*('(?:[^'\\\n]|\\.)*'|"(?:[^"\\\n]|\\.)*")/g;
+// tn(count, ['one', 'few', 'many'], …) – every form is a dictionary key
+const pluralRe = /\btn\([^\[\n]*\[([^\]]*)\]/g;
+const strRe = /'(?:[^'\\\n]|\\.)*'|"(?:[^"\\\n]|\\.)*"/g;
 for (const file of files) {
   const src = readFileSync(file, 'utf8');
   for (const m of src.matchAll(callRe)) {
     const key = Function(`return ${m[1]}`)();
     used.add(key);
     if (!(key in en)) missing.push(`${file.replace(root, '')}: ${key}`);
+  }
+  for (const m of src.matchAll(pluralRe)) {
+    for (const lit of m[1].match(strRe) ?? []) {
+      const key = Function(`return ${lit}`)();
+      used.add(key);
+      if (!(key in en)) missing.push(`${file.replace(root, '')}: ${key}`);
+    }
   }
 }
 const unused = Object.keys(en).filter((k) => !used.has(k));

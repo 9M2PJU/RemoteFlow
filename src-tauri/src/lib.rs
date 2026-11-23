@@ -43,6 +43,8 @@ pub fn run() {
         .manage(session_state)
         .setup(|app| {
             vault::backup::start_scheduler();
+            // Previous program file left by a portable update
+            install::cleanup_after_update();
             // Private-key files left by a crash in the Windows fallback are wiped
             std::thread::spawn(session::ssh::sweep_stale_key_files);
             oslock::start_monitor(app.handle().clone());
@@ -120,6 +122,8 @@ pub fn run() {
             read_local_paths_for_rdp_clipboard,
             app_exit,
             install::app_install_info,
+            install::portable_update_check,
+            install::portable_update_install,
             i18n::app_set_language,
             app_maximize_window,
             rdp_clip_stage_begin,

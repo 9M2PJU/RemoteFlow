@@ -22,7 +22,7 @@ import { Loader2 } from 'lucide-react';
 import { RdpCertificateDialog } from './components/dialogs/RdpCertificateDialog';
 import { EmptyPasswordDialog } from './components/dialogs/EmptyPasswordDialog';
 import { PasswordPromptCancelled } from './utils/passwordPrompt';
-import { useT } from './i18n';
+import { tn, useT } from './i18n';
 import { effectiveSshAuthType } from './utils/sshAuth';
 
 export const App: React.FC = () => {
@@ -467,12 +467,12 @@ const t = useT();
       const count = sessionsRightOf(pendingClose.sessionId).length;
       return {
         title: t('Zamknąć karty po prawej?'),
-        message: t('Zostanie rozłączonych {count} sesji z kart po prawej stronie wskazanej karty.', { count }),
+        message: tn(count, ['Zostanie rozłączona {count} sesja z karty po prawej stronie wskazanej karty.', 'Zostaną rozłączone {count} sesje z kart po prawej stronie wskazanej karty.', 'Zostanie rozłączonych {count} sesji z kart po prawej stronie wskazanej karty.'], { count }),
       };
     }
     return {
       title: t('Zamknąć wszystkie połączenia?'),
-      message: t('Zostanie rozłączonych wszystkich {length} aktywnych sesji.', { length: sessions.length }),
+      message: tn(sessions.length, ['Zostanie rozłączona {length} aktywna sesja.', 'Zostaną rozłączone wszystkie {length} aktywne sesje.', 'Zostanie rozłączonych wszystkich {length} aktywnych sesji.'], { length: sessions.length }),
     };
   };
 

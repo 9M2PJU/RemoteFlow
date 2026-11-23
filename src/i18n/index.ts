@@ -70,6 +70,23 @@ const interpolate = (text: string, params?: TParams) =>
 export const t = (text: string, params?: TParams): string =>
   interpolate(current === 'en' ? en[text] ?? text : text, params);
 
+/**
+ * Polish plural form for a count: 0 = one (1), 1 = few (2–4, 22–24…, but not 12–14), 2 = many (0, 5–21, 25…).
+ */
+export const plForm = (n: number): 0 | 1 | 2 => {
+  const a = Math.abs(n);
+  if (a === 1) return 0;
+  const d = a % 10;
+  const h = a % 100;
+  return d >= 2 && d <= 4 && (h < 12 || h > 14) ? 1 : 2;
+};
+
+/**
+ * Text with a count: picks the Polish form [one, few, many] for `n` and translates it. In en.json the
+ * "one" form maps to the English singular, "few" and "many" to the plural (Polish "one" is only n = 1).
+ */
+export const tn = (n: number, forms: [string, string, string], params?: TParams): string => t(forms[plForm(n)], params);
+
 /** Subscribes the component to language changes and returns `t`. */
 export const useT = () => {
   useSyncExternalStore(subscribe, getLang, getLang);

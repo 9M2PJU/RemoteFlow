@@ -19,7 +19,7 @@ import {
 import { Connection, Group, SessionInfo, WorkspaceLayout } from '../../types';
 import { SessionSwitcher } from './SessionSwitcher';
 import { TAB_DRAG_EVENT, TabDragDetail } from '../../utils/tabDrag';
-import { useT } from '../../i18n';
+import { tn, useT } from '../../i18n';
 import { useEmbeddedFreeRdp } from '../../utils/rdpClientMode';
 import { anchorFromElement, DialogAnchor } from '../dialogs/ConfirmDialog';
 
@@ -342,7 +342,7 @@ export const Workspace: React.FC<Props> = ({
             <div className="mt-4 rounded-xl border border-slate-800 bg-slate-900/40 p-4 text-left">
               <div className="mb-3 flex items-center justify-between text-xs font-semibold text-slate-400 uppercase tracking-wider">
                 <span>{t('Zdefiniowane połączenia')}</span>
-                <span className="text-slate-500">{t('{n} dostępnych', { n: connections.length })}</span>
+                <span className="text-slate-500">{tn(connections.length, ['{n} dostępne', '{n} dostępne', '{n} dostępnych'], { n: connections.length })}</span>
               </div>
               <div className="grid grid-cols-2 gap-2">
                 {connections.slice(0, 6).map((conn) => (

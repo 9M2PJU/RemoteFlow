@@ -103,6 +103,12 @@ export const UpdateNotice: React.FC<{ activeSessions: number }> = ({ activeSessi
         </div>
       )}
 
+      {update.canSelfUpdate && update.portable && !installing && (
+        <div className="mb-3 rounded-lg border border-slate-700 bg-slate-950/60 p-2 text-[11px] text-slate-300">
+          {t('Kopia przenośna: plik programu zostanie zastąpiony nową wersją w tym samym folderze (dane i ustawienia zostaną zachowane).')}
+        </div>
+      )}
+
       {update.canSelfUpdate && activeSessions > 0 && !installing && (
         <div className="mb-3 rounded-lg border border-amber-500/30 bg-amber-500/10 p-2 text-[11px] text-amber-200">
           {t('Instalacja zamknie program i wszystkie aktywne połączenia ({count}).', { count: activeSessions })}

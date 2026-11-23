@@ -1,6 +1,6 @@
 import { useEffect, useMemo } from 'react';
 import { Connection, Group } from '../../types';
-import { useT } from '../../i18n';
+import { tn, useT } from '../../i18n';
 import { expandExportGroups, selectExportData } from '../../utils/exportScope';
 
 export interface ExportScope {
@@ -81,7 +81,7 @@ export function ExportScopeSelector({ groups, connections, value, onChange, disa
                 onChange({ ...value, groupIds: [...ids] });
               }} />
             <span className="min-w-0 flex-1 break-words">{group.path}</span>
-            <span className="shrink-0 text-slate-500">{t('{n} połączeń', { n: group.count })}</span>
+            <span className="shrink-0 text-slate-500">{tn(group.count, ['{n} połączenie', '{n} połączenia', '{n} połączeń'], { n: group.count })}</span>
           </label>;
         })}
       </div>

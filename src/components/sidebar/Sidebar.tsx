@@ -28,7 +28,7 @@ import {
 import { api } from '../../services/api';
 import { anchorFromElement, DialogAnchor } from '../dialogs/ConfirmDialog';
 import { Connection, Group } from '../../types';
-import { locale, useT } from '../../i18n';
+import { locale, tn, useT } from '../../i18n';
 import { useMenuPosition } from '../../utils/useMenuPosition';
 
 interface Props {
@@ -322,9 +322,9 @@ export const Sidebar: React.FC<Props> = ({
         {/* Group header – full width, counter aligned to the right edge */}
         <div
           style={{ paddingLeft: rowPadding(depth) }}
-          title={t('Folder: {name} ({length} połączeń)', { name: group.name, length: allGroupConns.length })}
+          title={tn(allGroupConns.length, ['Folder: {name} ({length} połączenie)', 'Folder: {name} ({length} połączenia)', 'Folder: {name} ({length} połączeń)'], { name: group.name, length: allGroupConns.length })}
           role="button" tabIndex={0} aria-expanded={!isCollapsed}
-          aria-label={t('Folder: {name} ({length} połączeń)', { name: group.name, length: allGroupConns.length })}
+          aria-label={tn(allGroupConns.length, ['Folder: {name} ({length} połączenie)', 'Folder: {name} ({length} połączenia)', 'Folder: {name} ({length} połączeń)'], { name: group.name, length: allGroupConns.length })}
           onClick={() => toggleGroupCollapse(group.id)}
           onContextMenu={(event) => {
             event.preventDefault();
@@ -434,7 +434,7 @@ export const Sidebar: React.FC<Props> = ({
             <span className="truncate">{t('Struktura Połączeń')}</span>
           </span>
           <span className="text-[10px] text-cyan-300/90 font-mono bg-cyan-950/70 border border-cyan-800/50 px-1.5 py-0.2 rounded-full font-medium shrink-0">
-            {t('{n} hostów', { n: filteredConnections.length })}
+            {tn(filteredConnections.length, ['{n} host', '{n} hosty', '{n} hostów'], { n: filteredConnections.length })}
           </span>
         </div>
 
@@ -716,7 +716,7 @@ const ConnectionItem: React.FC<ConnectionItemProps> = ({
               </span>
               {activeTunnelsCount > 0 && (
                 <span
-                  title={t('{activeTunnelsCount} aktywnych przekierowań portów', { activeTunnelsCount })}
+                  title={tn(activeTunnelsCount, ['{activeTunnelsCount} aktywne przekierowanie portu', '{activeTunnelsCount} aktywne przekierowania portów', '{activeTunnelsCount} aktywnych przekierowań portów'], { activeTunnelsCount })}
                   className="flex shrink-0 items-center gap-0.5 rounded bg-amber-500/10 px-1 py-0.2 text-[9px] font-mono text-amber-400 border border-amber-500/20"
                 >
                   <ArrowRightLeft className="h-2.5 w-2.5" />

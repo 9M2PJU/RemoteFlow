@@ -19,10 +19,12 @@ export interface AvailableUpdate {
   notes: string;
   date?: string;
   /**
-   * False for a portable copy (loose remoteflow.exe / binary): the installer would put a second,
-   * separate copy into the installation folder, so only a link to the download page is offered.
+   * The update can be installed from the notice. False only for a portable copy when the release
+   * has no portable build for this system – then the notice links to the releases page.
    */
   canSelfUpdate: boolean;
+  /** Portable copy: the program file itself is replaced (no installer). */
+  portable: boolean;
   /** Downloads, verifies and installs; `onProgress(downloaded, total)` while downloading. */
   install: (onProgress: (downloaded: number, total: number | null) => void) => Promise<void>;
 }
@@ -64,20 +66,61 @@ export function skipVersion(version: string | null): void {
   }
 }
 
-/** Checks GitHub Releases. Null = no newer version (or not running in the desktop app). */
+interface InstallInfo {
+  canSelfUpdate: boolean;
+  kind: 'nsis' | 'msi' | 'appimage' | 'package' | 'portable';
+}
+
+interface PortableUpdateInfo {
+  version: string;
+  currentVersion: string;
+  notes: string;
+  date?: string | null;
+}
+
+/**
+ * Checks GitHub Releases. Null = no newer version (or not running in the desktop app).
+ *
+ * Installed copies use the updater plugin (installer / AppImage / package). A portable copy asks
+ * for the portable build of the release (backend: install.rs) and replaces its own program file;
+ * when the release has no portable build for this system, the notice only links to the releases page.
+ */
 export async function checkForUpdate(): Promise<AvailableUpdate | null> {
   if (!isTauri()) return null;
+  const { invoke, Channel } = await import('@tauri-apps/api/core');
+  const info = await invoke<InstallInfo>('app_install_info').catch(() => null);
+
+  if (info?.kind === 'portable') {
+    const portable = await invoke<PortableUpdateInfo | null>('portable_update_check').catch(() => null);
+    if (portable) {
+      return {
+        version: portable.version,
+        currentVersion: portable.currentVersion,
+        notes: portable.notes,
+        date: portable.date ?? undefined,
+        canSelfUpdate: true,
+        portable: true,
+        install: async (onProgress) => {
+          const channel = new Channel<{ downloaded: number; total: number | null }>();
+          channel.onmessage = (p) => onProgress(p.downloaded, p.total);
+          // On success the backend starts the new version and closes this one
+          await invoke('portable_update_install', { onProgress: channel });
+        },
+      };
+    }
+  }
+
   const { check } = await import('@tauri-apps/plugin-updater');
   const update = await check({ timeout: 20_000 });
   if (!update) return null;
-  const { invoke } = await import('@tauri-apps/api/core');
-  const info = await invoke<{ canSelfUpdate: boolean; kind: string }>('app_install_info').catch(() => null);
+  const canSelfUpdate = info ? info.canSelfUpdate : false;
   return {
-    canSelfUpdate: info?.canSelfUpdate ?? false,
     version: update.version,
     currentVersion: update.currentVersion,
     notes: update.body ?? '',
     date: update.date,
+    canSelfUpdate,
+    portable: info?.kind === 'portable',
     install: async (onProgress) => {
       let downloaded = 0;
       let total: number | null = null;

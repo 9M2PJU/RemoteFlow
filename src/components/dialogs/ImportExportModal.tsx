@@ -14,7 +14,7 @@ import {
 } from 'lucide-react';
 import { api, MrngParams } from '../../services/api';
 import { parseMRemoteNGXml, readMRemoteNGEncryption, MRemoteNGParseResult } from '../../utils/mremoteng';
-import { useT } from '../../i18n';
+import { tn, useT } from '../../i18n';
 import { Connection, Group } from '../../types';
 import { ExportScope, ExportScopeSelector } from './ExportScopeSelector';
 
@@ -633,7 +633,8 @@ export const ImportExportModal: React.FC<Props> = ({
                       {t('Wykryto poprawną strukturę mRemoteNG')}
                     </span>
                     <span className="text-xs text-slate-300 font-mono">
-                      {t('{c} połączeń w {g} folderach', { c: mrngParseResult.connections.length, g: mrngParseResult.groups.length })}
+                      {tn(mrngParseResult.connections.length, ['{c} połączenie', '{c} połączenia', '{c} połączeń'], { c: mrngParseResult.connections.length })}{' '}
+                      {tn(mrngParseResult.groups.length, ['w {g} folderze', 'w {g} folderach', 'w {g} folderach'], { g: mrngParseResult.groups.length })}
                     </span>
                   </div>
 
@@ -702,7 +703,7 @@ export const ImportExportModal: React.FC<Props> = ({
                     ) : (
                       <>
                         <Upload className="h-4 w-4" />
-                        {t('Zatwierdź i zaimportuj {n} połączeń', { n: mrngParseResult.connections.length })}
+                        {tn(mrngParseResult.connections.length, ['Zatwierdź i zaimportuj {n} połączenie', 'Zatwierdź i zaimportuj {n} połączenia', 'Zatwierdź i zaimportuj {n} połączeń'], { n: mrngParseResult.connections.length })}
                       </>
                     )}
                   </button>

@@ -1,5 +1,6 @@
 # Builds RemoteFlow for Windows and Linux when a version tag is pushed (git tag v1.2.3 && git push origin v1.2.3)
-# and creates a DRAFT release on GitHub with the installers, their updater signatures and latest.json.
+# and creates a DRAFT release on GitHub with the installers, the portable programs (Windows .exe, Linux
+# binary), their updater signatures and latest.json.
 # Publishing the draft (Releases → Edit → Publish) makes it available to the in-app updater.
 #
 # Required repository secrets (Settings → Secrets and variables → Actions):
@@ -107,6 +108,81 @@ jobs:
           releaseBody: ${{ steps.notes.outputs.body }}
           args: --config src-tauri/tauri.release.conf.json
           includeUpdaterJson: true
+
+      # Portable program (no installer): the same executable the installers contain, signed for the
+      # in-app updater of portable copies (latest.json entry {os}-x86_64-portable, see below)
+      - name: Portable program – copy and sign
+        shell: bash
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          mkdir -p portable
+          if [ "$RUNNER_OS" = "Windows" ]; then
+            cp src-tauri/target/release/remoteflow.exe "portable/remoteflow_${VERSION}_x64-portable.exe"
+          else
+            cp src-tauri/target/release/remoteflow "portable/remoteflow_${VERSION}_amd64-portable"
+          fi
+          for f in portable/*; do npx tauri signer sign "$f"; done
+          ls -l portable
+
+      - name: Portable program – upload
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            for (const name of fs.readdirSync('portable')) {
+              await github.rest.repos.uploadReleaseAsset({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                release_id: Number('${{ needs.create-release.outputs.release_id }}'),
+                name,
+                data: fs.readFileSync(`portable/${name}`),
+                headers: { 'content-type': 'application/octet-stream' },
+              });
+            }
+
+  # Adds the portable programs to latest.json (after both builds have uploaded their part of it)
+  portable-manifest:
+    needs: [create-release, build]
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Add portable entries to latest.json
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const { owner, repo } = context.repo;
+            const release_id = Number('${{ needs.create-release.outputs.release_id }}');
+            const tag = process.env.GITHUB_REF_NAME;
+            const assets = await github.paginate(github.rest.repos.listReleaseAssets, { owner, repo, release_id });
+            const download = async (asset) => {
+              const res = await github.rest.repos.getReleaseAsset({
+                owner, repo, asset_id: asset.id, headers: { accept: 'application/octet-stream' },
+              });
+              return Buffer.from(res.data).toString('utf8');
+            };
+            const manifestAsset = assets.find((a) => a.name === 'latest.json');
+            if (!manifestAsset) throw new Error('latest.json is missing in the release');
+            const manifest = JSON.parse(await download(manifestAsset));
+            const platforms = { '_x64-portable.exe': 'windows-x86_64-portable', '_amd64-portable': 'linux-x86_64-portable' };
+            for (const asset of assets) {
+              const suffix = Object.keys(platforms).find((s) => asset.name.endsWith(s));
+              if (!suffix) continue;
+              const sig = assets.find((a) => a.name === `${asset.name}.sig`);
+              if (!sig) throw new Error(`Missing signature for ${asset.name}`);
+              manifest.platforms[platforms[suffix]] = {
+                signature: (await download(sig)).trim(),
+                url: `https://github.com/${owner}/${repo}/releases/download/${tag}/${encodeURIComponent(asset.name)}`,
+              };
+              core.info(`${platforms[suffix]}: ${asset.name}`);
+            }
+            await github.rest.repos.deleteReleaseAsset({ owner, repo, asset_id: manifestAsset.id });
+            await github.rest.repos.uploadReleaseAsset({
+              owner, repo, release_id, name: 'latest.json',
+              data: Buffer.from(JSON.stringify(manifest, null, 2)),
+              headers: { 'content-type': 'application/json' },
+            });
 
   tests:
     runs-on: ubuntu-22.04
