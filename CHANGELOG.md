@@ -4,7 +4,7 @@ Numer wersji: `MAJOR.MINOR.PATCH`. Każda zmiana podnosi co najmniej numer PATCH
 Wersja jest zapisana w trzech plikach, które muszą być zgodne (pilnuje tego test `version_tests` w `src-tauri/src/lib.rs`):
 `package.json` (wyświetlana w aplikacji), `src-tauri/tauri.conf.json` (instalator) i `src-tauri/Cargo.toml`.
 
-## Niewydane (trafi do kolejnej wersji)
+## 1.14.0 – wersja przenośna w wydaniach i jej samodzielna aktualizacja, odmiana liczebników
 - **Wersja przenośna w wydaniach i jej aktualizacja.** Workflow wydań publikuje także sam plik programu bez instalatora: `remoteflow_X.Y.Z_x64-portable.exe` (Windows) i `remoteflow_X.Y.Z_amd64-portable` (Linux), podpisane kluczem aktualizacji i dopisane do `latest.json` (`windows-x86_64-portable`, `linux-x86_64-portable`). Kopia przenośna pobiera tę wersję zamiast instalatora, sprawdza podpis, zastępuje swój plik w tym samym folderze (Windows: stary plik zostaje jako `remoteflow.exe.old` i jest usuwany przy następnym uruchomieniu) i uruchamia się ponownie. Gdy folder jest tylko do odczytu albo wydanie nie ma wersji przenośnej, okienko odsyła do strony wydań. Kopia przenośna 1.13.3 widzi już tę wersję na stronie wydań; samodzielna podmiana działa od tej wersji.
 - AppImage z plikiem `remoteflow.portable` obok jest aktualizowany jak zwykły AppImage (podmiana pliku `.AppImage`).
 - Testy: rozpoznawanie sposobu instalacji, podmiana pliku programu (z zachowaniem prawa wykonywania).
