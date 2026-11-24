@@ -962,10 +962,14 @@
   "{size} bajty": "{size} bytes",
   "{size} bajtów": "{size} bytes",
   "Nie można wyświetlić obrazu.": "Cannot display the image.",
-  "Podgląd i edycja pliku (F3)": "View and edit the file (F3)",
-  "Podgląd i edycja (F3)": "View and edit (F3)",
   "Utworzono plik „{name}”": "Created the file “{name}”",
   "Nie udało się utworzyć pliku: {p0}": "Could not create the file: {p0}",
   "Nowy plik": "New file",
-  "Nazwa nowego pliku – Enter, aby utworzyć i otworzyć": "New file name – Enter to create and open"
+  "Nazwa nowego pliku – Enter, aby utworzyć i otworzyć": "New file name – Enter to create and open",
+  "Podgląd pliku (F3)": "View the file (F3)",
+  "Podgląd (F3)": "View (F3)",
+  "Edytuj (F4)": "Edit (F4)",
+  "Edytuj": "Edit",
+  "Tylko podgląd – F4 lub „Edytuj”, aby zmieniać": "View only – press F4 or “Edit” to make changes",
+  "Ctrl+F – szukaj, F4 – edytuj, Esc – zamknij": "Ctrl+F – find, F4 – edit, Esc – close"
 }

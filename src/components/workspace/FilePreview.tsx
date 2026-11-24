@@ -1,8 +1,8 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { EditorView, basicSetup } from 'codemirror';
-import { Compartment, EditorState, Text } from '@codemirror/state';
+import { Compartment, EditorState, Text, Transaction } from '@codemirror/state';
 import { keymap } from '@codemirror/view';
-import { Binary, FileText, Image as ImageIcon, Loader2, RefreshCw, Save, WrapText, X } from 'lucide-react';
+import { Binary, FileText, Image as ImageIcon, Loader2, Pencil, RefreshCw, Save, WrapText, X } from 'lucide-react';
 import { api, PreviewStat } from '../../services/api';
 import { locale, tn, useT } from '../../i18n';
 import {
@@ -37,6 +37,8 @@ interface Props {
   onClose: () => void;
   /** The file was saved (the pane refreshes its listing). */
   onSaved: () => void;
+  /** F4 / "Edit": open ready for editing. Otherwise (F3) the text is read-only until "Edit". */
+  startEditing?: boolean;
 }
 
 const formatSize = (n: number) => {
@@ -52,7 +54,7 @@ const LINE_ENDING_LABEL: Record<LineEnding, string> = { '\n': 'LF', '\r\n': 'CRL
  * Preview of a file from the SFTP window: text (editable up to 5 MB, with encoding and line
  * endings kept on save), hex view (any size, read on demand) and pictures.
  */
-export const FilePreview: React.FC<Props> = ({ side, connectionId, path, name, onClose, onSaved }) => {
+export const FilePreview: React.FC<Props> = ({ side, connectionId, path, name, onClose, onSaved, startEditing = false }) => {
   const t = useT();
   const read = useCallback(
     (offset: number, length: number) => api.previewRead(side, connectionId, path, offset, length),
@@ -67,6 +69,8 @@ export const FilePreview: React.FC<Props> = ({ side, connectionId, path, name, o
   const [status, setStatus] = useState<{ text: string; type: 'ok' | 'error' } | null>(null);
   const [loading, setLoading] = useState(true);
   const [reloadKey, setReloadKey] = useState(0);
+  // Like Total Commander / mc: F3 views (read-only), F4 or "Edit" unlocks editing
+  const [editing, setEditing] = useState(startEditing);
 
   // Text
   const [lineEnding, setLineEnding] = useState<LineEnding>('\n');
@@ -79,7 +83,10 @@ export const FilePreview: React.FC<Props> = ({ side, connectionId, path, name, o
   const fullBytesRef = useRef<Uint8Array | null>(null);
   const decoderRef = useRef<TextDecoder | null>(null);
 
-  const editable = !!stat && !!detected && !detected.binary && stat.size <= EDIT_LIMIT && !stat.readonly;
+  /** The file can be edited (text, up to 5 MB, writable) … */
+  const canEdit = !!stat && !!detected && !detected.binary && stat.size <= EDIT_LIMIT && !stat.readonly;
+  /** … and editing is switched on. */
+  const editable = canEdit && editing;
   const readonlyReason = !stat || !detected
     ? ''
     : detected.binary
@@ -181,6 +188,20 @@ export const FilePreview: React.FC<Props> = ({ side, connectionId, path, name, o
     viewRef.current?.dispatch({ effects: wrapComp.current.reconfigure(wrap ? EditorView.lineWrapping : []) });
   }, [wrap, mode]);
 
+  // "Edit" (or F4) in a file opened for viewing: unlock the loaded document and put the cursor in it
+  useEffect(() => {
+    const view = viewRef.current;
+    if (!view || mode !== 'text' || !editable || loading) return;
+    view.dispatch({ effects: readOnlyComp.current.reconfigure([]) });
+    // After the current render (the preview may still be taking the focus itself)
+    const id = requestAnimationFrame(() => viewRef.current?.focus());
+    return () => cancelAnimationFrame(id);
+  }, [editable, mode, loading]);
+
+  const startEdit = () => {
+    if (canEdit && mode === 'text') setEditing(true);
+  };
+
   const setDoc = (text: string, ro: boolean) => {
     const view = viewRef.current;
     if (!view) return;
@@ -188,6 +209,8 @@ export const FilePreview: React.FC<Props> = ({ side, connectionId, path, name, o
     view.dispatch({
       changes: { from: 0, to: view.state.doc.length, insert: text },
       effects: readOnlyComp.current.reconfigure(ro ? [EditorState.readOnly.of(true), EditorView.editable.of(false)] : []),
+      // Loading is not an edit: Ctrl+Z must never undo it (back to an empty document)
+      annotations: Transaction.addToHistory.of(false),
     });
     settingDocRef.current = false;
     savedDocRef.current = view.state.doc;
@@ -224,7 +247,6 @@ export const FilePreview: React.FC<Props> = ({ side, connectionId, path, name, o
           setDoc(text, !editable);
           setLoadedBytes(all.length);
           // A new (empty) file: start typing right away
-          if (all.length === 0 && editable) viewRef.current?.focus();
         } else {
           decoderRef.current = new TextDecoder(encoding);
           const chunk = await read(0, TEXT_PAGE);
@@ -257,7 +279,7 @@ export const FilePreview: React.FC<Props> = ({ side, connectionId, path, name, o
       const end = loadedBytes + chunk.length >= stat.size;
       const text = decoderRef.current.decode(chunk, { stream: !end });
       settingDocRef.current = true;
-      view.dispatch({ changes: { from: view.state.doc.length, insert: text } });
+      view.dispatch({ changes: { from: view.state.doc.length, insert: text }, annotations: Transaction.addToHistory.of(false) });
       settingDocRef.current = false;
       setLoadedBytes((n) => n + chunk.length);
     } catch (err: any) {
@@ -353,6 +375,10 @@ export const FilePreview: React.FC<Props> = ({ side, connectionId, path, name, o
         if (e.key === 'Escape') {
           e.stopPropagation();
           if (!e.defaultPrevented) requestClose();
+        } else if (e.key === 'F4' && !editing) {
+          e.preventDefault();
+          e.stopPropagation();
+          startEdit();
         } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') {
           // In the editor CodeMirror has already saved (and prevented the default)
           e.stopPropagation();
@@ -416,19 +442,35 @@ export const FilePreview: React.FC<Props> = ({ side, connectionId, path, name, o
         >
           <RefreshCw className="h-3.5 w-3.5" />
         </button>
-        <button
-          type="button"
-          onClick={() => void save()}
-          disabled={!dirty || saving || mode !== 'text' || !editable}
-          title={t('Zapisz (Ctrl+S)')}
-          aria-hidden={mode !== 'text' || !editable}
-          className={`flex h-7 items-center gap-1.5 rounded bg-cyan-600 px-2.5 text-[11px] font-semibold text-white hover:bg-cyan-500 disabled:opacity-40 ${
-            mode === 'text' && editable ? '' : 'invisible'
-          }`}
-        >
-          {saving ? <Loader2 className="h-3 w-3 animate-spin" /> : <Save className="h-3 w-3" />}
-          {t('Zapisz')}
-        </button>
+        {/* One slot: "Edit" while viewing, "Save" while editing (hidden when the file cannot be edited) */}
+        {editable ? (
+          <button
+            type="button"
+            onClick={() => void save()}
+            disabled={!dirty || saving || mode !== 'text'}
+            title={t('Zapisz (Ctrl+S)')}
+            className={`flex h-7 min-w-[88px] items-center justify-center gap-1.5 rounded bg-cyan-600 px-2.5 text-[11px] font-semibold text-white hover:bg-cyan-500 disabled:opacity-40 ${
+              mode === 'text' ? '' : 'invisible'
+            }`}
+          >
+            {saving ? <Loader2 className="h-3 w-3 animate-spin" /> : <Save className="h-3 w-3" />}
+            {t('Zapisz')}
+          </button>
+        ) : (
+          <button
+            type="button"
+            onClick={startEdit}
+            disabled={!canEdit || mode !== 'text'}
+            title={t('Edytuj (F4)')}
+            aria-hidden={!canEdit || mode !== 'text'}
+            className={`flex h-7 min-w-[88px] items-center justify-center gap-1.5 rounded border border-cyan-600/60 bg-slate-800 px-2.5 text-[11px] font-semibold text-cyan-200 hover:bg-slate-700 ${
+              canEdit && mode === 'text' ? '' : 'invisible'
+            }`}
+          >
+            <Pencil className="h-3 w-3" />
+            {t('Edytuj')}
+          </button>
+        )}
         <button
           type="button"
           onClick={requestClose}
@@ -467,6 +509,7 @@ export const FilePreview: React.FC<Props> = ({ side, connectionId, path, name, o
             <span>{LINE_ENDING_LABEL[lineEnding]}</span>
             {detected?.bom && detected.encoding === encoding && <span>BOM</span>}
             {readonlyReason && <span className="text-amber-300">{readonlyReason}</span>}
+            {canEdit && !editing && <span className="text-slate-500">{t('Tylko podgląd – F4 lub „Edytuj”, aby zmieniać')}</span>}
             {stat.size > EDIT_LIMIT && (
               <>
                 <span>{t('Wczytano {loaded} z {total}', { loaded: formatSize(loadedBytes), total: formatSize(stat.size) })}</span>
@@ -480,7 +523,11 @@ export const FilePreview: React.FC<Props> = ({ side, connectionId, path, name, o
           </>
         )}
         {status && <span className={status.type === 'error' ? 'text-red-400' : 'text-emerald-300'}>{status.text}</span>}
-        {mode === 'text' && <span className="ml-auto hidden text-slate-500 @md:inline">{t('Ctrl+F – szukaj, Ctrl+S – zapisz, Esc – zamknij')}</span>}
+        {mode === 'text' && (
+          <span className="ml-auto hidden text-slate-500 @md:inline">
+            {editing ? t('Ctrl+F – szukaj, Ctrl+S – zapisz, Esc – zamknij') : t('Ctrl+F – szukaj, F4 – edytuj, Esc – zamknij')}
+          </span>
+        )}
       </div>
       )}
 

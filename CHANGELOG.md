@@ -4,6 +4,10 @@ Numer wersji: `MAJOR.MINOR.PATCH`. Każda zmiana podnosi co najmniej numer PATCH
 Wersja jest zapisana w trzech plikach, które muszą być zgodne (pilnuje tego test `version_tests` w `src-tauri/src/lib.rs`):
 `package.json` (wyświetlana w aplikacji), `src-tauri/tauri.conf.json` (instalator) i `src-tauri/Cargo.toml`.
 
+## 1.15.1 – SFTP: F3 podgląd, F4 edycja; poprawka Ctrl+Z w edytorze
+- **SFTP: F3 – podgląd, F4 – edycja** (jak w Total Commanderze / Midnight Commanderze). F3 i ikona oka otwierają plik tylko do odczytu – przypadkowe naciśnięcie klawisza nic nie zmieni; przycisk **Edytuj** (albo F4) w podglądzie odblokowuje zmiany bez ponownego otwierania pliku. F4 otwiera plik od razu do edycji z kursorem w tekście. Menu kontekstowe ma osobne pozycje „Podgląd (F3)” i „Edytuj (F4)”; nowy plik otwiera się do edycji. Wcześniej oba klawisze robiły to samo.
+- **Poprawka: Ctrl+Z w edytorze nie cofa już wczytania pliku.** Kilkukrotne Ctrl+Z po otwarciu pliku mogło wyczyścić cały tekst (cofnięcie „wczytania”), a zapis zapisałby pusty plik.
+
 ## 1.15.0 – SFTP: podgląd i edycja plików, nowy plik, usuwanie lokalne do Kosza
 - **SFTP: nowy plik** – przycisk w pasku panelu i pozycja „Nowy plik” w menu kontekstowym, po obu stronach (na serwerze i na tym komputerze). Tworzy pusty plik (nigdy nie nadpisuje istniejącego) i od razu otwiera go w edytorze.
 - **SFTP: podgląd i edycja plików** po obu stronach – **F3**/**F4**, ikona oka w pasku panelu albo „Podgląd i edycja” w menu kontekstowym (podwójne kliknięcie nadal przesyła plik).

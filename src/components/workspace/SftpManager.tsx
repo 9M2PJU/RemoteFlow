@@ -32,6 +32,7 @@ import {
   CircleStop,
   Eye,
   FilePlus,
+  Pencil,
 } from 'lucide-react';
 import { listen } from '@tauri-apps/api/event';
 import { getCurrentWebview } from '@tauri-apps/api/webview';
@@ -183,7 +184,7 @@ export const SftpManager: React.FC<Props> = ({
   }, []);
   const [drag, setDrag] = useState<DragInfo | null>(null);
   // File open in the preview / text editor
-  const [preview, setPreview] = useState<{ side: Side; path: string; name: string } | null>(null);
+  const [preview, setPreview] = useState<{ side: Side; path: string; name: string; edit: boolean } | null>(null);
   const [osDropOver, setOsDropOver] = useState(false);
   const transferIdRef = useRef<string>('');
   // Running upload/download that can be stopped, and whether "Przerwij" was clicked
@@ -534,7 +535,7 @@ export const SftpManager: React.FC<Props> = ({
       showStatus(t('Utworzono plik „{name}”', { name }));
       await load(side, pane.path);
       setters[side]((p) => ({ ...p, selected: [path], anchor: path }));
-      setPreview({ side, path, name });
+      setPreview({ side, path, name, edit: true });
     } catch (err: any) {
       showStatus(t('Nie udało się utworzyć pliku: {p0}', { p0: err?.message || err }), 'error');
     }
@@ -784,7 +785,7 @@ export const SftpManager: React.FC<Props> = ({
           onSearch={(q) => search('local', q)}
           onTransfer={(paths) => transfer('local', paths)}
           onDelete={(paths) => deleteLocal(paths)}
-          onPreview={(e) => setPreview({ side: 'local', path: e.path, name: e.name })}
+          onPreview={(e, edit) => setPreview({ side: 'local', path: e.path, name: e.name, edit })}
           transferLabel={t('Wyślij')}
           transferIcon={<ArrowRight className="h-3 w-3" />}
           onPin={canSaveDirs ? saveStartDirs : undefined}
@@ -811,7 +812,7 @@ export const SftpManager: React.FC<Props> = ({
           onSearch={(q) => search('remote', q)}
           onTransfer={(paths) => transfer('remote', paths)}
           onDelete={deleteRemote}
-          onPreview={(e) => setPreview({ side: 'remote', path: e.path, name: e.name })}
+          onPreview={(e, edit) => setPreview({ side: 'remote', path: e.path, name: e.name, edit })}
           transferLabel={t('Pobierz')}
           transferIcon={<ArrowLeft className="h-3 w-3" />}
           onPasteFiles={pasteFromClipboard}
@@ -890,6 +891,7 @@ export const SftpManager: React.FC<Props> = ({
           connectionId={connectionId}
           path={preview.path}
           name={preview.name}
+          startEditing={preview.edit}
           onClose={() => {
             const side = preview.side;
             setPreview(null);
@@ -947,8 +949,8 @@ interface PaneProps {
   onSearch: (query: string) => void;
   onTransfer: (paths: string[]) => void;
   onDelete?: (paths: string[]) => void;
-  /** Opens a file in the preview / text editor (F3, F4). */
-  onPreview?: (entry: SftpFileEntry) => void;
+  /** Opens a file: F3 = view (read-only), F4 = edit. */
+  onPreview?: (entry: SftpFileEntry, edit: boolean) => void;
   transferLabel: string;
   transferIcon: React.ReactNode;
   transferFirst?: boolean;
@@ -1113,7 +1115,7 @@ const FilePane: React.FC<PaneProps> = ({
           onOpen(pane.parent);
         } else if ((e.key === 'F3' || e.key === 'F4') && onPreview && selectedEntries.length === 1 && !selectedEntries[0].isDir) {
           e.preventDefault();
-          onPreview(selectedEntries[0]);
+          onPreview(selectedEntries[0], e.key === 'F4');
         } else if (e.key === 'Delete' && onDelete && pane.selected.length) {
           e.preventDefault();
           onDelete(pane.selected);
@@ -1197,9 +1199,9 @@ const FilePane: React.FC<PaneProps> = ({
         {extraTools}
         {onPreview && (
           <button
-            onClick={() => selectedEntries.length === 1 && !selectedEntries[0].isDir && onPreview(selectedEntries[0])}
+            onClick={() => selectedEntries.length === 1 && !selectedEntries[0].isDir && onPreview(selectedEntries[0], false)}
             disabled={selectedEntries.length !== 1 || selectedEntries[0].isDir}
-            title={t('Podgląd i edycja pliku (F3)')}
+            title={t('Podgląd pliku (F3)')}
             className="flex h-6 w-6 items-center justify-center rounded border border-slate-700 bg-slate-800 text-slate-300 hover:bg-slate-700 disabled:opacity-40"
           >
             <Eye className="h-3 w-3" />
@@ -1432,9 +1434,14 @@ const FilePane: React.FC<PaneProps> = ({
             </MenuItem>
           )}
           {onPreview && menu.entry && !menu.entry.isDir && (
-            <MenuItem icon={<Eye className="h-3.5 w-3.5 text-cyan-300" />} onClick={() => onPreview(menu.entry!)}>
-              {t('Podgląd i edycja (F3)')}
-            </MenuItem>
+            <>
+              <MenuItem icon={<Eye className="h-3.5 w-3.5 text-cyan-300" />} onClick={() => onPreview(menu.entry!, false)}>
+                {t('Podgląd (F3)')}
+              </MenuItem>
+              <MenuItem icon={<Pencil className="h-3.5 w-3.5 text-cyan-300" />} onClick={() => onPreview(menu.entry!, true)}>
+                {t('Edytuj (F4)')}
+              </MenuItem>
+            </>
           )}
           {onDelete && menu.targets.length > 0 && (
             <MenuItem icon={<Trash2 className="h-3.5 w-3.5 text-red-400" />} danger disabled={busy} onClick={() => onDelete(menu.targets)}>
