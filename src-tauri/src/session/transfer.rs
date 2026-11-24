@@ -325,6 +325,37 @@ pub fn remote_mkdir(sftp: &ssh2::Sftp, parent: &str, name: &str) -> Result<Strin
     Ok(remote_path_string(&target))
 }
 
+/// Creates a new, empty file on the server (never overwrites: fails when the name exists).
+pub fn remote_mkfile(sftp: &ssh2::Sftp, parent: &str, name: &str) -> Result<String, String> {
+    let name = sanitize_name(name)?;
+    let target = remote_join(parent, &name);
+    if sftp.lstat(&target).is_ok() {
+        return Err(tr!("'{}' już istnieje", "'{}' already exists", remote_path_string(&target)));
+    }
+    sftp.open_mode(&target, ssh2::OpenFlags::WRITE | ssh2::OpenFlags::CREATE | ssh2::OpenFlags::EXCLUSIVE, 0o644, ssh2::OpenType::File)
+        .map_err(|e| tr!("Błąd tworzenia pliku '{}': {}", "Error creating file '{}': {}", remote_path_string(&target), e))?;
+    Ok(remote_path_string(&target))
+}
+
+/// Creates a new, empty local file (never overwrites).
+pub fn local_mkfile(parent: &str, name: &str) -> Result<String, String> {
+    let name = sanitize_name(name)?;
+    let base = if parent.trim().is_empty() {
+        dirs::home_dir().ok_or(tr!("Brak katalogu domowego", "No home folder"))?
+    } else {
+        PathBuf::from(parent)
+    };
+    let target = base.join(name);
+    std::fs::OpenOptions::new().write(true).create_new(true).open(&target).map_err(|e| {
+        if e.kind() == std::io::ErrorKind::AlreadyExists {
+            tr!("'{}' już istnieje", "'{}' already exists", display_path(&target))
+        } else {
+            tr!("Błąd tworzenia pliku '{}': {}", "Error creating file '{}': {}", display_path(&target), e)
+        }
+    })?;
+    Ok(display_path(&target))
+}
+
 pub fn local_mkdir(parent: &str, name: &str) -> Result<String, String> {
     let name = sanitize_name(name)?;
     let base = if parent.trim().is_empty() {
@@ -338,6 +369,88 @@ pub fn local_mkdir(parent: &str, name: &str) -> Result<String, String> {
     }
     std::fs::create_dir(&target).map_err(|e| tr!("Błąd tworzenia katalogu '{}': {}", "Error creating folder '{}': {}", display_path(&target), e))?;
     Ok(display_path(&target))
+}
+
+/// Error prefix of `local_delete` when the trash is not available (the window then offers a
+/// permanent delete).
+pub const TRASH_UNAVAILABLE: &str = "TRASH_UNAVAILABLE:";
+
+/// Refuses paths whose deletion would be a disaster rather than a mistake: filesystem / drive
+/// roots and the user's home folder.
+fn check_deletable(p: &Path) -> Result<(), String> {
+    let is_root = p.parent().is_none() || p.components().count() <= 1;
+    let is_home = dirs::home_dir().is_some_and(|h| h == p);
+    if is_root || is_home || !p.is_absolute() {
+        return Err(tr!("Tego folderu nie można usunąć: {}", "This folder cannot be deleted: {}", display_path(p)));
+    }
+    Ok(())
+}
+
+#[cfg(not(windows))]
+fn move_to_trash(p: &Path) -> Result<(), String> {
+    trash::delete(p).map_err(|e| e.to_string())
+}
+
+/// Moves a file or folder to the Recycle Bin through PowerShell (the VB.NET FileSystem API, i.e.
+/// the Windows shell).
+///
+/// Done in-process (IFileOperation), recycling is a rename of the user's file into
+/// `$Recycle.Bin` under a random name – behaviour-based antivirus (e.g. F-Secure DeepGuard,
+/// "CryptoRansomwareBehavior") blocks an unknown, unsigned program doing that. Done by the
+/// signed system PowerShell it is an ordinary shell operation.
+///
+/// Only paths on fixed drives are recycled: elsewhere (network share, removable disk) Windows has
+/// no Recycle Bin and would delete permanently – the caller then asks the user. The path goes in
+/// an environment variable as base64, so no character in it can change the script.
+#[cfg(windows)]
+fn move_to_trash(p: &Path) -> Result<(), String> {
+    use base64::Engine;
+    const SCRIPT: &str = "$ErrorActionPreference = 'Stop'; \
+        try { \
+          $p = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($env:RF_TRASH_PATH)); \
+          $drive = New-Object IO.DriveInfo([IO.Path]::GetPathRoot($p)); \
+          if ($drive.DriveType -ne 'Fixed') { exit 3 }; \
+          Add-Type -AssemblyName Microsoft.VisualBasic; \
+          if (Test-Path -LiteralPath $p -PathType Container) { \
+            [Microsoft.VisualBasic.FileIO.FileSystem]::DeleteDirectory($p, 'OnlyErrorDialogs', 'SendToRecycleBin') \
+          } else { \
+            [Microsoft.VisualBasic.FileIO.FileSystem]::DeleteFile($p, 'OnlyErrorDialogs', 'SendToRecycleBin') \
+          } \
+        } catch { [Console]::Error.WriteLine($_.Exception.Message); exit 2 }";
+    let encoded = base64::engine::general_purpose::STANDARD.encode(p.to_string_lossy().as_bytes());
+    let out = crate::session::winproc::hidden_command("powershell.exe")
+        .args(["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", SCRIPT])
+        .env("RF_TRASH_PATH", encoded)
+        .stdin(std::process::Stdio::null())
+        .output()
+        .map_err(|e| e.to_string())?;
+    match out.status.code() {
+        Some(0) if !p.exists() => Ok(()),
+        Some(0) => Err(tr!("element nadal istnieje", "the item still exists").to_string()),
+        Some(3) => Err(tr!("na tym dysku nie ma Kosza", "this drive has no Recycle Bin").to_string()),
+        _ => {
+            let msg = String::from_utf8_lossy(&out.stderr).trim().to_string();
+            Err(if msg.is_empty() { format!("PowerShell: {}", out.status) } else { msg })
+        }
+    }
+}
+
+/// Deletes a local file or folder: to the Recycle Bin / trash, or permanently (`permanent`).
+/// A symbolic link is removed itself – its target is never touched.
+pub fn local_delete(path: &str, permanent: bool) -> Result<(), String> {
+    let p = PathBuf::from(path);
+    check_deletable(&p)?;
+    let meta = std::fs::symlink_metadata(&p).map_err(|e| tr!("Nie można odczytać '{}': {}", "Cannot read '{}': {}", path, e))?;
+    if !permanent {
+        return move_to_trash(&p).map_err(|e| {
+            format!(
+                "{TRASH_UNAVAILABLE}{}",
+                tr!("Nie można przenieść '{}' do kosza: {}", "Cannot move '{}' to the trash: {}", path, e)
+            )
+        });
+    }
+    let result = if meta.is_dir() { std::fs::remove_dir_all(&p) } else { std::fs::remove_file(&p) };
+    result.map_err(|e| tr!("Błąd usuwania '{}': {}", "Error deleting '{}': {}", path, e))
 }
 
 pub fn remote_search(sftp: &ssh2::Sftp, root: &str, query: &str) -> Result<Vec<SftpFileEntry>, String> {
@@ -883,6 +996,11 @@ mod tests {
         std::fs::create_dir_all(base.join("a").join("b")).unwrap();
         std::fs::write(base.join("a").join("b").join("Raport-2026.txt"), "x").unwrap();
         let created = local_mkdir(base.to_str().unwrap(), "Nowy katalog").unwrap();
+        let file = local_mkfile(base.to_str().unwrap(), "notatka.txt").unwrap();
+        assert_eq!(std::fs::read(&file).unwrap(), b"");
+        assert!(local_mkfile(base.to_str().unwrap(), "notatka.txt").is_err(), "an existing file is never overwritten");
+        assert!(local_mkfile(base.to_str().unwrap(), "../x.txt").is_err());
+        std::fs::remove_file(&file).unwrap();
         assert!(Path::new(&created).is_dir());
         assert!(local_mkdir(base.to_str().unwrap(), "Nowy katalog").is_err());
         assert!(local_mkdir(base.to_str().unwrap(), "../x").is_err());
@@ -895,12 +1013,12 @@ mod tests {
 
 /// End-to-end test against a local sshd (127.0.0.1:2222, user rftest / Test-Pass-123).
 #[cfg(test)]
-mod sftp_e2e {
+pub(crate) mod sftp_e2e {
     use super::*;
     use crate::session::ssh::HostKeyVerifier;
     use crate::vault::known_hosts::HostTrust;
 
-    fn config() -> SshConnectionConfig {
+    pub(crate) fn config() -> SshConnectionConfig {
         SshConnectionConfig {
             auth_type: "password".into(),
             certificate: None,
@@ -1175,6 +1293,43 @@ mod sftp_e2e {
 
         with_pooled_sftp("links", &cfg, |sftp| remote_delete(sftp, &remote_root)).unwrap();
         release_pooled("links");
+        let _ = std::fs::remove_dir_all(&base);
+    }
+}
+
+#[cfg(test)]
+mod local_delete_tests {
+    use super::*;
+
+    #[test]
+    fn permanent_delete_keeps_link_targets_and_refuses_roots() {
+        let base = std::env::temp_dir().join(format!("rf-localdel-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&base);
+        let outside = base.join("outside");
+        let dir = base.join("dir/sub");
+        std::fs::create_dir_all(&outside).unwrap();
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(outside.join("keep.txt"), "keep").unwrap();
+        std::fs::write(dir.join("a.txt"), "a").unwrap();
+        #[cfg(unix)]
+        std::os::unix::fs::symlink(&outside, base.join("dir/link")).unwrap();
+        let file = base.join("file.txt");
+        std::fs::write(&file, "x").unwrap();
+
+        local_delete(&file.to_string_lossy(), true).unwrap();
+        assert!(!file.exists());
+        local_delete(&base.join("dir").to_string_lossy(), true).unwrap();
+        assert!(!base.join("dir").exists());
+        // The folder a link inside pointed to is untouched
+        assert_eq!(std::fs::read_to_string(outside.join("keep.txt")).unwrap(), "keep");
+
+        assert!(local_delete("/", true).is_err());
+        if let Some(home) = dirs::home_dir() {
+            assert!(local_delete(&home.to_string_lossy(), true).is_err());
+            assert!(home.exists());
+        }
+        assert!(local_delete("relative/path", true).is_err());
+        assert!(local_delete(&base.join("missing").to_string_lossy(), true).is_err());
         let _ = std::fs::remove_dir_all(&base);
     }
 }

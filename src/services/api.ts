@@ -147,6 +147,13 @@ export interface EmbedRect {
   height: number;
 }
 
+export interface PreviewStat {
+  size: number;
+  /** Modification time, seconds since the epoch. */
+  modified: number;
+  readonly: boolean;
+}
+
 export const api = {
   async getStatus(): Promise<VaultStatus> {
     if (isTauri()) {
@@ -776,8 +783,43 @@ export const api = {
     if (isTauri()) await invoke<void>('sftp_release', { connectionId });
   },
 
+  /** New empty file on the server; returns its path. */
+  async sftpMkfile(connectionId: string, parent: string, name: string): Promise<string> {
+    return await invoke<string>('sftp_mkfile', { connectionId, parent, name });
+  },
+
+  /** New empty local file; returns its path. */
+  async localMkfile(parent: string, name: string): Promise<string> {
+    return await invoke<string>('local_mkfile', { parent, name });
+  },
+
   async localMkdir(parent: string, name: string): Promise<string> {
     return await invoke<string>('local_mkdir', { parent, name });
+  },
+
+  // --- File preview / editor of the SFTP window (side: 'local' | 'remote') --------------------
+  async previewStat(side: 'local' | 'remote', connectionId: string, path: string): Promise<PreviewStat> {
+    return await invoke<PreviewStat>('preview_stat', { side, connectionId, path });
+  },
+
+  /** A chunk of the file (at most 4 MB). */
+  async previewRead(side: 'local' | 'remote', connectionId: string, path: string, offset: number, length: number): Promise<Uint8Array> {
+    const buf = await invoke<ArrayBuffer>('preview_read', { side, connectionId, path, offset, length });
+    return new Uint8Array(buf);
+  },
+
+  /**
+   * Saves the file. `expected` = stat from opening: when the file changed since, the error starts
+   * with "CONFLICT:" (pass null to overwrite anyway). The content goes as the raw request body.
+   */
+  async previewSave(side: 'local' | 'remote', connectionId: string, path: string, data: Uint8Array, expected: PreviewStat | null): Promise<PreviewStat> {
+    const args = { side, connectionId, path, expectedSize: expected?.size ?? null, expectedModified: expected?.modified ?? null };
+    return await invoke<PreviewStat>('preview_save', data, { headers: { 'x-rf-args': encodeURIComponent(JSON.stringify(args)) } });
+  },
+
+  /** Deletes local files/folders: to the trash, or permanently. Error "TRASH_UNAVAILABLE:…" = no trash there. */
+  async localDeletePaths(paths: string[], permanent: boolean): Promise<number> {
+    return await invoke<number>('local_delete_paths', { paths, permanent });
   },
 
   async localSearch(localDir: string, query: string): Promise<SftpFileEntry[]> {

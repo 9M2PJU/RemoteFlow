@@ -1,6 +1,6 @@
 [package]
 name = "remoteflow"
-version = "1.14.0"
+version = "1.15.0"
 description = "Cross-platform SSH, SFTP and RDP connection manager with an encrypted vault"
 authors = ["Jacek Nikiel"]
 license = "MIT"
@@ -20,6 +20,8 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
+# File editor of the SFTP window: arguments of the raw-body save request
+percent-encoding = "2"
 tauri = { version = "2", features = [] }
 tauri-plugin-opener = "2"
 serde = { version = "1", features = ["derive"] }
@@ -66,6 +68,9 @@ tauri-plugin-process = "2"
 clipboard-win = "5"
 
 [target.'cfg(target_os = "linux")'.dependencies]
+# Local files deleted in the SFTP window go to the freedesktop trash (on Windows the Recycle Bin is
+# used through PowerShell – see transfer::local_delete)
+trash = "5"
 # OS lock detection (logind / ScreenSaver over D-Bus); already used by Tauri plugins
 zbus = "5"
 gtk = "0.18"

@@ -7,6 +7,7 @@ pub mod ssh;
 pub mod ssh_algos;
 pub mod ssh_keyauth;
 pub mod transfer;
+pub mod preview;
 pub mod tunnels;
 
 #[cfg(target_os = "linux")]
@@ -802,6 +803,31 @@ pub async fn sftp_mkdir(
     .map_err(|e| e.to_string())?
 }
 
+/// New empty file on the server (SFTP window); returns its path.
+#[tauri::command]
+pub async fn sftp_mkfile(
+    connection_id: String,
+    parent: String,
+    name: String,
+    auth_state: tauri::State<'_, AuthState>,
+    app: tauri::AppHandle,
+) -> Result<String, String> {
+    let config = resolve_connection_ssh_config(&connection_id, &auth_state, &app)?;
+    tokio::task::spawn_blocking(move || {
+        transfer::with_pooled_sftp(&connection_id, &config, |sftp| transfer::remote_mkfile(sftp, &parent, &name))
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+/// New empty local file (SFTP window); returns its path.
+#[tauri::command]
+pub async fn local_mkfile(parent: String, name: String) -> Result<String, String> {
+    tokio::task::spawn_blocking(move || transfer::local_mkfile(&parent, &name))
+        .await
+        .map_err(|e| e.to_string())?
+}
+
 #[tauri::command]
 pub async fn sftp_delete_paths(
     connection_id: String,
@@ -885,6 +911,112 @@ pub async fn local_mkdir(parent: String, name: String) -> Result<String, String>
     tokio::task::spawn_blocking(move || transfer::local_mkdir(&parent, &name))
         .await
         .map_err(|e| e.to_string())?
+}
+
+// --- File preview / text editor of the SFTP window (see preview.rs) ---------------------------
+
+/// Size, modification time and read-only flag of a file (`side`: "local" | "remote").
+#[tauri::command]
+pub async fn preview_stat(
+    side: String,
+    connection_id: String,
+    path: String,
+    auth_state: tauri::State<'_, AuthState>,
+    app: tauri::AppHandle,
+) -> Result<preview::FileStat, String> {
+    if side == "local" {
+        return tokio::task::spawn_blocking(move || preview::local_stat(&path)).await.map_err(|e| e.to_string())?;
+    }
+    let config = resolve_connection_ssh_config(&connection_id, &auth_state, &app)?;
+    tokio::task::spawn_blocking(move || transfer::with_pooled_sftp(&connection_id, &config, |sftp| preview::remote_stat(sftp, &path)))
+        .await
+        .map_err(|e| e.to_string())?
+}
+
+/// A chunk of a file as raw bytes (ArrayBuffer on the JavaScript side), at most 4 MB.
+#[tauri::command]
+pub async fn preview_read(
+    side: String,
+    connection_id: String,
+    path: String,
+    offset: u64,
+    length: u64,
+    auth_state: tauri::State<'_, AuthState>,
+    app: tauri::AppHandle,
+) -> Result<tauri::ipc::Response, String> {
+    let bytes = if side == "local" {
+        tokio::task::spawn_blocking(move || preview::local_read(&path, offset, length)).await.map_err(|e| e.to_string())??
+    } else {
+        let config = resolve_connection_ssh_config(&connection_id, &auth_state, &app)?;
+        tokio::task::spawn_blocking(move || {
+            transfer::with_pooled_sftp(&connection_id, &config, |sftp| preview::remote_read(sftp, &path, offset, length))
+        })
+        .await
+        .map_err(|e| e.to_string())??
+    };
+    Ok(tauri::ipc::Response::new(bytes))
+}
+
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct PreviewSaveArgs {
+    side: String,
+    connection_id: String,
+    path: String,
+    /// Size and modification time from opening; None = overwrite whatever is there.
+    expected_size: Option<u64>,
+    expected_modified: Option<u64>,
+}
+
+/// Saves the edited file. The new content is the raw request body; the other arguments come in
+/// the `x-rf-args` header (URI-encoded JSON), so a large file is not sent as a JSON number array.
+#[tauri::command]
+pub async fn preview_save(
+    request: tauri::ipc::Request<'_>,
+    auth_state: tauri::State<'_, AuthState>,
+    app: tauri::AppHandle,
+) -> Result<preview::FileStat, String> {
+    let tauri::ipc::InvokeBody::Raw(data) = request.body() else {
+        return Err("expected raw file content".into());
+    };
+    if data.len() > preview::MAX_SAVE {
+        return Err(tr!("Plik jest za duży do zapisania z edytora.", "The file is too large to be saved from the editor.").to_string());
+    }
+    let header = request
+        .headers()
+        .get("x-rf-args")
+        .and_then(|v| v.to_str().ok())
+        .ok_or("missing x-rf-args")?;
+    let decoded = percent_encoding::percent_decode_str(header).decode_utf8().map_err(|e| e.to_string())?;
+    let args: PreviewSaveArgs = serde_json::from_str(&decoded).map_err(|e| e.to_string())?;
+    let expected = args.expected_size.zip(args.expected_modified);
+    let data = data.clone();
+    if args.side == "local" {
+        return tokio::task::spawn_blocking(move || preview::local_save(&args.path, &data, expected))
+            .await
+            .map_err(|e| e.to_string())?;
+    }
+    let config = resolve_connection_ssh_config(&args.connection_id, &auth_state, &app)?;
+    tokio::task::spawn_blocking(move || {
+        transfer::with_pooled_sftp(&args.connection_id, &config, |sftp| preview::remote_save(sftp, &args.path, &data, expected))
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+/// Deletes local files/folders (SFTP window). See `transfer::local_delete`.
+#[tauri::command]
+pub async fn local_delete_paths(paths: Vec<String>, permanent: bool) -> Result<u32, String> {
+    tokio::task::spawn_blocking(move || {
+        let mut n = 0;
+        for p in &paths {
+            transfer::local_delete(p, permanent)?;
+            n += 1;
+        }
+        Ok(n)
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 #[tauri::command]

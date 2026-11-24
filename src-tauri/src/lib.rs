@@ -26,7 +26,7 @@ use session::{
 };
 use session::clipstage::{clipboard_sequence, rdp_clip_stage_begin, rdp_clip_stage_commit, rdp_clip_stage_dir, rdp_clip_stage_file};
 use vault::mremoteng::mremoteng_unlock;
-use session::{local_mkdir, local_search, sftp_delete_paths, sftp_mkdir, sftp_release, sftp_search, sftp_transfer_download, sftp_transfer_upload};
+use session::{local_delete_paths, local_mkdir, local_search, sftp_delete_paths, sftp_mkdir, sftp_release, sftp_search, sftp_transfer_download, sftp_transfer_upload};
 use std::sync::Mutex;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -139,6 +139,12 @@ pub fn run() {
             sftp_transfer_download,
             sftp_release,
             local_mkdir,
+            local_delete_paths,
+            session::sftp_mkfile,
+            session::local_mkfile,
+            session::preview_stat,
+            session::preview_read,
+            session::preview_save,
             local_search
         ])
         .run(tauri::generate_context!())

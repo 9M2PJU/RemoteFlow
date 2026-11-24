@@ -30,6 +30,8 @@ import {
   Trash2,
   X,
   CircleStop,
+  Eye,
+  FilePlus,
 } from 'lucide-react';
 import { listen } from '@tauri-apps/api/event';
 import { getCurrentWebview } from '@tauri-apps/api/webview';
@@ -37,6 +39,8 @@ import { getOscCwd } from '../../utils/terminalCwd';
 import { api, isTauri } from '../../services/api';
 import { SftpFileEntry, TransferProgress, TransferSummary } from '../../types';
 import { ConfirmDialog } from '../dialogs/ConfirmDialog';
+// Loaded on first use (CodeMirror is a large part of the bundle)
+const FilePreview = React.lazy(() => import('./FilePreview').then((m) => ({ default: m.FilePreview })));
 import { locale, tn, useT } from '../../i18n';
 import { useMenuPosition } from '../../utils/useMenuPosition';
 
@@ -178,6 +182,8 @@ export const SftpManager: React.FC<Props> = ({
     });
   }, []);
   const [drag, setDrag] = useState<DragInfo | null>(null);
+  // File open in the preview / text editor
+  const [preview, setPreview] = useState<{ side: Side; path: string; name: string } | null>(null);
   const [osDropOver, setOsDropOver] = useState(false);
   const transferIdRef = useRef<string>('');
   // Running upload/download that can be stopped, and whether "Przerwij" was clicked
@@ -520,6 +526,20 @@ export const SftpManager: React.FC<Props> = ({
     }
   };
 
+  /** New empty file – created, selected in the list and opened in the editor. */
+  const mkfile = async (side: Side, name: string) => {
+    const pane = panes[side];
+    try {
+      const path = side === 'local' ? await api.localMkfile(pane.path, name) : await api.sftpMkfile(connectionId, pane.path, name);
+      showStatus(t('Utworzono plik „{name}”', { name }));
+      await load(side, pane.path);
+      setters[side]((p) => ({ ...p, selected: [path], anchor: path }));
+      setPreview({ side, path, name });
+    } catch (err: any) {
+      showStatus(t('Nie udało się utworzyć pliku: {p0}', { p0: err?.message || err }), 'error');
+    }
+  };
+
   const search = async (side: Side, query: string) => {
     const pane = panes[side];
     if (!query.trim()) return;
@@ -572,6 +592,64 @@ export const SftpManager: React.FC<Props> = ({
           busyRef.current = null;
           setBusy(null);
         }
+      },
+    });
+  };
+
+  /**
+   * Local files go to the Recycle Bin / trash. When the trash is not available (e.g. a network
+   * drive or a removable disk without one), a second question offers deleting them permanently.
+   */
+  const deleteLocal = (paths: string[], permanent = false) => {
+    if (paths.length === 0) return;
+    if (busyRef.current) { showBusyNotice(); return; }
+    const names = paths.slice(0, 6).map(baseName).join(', ') + (paths.length > 6 ? '…' : '');
+    setConfirm({
+      title: permanent ? t('Usunąć trwale z tego komputera?') : t('Przenieść do kosza?'),
+      message:
+        (permanent
+          ? tn(paths.length, ['Kosz jest niedostępny. Zostanie trwale usunięty {length} element (katalogi razem z zawartością) – bez możliwości przywrócenia: ', 'Kosz jest niedostępny. Zostaną trwale usunięte {length} elementy (katalogi razem z zawartością) – bez możliwości przywrócenia: ', 'Kosz jest niedostępny. Zostanie trwale usuniętych {length} elementów (katalogi razem z zawartością) – bez możliwości przywrócenia: '], { length: paths.length })
+          : tn(paths.length, ['Do kosza zostanie przeniesiony {length} element z tego komputera: ', 'Do kosza zostaną przeniesione {length} elementy z tego komputera: ', 'Do kosza zostanie przeniesionych {length} elementów z tego komputera: '], { length: paths.length })) + names,
+      label: permanent ? t('Usuń trwale') : t('Przenieś do kosza'),
+      run: async () => {
+        if (busyRef.current) { showBusyNotice(); return; }
+        let completed = 0;
+        busyRef.current = t('Usuwanie: {current}/{total} — {path}', { current: 1, total: paths.length, path: paths[0] });
+        setBusy(busyRef.current);
+        setStatus(null);
+        setProgress(null);
+        let trashUnavailable = false;
+        try {
+          for (const path of paths) {
+            const current = t('Usuwanie: {current}/{total} — {path}', { current: completed + 1, total: paths.length, path });
+            busyRef.current = current;
+            setBusy(current);
+            await api.localDeletePaths([path], permanent);
+            completed++;
+          }
+          const text = permanent
+            ? tn(completed, ['Usunięto {length} element', 'Usunięto {length} elementy', 'Usunięto {length} elementów'], { length: completed })
+            : tn(completed, ['Przeniesiono do kosza {length} element', 'Przeniesiono do kosza {length} elementy', 'Przeniesiono do kosza {length} elementów'], { length: completed });
+          showStatus(text);
+          onNotify?.(text);
+        } catch (err: any) {
+          const msg = String(err?.message || err);
+          trashUnavailable = msg.startsWith('TRASH_UNAVAILABLE:');
+          showStatus(
+            t('Błąd usuwania po {completed}/{total} elementach: {error}', {
+              completed,
+              total: paths.length,
+              error: msg.replace(/^TRASH_UNAVAILABLE:/, ''),
+            }),
+            'error'
+          );
+        } finally {
+          await loadLocal(local.path);
+          busyRef.current = null;
+          setBusy(null);
+        }
+        // Offer a permanent delete of what is left
+        if (trashUnavailable) deleteLocal(paths.slice(completed), true);
       },
     });
   };
@@ -702,8 +780,11 @@ export const SftpManager: React.FC<Props> = ({
           onRefresh={() => loadLocal(local.path)}
           onHome={() => loadLocal('')}
           onMkdir={(n) => mkdir('local', n)}
+          onMkfile={(n) => mkfile('local', n)}
           onSearch={(q) => search('local', q)}
           onTransfer={(paths) => transfer('local', paths)}
+          onDelete={(paths) => deleteLocal(paths)}
+          onPreview={(e) => setPreview({ side: 'local', path: e.path, name: e.name })}
           transferLabel={t('Wyślij')}
           transferIcon={<ArrowRight className="h-3 w-3" />}
           onPin={canSaveDirs ? saveStartDirs : undefined}
@@ -726,9 +807,11 @@ export const SftpManager: React.FC<Props> = ({
           onHome={() => loadRemote('')}
           onTerminalDir={terminalSessionId ? goToTerminalDir : undefined}
           onMkdir={(n) => mkdir('remote', n)}
+          onMkfile={(n) => mkfile('remote', n)}
           onSearch={(q) => search('remote', q)}
           onTransfer={(paths) => transfer('remote', paths)}
           onDelete={deleteRemote}
+          onPreview={(e) => setPreview({ side: 'remote', path: e.path, name: e.name })}
           transferLabel={t('Pobierz')}
           transferIcon={<ArrowLeft className="h-3 w-3" />}
           onPasteFiles={pasteFromClipboard}
@@ -799,6 +882,25 @@ export const SftpManager: React.FC<Props> = ({
         </div>
       )}
 
+      {preview && (
+        <React.Suspense fallback={null}>
+        <FilePreview
+          key={`${preview.side}:${preview.path}`}
+          side={preview.side}
+          connectionId={connectionId}
+          path={preview.path}
+          name={preview.name}
+          onClose={() => {
+            const side = preview.side;
+            setPreview(null);
+            // Back to the list, so the keyboard keeps working (arrows, F3, Delete…)
+            requestAnimationFrame(() => (side === 'local' ? localPaneRef : remotePaneRef).current?.focus({ preventScroll: true }));
+          }}
+          onSaved={() => (preview.side === 'local' ? loadLocal(local.path) : loadRemote(remote.path))}
+        />
+        </React.Suspense>
+      )}
+
       <ConfirmDialog
         isOpen={confirm !== null}
         title={confirm?.title || ''}
@@ -840,9 +942,13 @@ interface PaneProps {
   /** Server pane: go to the directory of the shell in the SSH terminal */
   onTerminalDir?: () => void;
   onMkdir: (name: string) => void;
+  /** New empty file (opened in the editor). */
+  onMkfile?: (name: string) => void;
   onSearch: (query: string) => void;
   onTransfer: (paths: string[]) => void;
   onDelete?: (paths: string[]) => void;
+  /** Opens a file in the preview / text editor (F3, F4). */
+  onPreview?: (entry: SftpFileEntry) => void;
   transferLabel: string;
   transferIcon: React.ReactNode;
   transferFirst?: boolean;
@@ -869,9 +975,11 @@ const FilePane: React.FC<PaneProps> = ({
   onHome,
   onTerminalDir,
   onMkdir,
+  onMkfile,
   onSearch,
   onTransfer,
   onDelete,
+  onPreview,
   transferLabel,
   transferIcon,
   transferFirst,
@@ -882,7 +990,13 @@ const FilePane: React.FC<PaneProps> = ({
   const t = useT();
   const [pathInput, setPathInput] = useState(pane.path);
   const [menu, setMenu] = useState<{ x: number; y: number; entry: SftpFileEntry | null; targets: string[] } | null>(null);
+  // Name being typed for a new folder / file (null = no input shown)
   const [newFolder, setNewFolder] = useState<string | null>(null);
+  const [newKind, setNewKind] = useState<'dir' | 'file'>('dir');
+  const startNew = (kind: 'dir' | 'file') => {
+    setNewKind(kind);
+    setNewFolder(kind === 'file' ? '.txt' : '');
+  };
   useEffect(() => setPathInput(pane.path), [pane.path]);
 
   const inSearch = pane.searchResults !== null;
@@ -997,6 +1111,9 @@ const FilePane: React.FC<PaneProps> = ({
         } else if (e.key === 'Backspace' && pane.parent && !inSearch) {
           e.preventDefault();
           onOpen(pane.parent);
+        } else if ((e.key === 'F3' || e.key === 'F4') && onPreview && selectedEntries.length === 1 && !selectedEntries[0].isDir) {
+          e.preventDefault();
+          onPreview(selectedEntries[0]);
         } else if (e.key === 'Delete' && onDelete && pane.selected.length) {
           e.preventDefault();
           onDelete(pane.selected);
@@ -1059,21 +1176,40 @@ const FilePane: React.FC<PaneProps> = ({
             if (e.key === 'Enter') onOpen(pathInput.trim());
           }}
           title={pane.path}
-          className="h-6 min-w-[120px] flex-1 rounded border border-slate-700 bg-slate-950 px-2 font-mono text-[10.5px] text-slate-200 focus:border-cyan-500 focus:outline-none"
+          className="h-6 min-w-[64px] flex-1 rounded border border-slate-700 bg-slate-950 px-2 font-mono text-[10.5px] text-slate-200 focus:border-cyan-500 focus:outline-none"
         />
         <button
-          onClick={() => setNewFolder('')}
+          onClick={() => startNew('dir')}
           title={t('Nowy katalog')}
           className="flex h-6 w-6 items-center justify-center rounded border border-slate-700 bg-slate-800 text-amber-300 hover:bg-slate-700"
         >
           <FolderPlus className="h-3 w-3" />
         </button>
+        {onMkfile && (
+          <button
+            onClick={() => startNew('file')}
+            title={t('Nowy plik')}
+            className="flex h-6 w-6 items-center justify-center rounded border border-slate-700 bg-slate-800 text-cyan-300 hover:bg-slate-700"
+          >
+            <FilePlus className="h-3 w-3" />
+          </button>
+        )}
         {extraTools}
+        {onPreview && (
+          <button
+            onClick={() => selectedEntries.length === 1 && !selectedEntries[0].isDir && onPreview(selectedEntries[0])}
+            disabled={selectedEntries.length !== 1 || selectedEntries[0].isDir}
+            title={t('Podgląd i edycja pliku (F3)')}
+            className="flex h-6 w-6 items-center justify-center rounded border border-slate-700 bg-slate-800 text-slate-300 hover:bg-slate-700 disabled:opacity-40"
+          >
+            <Eye className="h-3 w-3" />
+          </button>
+        )}
         {onDelete && (
           <button
             onClick={() => onDelete(pane.selected)}
             disabled={busy || pane.selected.length === 0}
-            title={t('Usuń zaznaczone z serwera (Delete)')}
+            title={side === 'local' ? t('Przenieś zaznaczone do kosza (Delete)') : t('Usuń zaznaczone z serwera (Delete)')}
             className="flex h-6 w-6 items-center justify-center rounded border border-slate-700 bg-slate-800 text-slate-300 hover:bg-red-500/20 hover:text-red-400 disabled:opacity-40"
           >
             <Trash2 className="h-3 w-3" />
@@ -1155,14 +1291,17 @@ const FilePane: React.FC<PaneProps> = ({
       <div className="sidebar-scroll min-h-0 flex-1 overflow-y-auto select-none">
         {newFolder !== null && (
           <div className="flex items-center gap-1.5 border-b border-slate-800 bg-amber-950/20 px-2 py-1">
-            <FolderPlus className="h-3.5 w-3.5 shrink-0 text-amber-400" />
+            {newKind === 'file' ? <FilePlus className="h-3.5 w-3.5 shrink-0 text-cyan-400" /> : <FolderPlus className="h-3.5 w-3.5 shrink-0 text-amber-400" />}
             <input
               autoFocus
+              // New file: the cursor goes before the suggested ".txt"
+              onFocus={(e) => newKind === 'file' && e.currentTarget.setSelectionRange(0, 0)}
               value={newFolder}
               onChange={(e) => setNewFolder(e.target.value)}
               onKeyDown={(e) => {
                 if (e.key === 'Enter' && newFolder.trim()) {
-                  onMkdir(newFolder.trim());
+                  if (newKind === 'file') onMkfile?.(newFolder.trim());
+                  else onMkdir(newFolder.trim());
                   setNewFolder(null);
                 } else if (e.key === 'Escape') {
                   e.stopPropagation();
@@ -1170,7 +1309,7 @@ const FilePane: React.FC<PaneProps> = ({
                 }
               }}
               onBlur={() => setNewFolder(null)}
-              placeholder={t('Nazwa nowego katalogu – Enter, aby utworzyć')}
+              placeholder={newKind === 'file' ? t('Nazwa nowego pliku – Enter, aby utworzyć i otworzyć') : t('Nazwa nowego katalogu – Enter, aby utworzyć')}
               className="h-6 flex-1 rounded border border-amber-500/50 bg-slate-950 px-2 text-[11px] text-white focus:outline-none"
             />
           </div>
@@ -1292,9 +1431,14 @@ const FilePane: React.FC<PaneProps> = ({
               {transferLabel} {menu.targets.length > 1 ? t('zaznaczone ({length})', { length: menu.targets.length }) : t('„{name}”', { name: baseName(menu.targets[0]) })}
             </MenuItem>
           )}
+          {onPreview && menu.entry && !menu.entry.isDir && (
+            <MenuItem icon={<Eye className="h-3.5 w-3.5 text-cyan-300" />} onClick={() => onPreview(menu.entry!)}>
+              {t('Podgląd i edycja (F3)')}
+            </MenuItem>
+          )}
           {onDelete && menu.targets.length > 0 && (
             <MenuItem icon={<Trash2 className="h-3.5 w-3.5 text-red-400" />} danger disabled={busy} onClick={() => onDelete(menu.targets)}>
-              {t('Usuń')}{menu.targets.length > 1 ? ` (${menu.targets.length})` : ''}
+              {side === 'local' ? t('Przenieś do kosza') : t('Usuń')}{menu.targets.length > 1 ? ` (${menu.targets.length})` : ''}
             </MenuItem>
           )}
           {menu.entry && (
@@ -1306,9 +1450,14 @@ const FilePane: React.FC<PaneProps> = ({
             </MenuItem>
           )}
           {(menu.entry || menu.targets.length > 0) && <div className="my-1 border-t border-slate-800" />}
-          <MenuItem icon={<FolderPlus className="h-3.5 w-3.5 text-amber-300" />} onClick={() => setNewFolder('')}>
+          <MenuItem icon={<FolderPlus className="h-3.5 w-3.5 text-amber-300" />} onClick={() => startNew('dir')}>
             {t('Nowy katalog')}
           </MenuItem>
+          {onMkfile && (
+            <MenuItem icon={<FilePlus className="h-3.5 w-3.5 text-cyan-300" />} onClick={() => startNew('file')}>
+              {t('Nowy plik')}
+            </MenuItem>
+          )}
           {onPasteFiles && (
             <MenuItem icon={<ClipboardPaste className="h-3.5 w-3.5 text-emerald-400" />} disabled={busy} onClick={onPasteFiles}>
               {t('Wyślij pliki ze schowka systemu')}
