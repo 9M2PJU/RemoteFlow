@@ -11,6 +11,7 @@ wydania, a okienko aktualizacji w programie pokazuje tę w języku interfejsu.
 
 ## Niewydane (trafi do kolejnej wersji)
 - **Poprawka: nie dało się zapisać ustawień z domyślnym buforem historii terminala.** Pole przyjmowało tylko wartości typu 9100 lub 10 100 (krok 1000 liczony od minimum 100), więc domyślne 10 000 blokowało przycisk Zapisz komunikatem „wprowadź prawidłową wartość”. Teraz krok wynosi 100.
+- **SFTP: ponowne F3 zamyka podgląd** (jak w listerze Total Commandera) – dla pliku otwartego tylko do odczytu (F3, ikona oka). Podczas edycji F3 nic nie robi; Esc nadal zamyka w obu przypadkach.
 
 ## 1.15.1 – SFTP: F3 podgląd, F4 edycja; poprawka Ctrl+Z w edytorze
 - **SFTP: F3 – podgląd, F4 – edycja** (jak w Total Commanderze / Midnight Commanderze). F3 i ikona oka otwierają plik tylko do odczytu – przypadkowe naciśnięcie klawisza nic nie zmieni; przycisk **Edytuj** (albo F4) w podglądzie odblokowuje zmiany bez ponownego otwierania pliku. F4 otwiera plik od razu do edycji z kursorem w tekście. Menu kontekstowe ma osobne pozycje „Podgląd (F3)” i „Edytuj (F4)”; nowy plik otwiera się do edycji. Wcześniej oba klawisze robiły to samo.

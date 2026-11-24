@@ -375,6 +375,12 @@ export const FilePreview: React.FC<Props> = ({ side, connectionId, path, name, o
         if (e.key === 'Escape') {
           e.stopPropagation();
           if (!e.defaultPrevented) requestClose();
+        } else if (e.key === 'F3') {
+          // As in Total Commander's lister: F3 again closes a file opened for viewing.
+          // While editing it does nothing (and never opens the WebView's own find bar).
+          e.preventDefault();
+          e.stopPropagation();
+          if (!editing) requestClose();
         } else if (e.key === 'F4' && !editing) {
           e.preventDefault();
           e.stopPropagation();
@@ -525,7 +531,7 @@ export const FilePreview: React.FC<Props> = ({ side, connectionId, path, name, o
         {status && <span className={status.type === 'error' ? 'text-red-400' : 'text-emerald-300'}>{status.text}</span>}
         {mode === 'text' && (
           <span className="ml-auto hidden text-slate-500 @md:inline">
-            {editing ? t('Ctrl+F – szukaj, Ctrl+S – zapisz, Esc – zamknij') : t('Ctrl+F – szukaj, F4 – edytuj, Esc – zamknij')}
+            {editing ? t('Ctrl+F – szukaj, Ctrl+S – zapisz, Esc – zamknij') : t('Ctrl+F – szukaj, F4 – edytuj, F3/Esc – zamknij')}
           </span>
         )}
       </div>

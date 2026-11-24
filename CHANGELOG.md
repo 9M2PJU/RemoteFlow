@@ -11,6 +11,7 @@ release notes, and the in-app update notice shows the one in the interface langu
 
 ## Unreleased
 - **Fix: settings could not be saved with the default terminal history buffer.** The field accepted only values like 9,100 or 10,100 (steps of 1,000 counted from the minimum 100), so the default 10,000 blocked the Save button with "enter a valid value". It now goes in steps of 100.
+- **SFTP: F3 again closes the viewer** (as in Total Commander's lister) – for a file opened read-only (F3, the eye icon). While editing, F3 does nothing; Esc still closes in both cases.
 
 ## 1.15.1 – SFTP: F3 view, F4 edit; Ctrl+Z fix in the editor
 - **SFTP: F3 – view, F4 – edit** (as in Total Commander / Midnight Commander). F3 and the eye icon open a file read-only – an accidental key press changes nothing; the **Edit** button (or F4) in the viewer unlocks editing without reopening the file. F4 opens a file ready for editing with the cursor in the text. The context menu has separate "View (F3)" and "Edit (F4)" items; a new file opens for editing. Before, both keys did the same.
