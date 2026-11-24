@@ -575,7 +575,7 @@ export const SettingsModal: React.FC<Props> = ({
                   type="number"
                   min={MIN_TERMINAL_SCROLLBACK}
                   max={MAX_TERMINAL_SCROLLBACK}
-                  step={1000}
+                  step={100}
                   value={uiSettings.terminalScrollback ?? DEFAULT_TERMINAL_SCROLLBACK}
                   onChange={(e) => {
                     const value = e.target.value === '' ? MIN_TERMINAL_SCROLLBACK : Number(e.target.value);

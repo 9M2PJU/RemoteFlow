@@ -154,7 +154,7 @@ Besides the encrypted vault, only non-sensitive settings are stored unencrypted:
 
 ## Versioning
 The project uses [semantic versioning](https://semver.org/). Every change increases at least the patch number –
-see [CHANGELOG.md](CHANGELOG.md). The version is kept in `package.json`, `src-tauri/tauri.conf.json` and
+see [CHANGELOG.md](CHANGELOG.md) (Polish: [CHANGELOG.pl.md](CHANGELOG.pl.md)). The version is kept in `package.json`, `src-tauri/tauri.conf.json` and
 `src-tauri/Cargo.toml` (a unit test checks that they match) and is shown next to the logo and on the login screen.
 
 ## Releases (maintainers)
@@ -168,10 +168,10 @@ One-time setup:
 
 Each release:
 ```bash
-git tag v1.2.3            # must match the version in package.json; CHANGELOG.md needs a "## 1.2.3 – …" section
+git tag v1.2.3            # must match the version in package.json; CHANGELOG.md and CHANGELOG.pl.md need a "## 1.2.3 – …" section
 git push origin v1.2.3
 ```
-GitHub Actions builds Windows and Linux, signs the update packages and creates a **draft** release with the CHANGELOG section as notes. Check it and press *Publish* – from then on the application offers the update.
+GitHub Actions builds Windows and Linux, signs the update packages and creates a **draft** release with notes from both changelogs (English and Polish; the in-app update notice shows the part in the interface language). Check it and press *Publish* – from then on the application offers the update.
 Losing the private key means existing installations cannot verify new updates (users would have to install a new version manually) – keep a backup.
 
 ## Security

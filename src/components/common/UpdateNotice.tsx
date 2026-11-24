@@ -1,10 +1,11 @@
 import React, { useEffect, useState } from 'react';
 import { Download, ExternalLink, Loader2, RefreshCw, X } from 'lucide-react';
-import { useT } from '../../i18n';
+import { useLang, useT } from '../../i18n';
 import {
   AvailableUpdate,
   autoCheckEnabled,
   checkForUpdate,
+  localizedNotes,
   openReleasesPage,
   skipVersion,
   skippedVersion,
@@ -20,6 +21,7 @@ const CHECK_EVERY_MS = 24 * 60 * 60 * 1000;
  */
 export const UpdateNotice: React.FC<{ activeSessions: number }> = ({ activeSessions }) => {
   const t = useT();
+  const lang = useLang();
   const [update, setUpdate] = useState<AvailableUpdate | null>(null);
   const [installing, setInstalling] = useState(false);
   const [progress, setProgress] = useState<{ done: number; total: number | null } | null>(null);
@@ -54,6 +56,8 @@ export const UpdateNotice: React.FC<{ activeSessions: number }> = ({ activeSessi
   }, []);
 
   if (!update) return null;
+  // English or Polish part of the release notes, as the interface
+  const notes = localizedNotes(update.notes, lang);
 
   const install = async () => {
     setInstalling(true);
@@ -91,9 +95,9 @@ export const UpdateNotice: React.FC<{ activeSessions: number }> = ({ activeSessi
         )}
       </div>
 
-      {update.notes && (
+      {notes && (
         <div className="mb-3 max-h-48 overflow-auto whitespace-pre-wrap rounded-lg border border-slate-800 bg-slate-950/60 p-2.5 text-[11px] leading-relaxed text-slate-300 select-text">
-          {update.notes}
+          {notes}
         </div>
       )}
 

@@ -146,6 +146,21 @@ export async function openReleasesPage(): Promise<void> {
   await openUrl(RELEASES_URL);
 }
 
+/**
+ * Release notes in one language. From the release after 1.15.1 the notes hold an English and a Polish part, each
+ * after a `<!-- lang:xx -->` marker (scripts/release-notes.mjs); the part in `lang` is returned,
+ * else the English one. Notes without markers (older releases) are returned whole.
+ */
+export function localizedNotes(notes: string, lang: string): string {
+  const parts = notes.split(/<!--\s*lang:([a-z]{2})\s*-->/);
+  if (parts.length < 3) return notes.trim();
+  const byLang = new Map<string, string>();
+  for (let i = 1; i + 1 < parts.length; i += 2) {
+    byLang.set(parts[i], parts[i + 1].replace(/\n-{3,}\s*$/, '').trim());
+  }
+  return byLang.get(lang) ?? byLang.get('en') ?? [...byLang.values()][0] ?? notes.trim();
+}
+
 /** Shows the update notice (UpdateNotice) – used by the manual check in Settings. */
 export function announceUpdate(update: AvailableUpdate): void {
   window.dispatchEvent(new CustomEvent<AvailableUpdate>(UPDATE_EVENT, { detail: update }));

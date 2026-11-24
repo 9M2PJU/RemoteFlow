@@ -162,7 +162,7 @@ grupy (pamięć przeglądarki wbudowanej). Pliki wymieniane z sesjami RDP na Lin
 
 ## Wersjonowanie
 Projekt stosuje [wersjonowanie semantyczne](https://semver.org/lang/pl/). Każda zmiana podnosi co najmniej numer poprawki –
-zobacz [CHANGELOG.md](CHANGELOG.md). Wersja jest zapisana w `package.json`, `src-tauri/tauri.conf.json` i
+zobacz [CHANGELOG.pl.md](CHANGELOG.pl.md) (po angielsku: [CHANGELOG.md](CHANGELOG.md)). Wersja jest zapisana w `package.json`, `src-tauri/tauri.conf.json` i
 `src-tauri/Cargo.toml` (test jednostkowy sprawdza ich zgodność) i jest wyświetlana obok logo oraz na ekranie logowania.
 
 ## Wydania (dla opiekuna projektu)
@@ -176,10 +176,10 @@ Jednorazowo:
 
 Każde wydanie:
 ```bash
-git tag v1.2.3            # musi odpowiadać wersji w package.json; CHANGELOG.md musi mieć sekcję „## 1.2.3 – …”
+git tag v1.2.3            # musi odpowiadać wersji w package.json; CHANGELOG.md i CHANGELOG.pl.md muszą mieć sekcję „## 1.2.3 – …”
 git push origin v1.2.3
 ```
-GitHub Actions buduje wersje Windows i Linux, podpisuje paczki aktualizacji i tworzy **szkic** wydania z sekcją CHANGELOG jako opisem. Sprawdź go i kliknij *Publish* – od tej chwili program proponuje aktualizację.
+GitHub Actions buduje wersje Windows i Linux, podpisuje paczki aktualizacji i tworzy **szkic** wydania z opisem z obu plików CHANGELOG (angielskim i polskim; okienko aktualizacji w programie pokazuje część w języku interfejsu). Sprawdź go i kliknij *Publish* – od tej chwili program proponuje aktualizację.
 Utrata klucza prywatnego oznacza, że zainstalowane kopie nie zweryfikują nowych aktualizacji (użytkownicy musieliby ręcznie zainstalować nową wersję) – zrób kopię zapasową klucza.
 
 ## Bezpieczeństwo
