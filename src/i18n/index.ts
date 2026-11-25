@@ -1,19 +1,23 @@
 import { useSyncExternalStore } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import enDict from './en.json';
+import msDict from './ms.json';
 
 const en: Record<string, string> = enDict;
+const ms: Record<string, string> = msDict;
 
 /**
- * Minimal i18n: the Polish text is the key (and the Polish translation), `en.ts` maps it to English.
- * A missing English entry falls back to Polish, so nothing ever renders empty.
+ * Minimal i18n: the Polish text is the key (and the Polish translation), `en.json` maps it to English,
+ * and `ms.json` maps it to Bahasa Melayu (Malay).
+ * A missing translation entry falls back to English/Polish, so nothing ever renders empty.
  * Placeholders in braces, e.g. {n}, are filled from the second argument of t().
  */
-export type Lang = 'pl' | 'en';
+export type Lang = 'pl' | 'en' | 'ms';
 
 export const LANGUAGES: { code: Lang; label: string; short: string }[] = [
   { code: 'pl', label: 'Polski', short: 'PL' },
   { code: 'en', label: 'English', short: 'EN' },
+  { code: 'ms', label: 'Bahasa Melayu', short: 'MS' },
 ];
 
 const STORAGE_KEY = 'remoteflow-lang';
@@ -21,12 +25,14 @@ const STORAGE_KEY = 'remoteflow-lang';
 const detect = (): Lang => {
   try {
     const saved = localStorage.getItem(STORAGE_KEY);
-    if (saved === 'pl' || saved === 'en') return saved;
+    if (saved === 'pl' || saved === 'en' || saved === 'ms') return saved;
   } catch {
     /* storage unavailable */
   }
-  const nav = (typeof navigator !== 'undefined' && navigator.language) || 'pl';
-  return nav.toLowerCase().startsWith('pl') ? 'pl' : 'en';
+  const nav = ((typeof navigator !== 'undefined' && navigator.language) || 'pl').toLowerCase();
+  if (nav.startsWith('pl')) return 'pl';
+  if (nav.startsWith('ms')) return 'ms';
+  return 'en';
 };
 
 let current: Lang = detect();
@@ -67,8 +73,11 @@ const interpolate = (text: string, params?: TParams) =>
   params ? text.replace(/\{(\w+)\}/g, (m, k) => (params[k] === undefined || params[k] === null ? m : String(params[k]))) : text;
 
 /** Translates a Polish source text into the current language. */
-export const t = (text: string, params?: TParams): string =>
-  interpolate(current === 'en' ? en[text] ?? text : text, params);
+export const t = (text: string, params?: TParams): string => {
+  const translated =
+    current === 'ms' ? ms[text] ?? en[text] ?? text : current === 'en' ? en[text] ?? text : text;
+  return interpolate(translated, params);
+};
 
 /**
  * Polish plural form for a count: 0 = one (1), 1 = few (2–4, 22–24…, but not 12–14), 2 = many (0, 5–21, 25…).
@@ -96,4 +105,4 @@ export const useT = () => {
 export const useLang = (): Lang => useSyncExternalStore(subscribe, getLang, getLang);
 
 /** Locale for dates and numbers. */
-export const locale = (): string => (current === 'en' ? 'en-GB' : 'pl-PL');
+export const locale = (): string => (current === 'ms' ? 'ms-MY' : current === 'en' ? 'en-GB' : 'pl-PL');

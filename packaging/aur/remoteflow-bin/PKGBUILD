@@ -1,0 +1,63 @@
+# Maintainer: 9M2PJU <9m2pju@hamradio.my>
+pkgname=remoteflow-bin
+_pkgname=remoteflow
+pkgver=1.15.1
+pkgrel=1
+pkgdesc="Cross-platform SSH, SFTP and RDP connection manager with an encrypted vault (prebuilt binary)"
+arch=('x86_64')
+url="https://github.com/jacek-nikiel/RemoteFlow"
+_upstream_url="https://github.com/jacek-nikiel/RemoteFlow"
+license=('MIT')
+depends=(
+  'webkit2gtk-4.1'
+  'gtk3'
+  'openssl'
+  'libx11'
+  'dbus'
+  'zlib'
+  'gcc-libs'
+  'glibc'
+  'hicolor-icon-theme'
+  'xdg-utils'
+)
+optdepends=(
+  'freerdp: Native embedded or external FreeRDP client'
+  'xorg-xwayland: Embedded native FreeRDP session under Wayland'
+  'which: Required for FreeRDP binary detection'
+  'zenity: Native GTK file and folder picker dialog'
+  'kdialog: Native KDE file and folder picker dialog'
+  'wl-clipboard: Reliable system clipboard copying under Wayland'
+  'xclip: Reliable system clipboard copying under X11'
+  'openssh: SSH agent authentication'
+)
+provides=("${_pkgname}")
+conflicts=("${_pkgname}" "${_pkgname}-git")
+source=(
+  "${_pkgname}_${pkgver}_amd64-portable::${_upstream_url}/releases/download/v${pkgver}/${_pkgname}_${pkgver}_amd64-portable"
+  "${_pkgname}-${pkgver}-icon.png::https://raw.githubusercontent.com/jacek-nikiel/RemoteFlow/v${pkgver}/src-tauri/icons/icon.png"
+  "${_pkgname}-${pkgver}-LICENSE::https://raw.githubusercontent.com/jacek-nikiel/RemoteFlow/v${pkgver}/LICENSE"
+)
+sha256sums=(
+  'SKIP'
+  'SKIP'
+  'SKIP'
+)
+
+package() {
+  install -Dm755 "${srcdir}/${_pkgname}_${pkgver}_amd64-portable" "${pkgdir}/usr/bin/${_pkgname}"
+  install -Dm644 "${srcdir}/${_pkgname}-${pkgver}-icon.png" "${pkgdir}/usr/share/icons/hicolor/512x512/apps/${_pkgname}.png"
+  install -Dm644 "${srcdir}/${_pkgname}-${pkgver}-LICENSE" "${pkgdir}/usr/share/licenses/${pkgname}/LICENSE"
+
+  install -dm755 "${pkgdir}/usr/share/applications"
+  cat > "${pkgdir}/usr/share/applications/${_pkgname}.desktop" <<EOF
+[Desktop Entry]
+Type=Application
+Name=RemoteFlow
+Comment=SSH, SFTP and RDP connection manager
+Exec=/usr/bin/remoteflow
+Icon=remoteflow
+Terminal=false
+Categories=Development;Network;
+StartupWMClass=remoteflow
+EOF
+}

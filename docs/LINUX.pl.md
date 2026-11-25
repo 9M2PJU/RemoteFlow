@@ -79,6 +79,8 @@ sudo pacman -S --needed freerdp xorg-xwayland which
 ## Pakiety i wersja portable
 
 - Pakiet `.deb` instaluj poleceniem `sudo apt install ./remoteflow_WERSJA_amd64.deb`, aby APT mógł dobrać zadeklarowane zależności. Nazwy pakietów różnią się między dystrybucjami; powyższe listy obejmują również binarkę portable.
+- Na Arch Linux / CachyOS / Manjaro zainstaluj natywny pakiet pacmanem: `sudo pacman -U ./remoteflow-WERSJA-1-x86_64.pkg.tar.zst`, uruchom `bash scripts/install-arch.sh --with-rdp` albo zbuduj pakiet AUR (`packaging/aur/remoteflow-git` lub `packaging/aur/remoteflow-bin`).
+- Możesz też użyć uniwersalnego instalatora (`scripts/install.sh`) do instalacji w katalogu użytkownika (`~/.local/bin/remoteflow`) lub instalacji systemowej (`--system`).
 - Dla wersji portable wykonaj `chmod +x ./remoteflow`, a następnie `./remoteflow`. Skrót w menu i ikonę dodaj według [instrukcji integracji portable z pulpitem](../README.pl.md#ikona-i-skrót-dla-wersji-portable-na-linuksie).
 - AppImage zawiera wiele bibliotek, ale nadal korzysta ze stosu graficznego systemu i wymaga zgodnego glibc. Jeżeli zgłasza błąd FUSE 2, doinstaluj odpowiedni pakiet z tabeli. Jeśli dana paczka to obsługuje, alternatywą jest `./RemoteFlow.AppImage --appimage-extract-and-run`.
 

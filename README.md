@@ -15,7 +15,7 @@ The application uses **Tauri 2 and Rust** for the native backend, **React 19 and
 ## Features
 
 ### Connections and workspace
-- Polish and English user interface – switch the language in the header, on the login screen or in Settings (applied instantly).
+- Polish, English and Malay (Bahasa Melayu) user interface – switch the language in the header, on the login screen or in Settings (applied instantly).
 - Dark or light theme (Settings), optionally with a dark terminal in the light theme.
 - Connection tree with nested groups, colours, search (name, host, IP, tags) and drag & drop. Group expansion and per-group A–Z sorting are remembered between launches.
 - Group context menus: connect to a group, add hosts or subgroups, sort, edit, delete, and expand or collapse all groups.
@@ -72,7 +72,29 @@ The application uses **Tauri 2 and Rust** for the native backend, **React 19 and
 
 ## Download
 
-Ready-made builds are published on the [Releases](https://github.com/jacek-nikiel/RemoteFlow/releases) page: Windows installer (`.exe`, `.msi`), Linux packages (`.AppImage`, `.deb`, `.rpm`) and portable builds without an installer: `remoteflow_X.Y.Z_x64-portable.exe` (Windows) and `remoteflow_X.Y.Z_amd64-portable` (Linux). They are built from this repository by GitHub Actions ([release workflow](.github/workflows/release.yml)) – the build log of every release is public.
+Ready-made builds are published on the [Releases](https://github.com/jacek-nikiel/RemoteFlow/releases) page: Windows installer (`.exe`, `.msi`), Linux packages (`.AppImage`, `.deb`, `.rpm`, Arch `.pkg.tar.zst`) and portable builds without an installer: `remoteflow_X.Y.Z_x64-portable.exe` (Windows) and `remoteflow_X.Y.Z_amd64-portable` (Linux). They are built from this repository by GitHub Actions ([release workflow](.github/workflows/release.yml)) – the build log of every release is public.
+
+### Linux 1-Liner & Arch Linux (`.pkg.tar.zst`) / AUR Installation
+
+- **Universal 1-Liner (User-space portable + desktop entry, auto-updating):**
+  ```bash
+  curl -fsSL https://raw.githubusercontent.com/jacek-nikiel/RemoteFlow/main/scripts/install.sh | bash
+  ```
+- **Universal 1-Liner (System-wide `.deb` / `.rpm` / Arch `.pkg.tar.zst` via `pacman -U`):**
+  ```bash
+  curl -fsSL https://raw.githubusercontent.com/jacek-nikiel/RemoteFlow/main/scripts/install.sh | bash -s -- --system
+  ```
+- **Arch Linux / CachyOS / Manjaro Native Package (`.pkg.tar.zst`) Installer:**
+  ```bash
+  bash scripts/install-arch.sh --with-rdp          # downloads/builds remoteflow-<ver>-1-x86_64.pkg.tar.zst & runs pacman -U
+  bash scripts/install-arch.sh --build-only        # generates remoteflow-<ver>-1-x86_64.pkg.tar.zst in current directory
+  bash scripts/install-arch.sh --source --with-rdp # compiles from source into .pkg.tar.zst via makepkg -si
+  ```
+- **AUR Packages (`remoteflow-git` and `remoteflow-bin`):**
+  PKGBUILD definitions are included in [`packaging/aur/remoteflow-git`](packaging/aur/remoteflow-git/PKGBUILD) and [`packaging/aur/remoteflow-bin`](packaging/aur/remoteflow-bin/PKGBUILD):
+  ```bash
+  cd packaging/aur/remoteflow-git && makepkg -si
+  ```
 
 ### Updates
 The application checks the Releases page at start-up and once a day and offers a new version with its release notes (*Settings → Updates*: switch off automatic checks or check now). Every update package is signed; the application installs only packages signed with the project key whose public part is in [`tauri.conf.json`](src-tauri/tauri.conf.json) (`plugins.updater.pubkey`). Windows and AppImage update in place; `.deb` / `.rpm` are installed with `pkexec` (administrator password prompt). A portable copy (the bare executable without an installer, e.g. on a USB drive, or one with the `remoteflow.portable` marker) does not run an installer: it downloads the signed portable build, replaces its own file in the same folder and restarts (from version 1.14.0; the folder must be writable).

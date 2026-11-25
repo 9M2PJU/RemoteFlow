@@ -15,7 +15,7 @@ Aplikacja wykorzystuje **Tauri 2 i Rust** jako natywny backend, **React 19 i Typ
 ## Funkcje
 
 ### Połączenia i obszar roboczy
-- Interfejs po polsku i angielsku – zmiana języka w nagłówku, na ekranie logowania lub w Ustawieniach (działa od razu).
+- Interfejs po polsku, angielsku i malajsku (Bahasa Melayu) – zmiana języka w nagłówku, na ekranie logowania lub w Ustawieniach (działa od razu).
 - Ciemny lub jasny motyw (Ustawienia), opcjonalnie z ciemnym terminalem w jasnym motywie.
 - Drzewo połączeń z zagnieżdżonymi grupami, kolorami, wyszukiwaniem (nazwa, host, IP, tagi) i przeciąganiem. Stan rozwinięcia grup i sortowanie A–Z w wybranych grupach są zapamiętywane po restarcie.
 - Menu kontekstowe grup: połączenie z hostami w grupie, dodawanie hostów i podgrup, sortowanie, edycja, usuwanie oraz rozwijanie i zwijanie wszystkich grup.
@@ -72,7 +72,29 @@ Aplikacja wykorzystuje **Tauri 2 i Rust** jako natywny backend, **React 19 i Typ
 
 ## Pobieranie
 
-Gotowe wersje są publikowane na stronie [Releases](https://github.com/jacek-nikiel/RemoteFlow/releases): instalator Windows (`.exe`, `.msi`), paczki Linux (`.AppImage`, `.deb`, `.rpm`) oraz wersje przenośne bez instalatora: `remoteflow_X.Y.Z_x64-portable.exe` (Windows) i `remoteflow_X.Y.Z_amd64-portable` (Linux). Są budowane z tego repozytorium przez GitHub Actions ([workflow wydań](.github/workflows/release.yml)) – log budowania każdego wydania jest publiczny.
+Gotowe wersje są publikowane na stronie [Releases](https://github.com/jacek-nikiel/RemoteFlow/releases): instalator Windows (`.exe`, `.msi`), paczki Linux (`.AppImage`, `.deb`, `.rpm`, Arch `.pkg.tar.zst`) oraz wersje przenośne bez instalatora: `remoteflow_X.Y.Z_x64-portable.exe` (Windows) i `remoteflow_X.Y.Z_amd64-portable` (Linux). Są budowane z tego repozytorium przez GitHub Actions ([workflow wydań](.github/workflows/release.yml)) – log budowania każdego wydania jest publiczny.
+
+### Linux: instalacja jednym poleceniem, Arch Linux (`.pkg.tar.zst`) oraz AUR
+
+- **Instalacja jednym poleceniem (wersja przenośna w katalogu użytkownika + ikona w menu, z automatycznymi aktualizacjami):**
+  ```bash
+  curl -fsSL https://raw.githubusercontent.com/jacek-nikiel/RemoteFlow/main/scripts/install.sh | bash
+  ```
+- **Instalacja jednym poleceniem (systemowa: `.deb` / `.rpm` / Arch `.pkg.tar.zst` przez `pacman -U`):**
+  ```bash
+  curl -fsSL https://raw.githubusercontent.com/jacek-nikiel/RemoteFlow/main/scripts/install.sh | bash -s -- --system
+  ```
+- **Instalator natywnego pakietu Arch Linux / CachyOS / Manjaro (`.pkg.tar.zst`):**
+  ```bash
+  bash scripts/install-arch.sh --with-rdp          # pobiera/buduje remoteflow-<ver>-1-x86_64.pkg.tar.zst i instaluje przez pacman -U
+  bash scripts/install-arch.sh --build-only        # generuje plik remoteflow-<ver>-1-x86_64.pkg.tar.zst w bieżącym katalogu
+  bash scripts/install-arch.sh --source --with-rdp # kompiluje ze źródeł do .pkg.tar.zst przez makepkg -si
+  ```
+- **Pakiety AUR (`remoteflow-git` oraz `remoteflow-bin`):**
+  Definicje `PKGBUILD` znajdują się w [`packaging/aur/remoteflow-git`](packaging/aur/remoteflow-git/PKGBUILD) oraz [`packaging/aur/remoteflow-bin`](packaging/aur/remoteflow-bin/PKGBUILD):
+  ```bash
+  cd packaging/aur/remoteflow-git && makepkg -si
+  ```
 
 ### Aktualizacje
 Program sprawdza stronę wydań przy uruchomieniu i raz dziennie i proponuje nową wersję wraz z listą zmian (*Ustawienia → Aktualizacje*: wyłączenie automatycznego sprawdzania lub sprawdzenie od razu). Każda paczka aktualizacji jest podpisana; program instaluje tylko paczki podpisane kluczem projektu, którego część publiczna jest w [`tauri.conf.json`](src-tauri/tauri.conf.json) (`plugins.updater.pubkey`). Windows i AppImage aktualizują się na miejscu; `.deb` / `.rpm` są instalowane przez `pkexec` (pytanie o hasło administratora). Kopia przenośna (sam plik programu bez instalatora, np. na pendrivie, albo ze znacznikiem `remoteflow.portable`) nie uruchamia instalatora: pobiera podpisaną wersję przenośną, zastępuje nią swój plik w tym samym folderze i uruchamia się ponownie (od wersji 1.14.0; folder musi być zapisywalny).
